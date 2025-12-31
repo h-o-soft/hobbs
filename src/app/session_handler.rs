@@ -826,6 +826,7 @@ Select language / Gengo sentaku:
             Arc::clone(&self.template_loader),
             self.profile.clone(),
             Arc::clone(&self.i18n),
+            self.line_buffer.encoding(),
         )
     }
 
