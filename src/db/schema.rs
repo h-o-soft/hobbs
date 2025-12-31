@@ -117,6 +117,25 @@ CREATE INDEX idx_chat_logs_room_id ON chat_logs(room_id);
 CREATE INDEX idx_chat_logs_created_at ON chat_logs(created_at);
 CREATE INDEX idx_chat_logs_room_created ON chat_logs(room_id, created_at);
 "#,
+    // v8: Mails table for internal mail system
+    r#"
+-- Mails table for internal mail system
+CREATE TABLE mails (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id               INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recipient_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject                 TEXT NOT NULL,
+    body                    TEXT NOT NULL,
+    is_read                 INTEGER NOT NULL DEFAULT 0,
+    is_deleted_by_sender    INTEGER NOT NULL DEFAULT 0,
+    is_deleted_by_recipient INTEGER NOT NULL DEFAULT 0,
+    created_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_mails_sender_id ON mails(sender_id);
+CREATE INDEX idx_mails_recipient_id ON mails(recipient_id);
+CREATE INDEX idx_mails_created_at ON mails(created_at);
+"#,
 ];
 
 #[cfg(test)]
@@ -203,5 +222,19 @@ mod tests {
         assert!(chat_logs_migration.contains("message_type"));
         assert!(chat_logs_migration.contains("content"));
         assert!(chat_logs_migration.contains("created_at"));
+    }
+
+    #[test]
+    fn test_mails_migration_contains_mails_table() {
+        let mails_migration = MIGRATIONS[7];
+        assert!(mails_migration.contains("CREATE TABLE mails"));
+        assert!(mails_migration.contains("sender_id"));
+        assert!(mails_migration.contains("recipient_id"));
+        assert!(mails_migration.contains("subject"));
+        assert!(mails_migration.contains("body"));
+        assert!(mails_migration.contains("is_read"));
+        assert!(mails_migration.contains("is_deleted_by_sender"));
+        assert!(mails_migration.contains("is_deleted_by_recipient"));
+        assert!(mails_migration.contains("created_at"));
     }
 }

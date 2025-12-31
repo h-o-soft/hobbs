@@ -9,6 +9,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod logging;
+pub mod mail;
 pub mod server;
 pub mod terminal;
 
@@ -33,6 +34,10 @@ pub use chat::{
 pub use config::Config;
 pub use db::{Database, NewUser, Role, User, UserRepository, UserUpdate};
 pub use error::{HobbsError, Result};
+pub use mail::{
+    Mail, MailRepository, MailUpdate, NewMail, MAX_BODY_LENGTH as MAX_MAIL_BODY_LENGTH,
+    MAX_SUBJECT_LENGTH as MAX_MAIL_SUBJECT_LENGTH,
+};
 pub use server::{
     decode_from_client, decode_shiftjis, decode_shiftjis_strict, encode_for_client,
     encode_shiftjis, encode_shiftjis_strict, initial_negotiation, CharacterEncoding, DecodeResult,
