@@ -1,0 +1,379 @@
+//! Mail screen handler.
+
+use tracing::error;
+
+use super::common::ScreenContext;
+use super::ScreenResult;
+use crate::db::UserRepository;
+use crate::error::Result;
+use crate::mail::{MailRepository, NewMail};
+use crate::server::TelnetSession;
+
+/// Mail screen handler.
+pub struct MailScreen;
+
+impl MailScreen {
+    /// Run the mail inbox screen.
+    pub async fn run_inbox(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+    ) -> Result<ScreenResult> {
+        let user_id = match session.user_id() {
+            Some(id) => id,
+            None => {
+                ctx.send_line(session, ctx.i18n.t("menu.login_required"))
+                    .await?;
+                return Ok(ScreenResult::Back);
+            }
+        };
+
+        loop {
+            // Get mail list (no pagination in repository)
+            let mails = MailRepository::list_inbox(ctx.db.conn(), user_id)?;
+            let total = mails.len();
+
+            // Display mail list
+            ctx.send_line(session, "").await?;
+            ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("mail.inbox")))
+                .await?;
+            ctx.send_line(session, "").await?;
+
+            if mails.is_empty() {
+                ctx.send_line(session, ctx.i18n.t("mail.no_mail")).await?;
+            } else {
+                let user_repo = UserRepository::new(&ctx.db);
+                ctx.send_line(
+                    session,
+                    &format!(
+                        "  {:<4} {:<3} {:<12} {:<20}",
+                        ctx.i18n.t("common.number"),
+                        "",
+                        ctx.i18n.t("mail.from"),
+                        ctx.i18n.t("mail.subject")
+                    ),
+                )
+                .await?;
+                ctx.send_line(session, &"-".repeat(50)).await?;
+
+                for (i, mail) in mails.iter().enumerate() {
+                    let num = i + 1;
+                    let unread = if mail.is_read { " " } else { "*" };
+                    let from = user_repo
+                        .get_by_id(mail.sender_id)?
+                        .map(|u| u.nickname)
+                        .unwrap_or_else(|| "Unknown".to_string());
+                    let from = if from.chars().count() > 10 {
+                        let truncated: String = from.chars().take(8).collect();
+                        format!("{}...", truncated)
+                    } else {
+                        from
+                    };
+                    let subject = if mail.subject.chars().count() > 18 {
+                        let truncated: String = mail.subject.chars().take(15).collect();
+                        format!("{}...", truncated)
+                    } else {
+                        mail.subject.clone()
+                    };
+
+                    ctx.send_line(
+                        session,
+                        &format!("  {:<4} {:<3} {:<12} {:<20}", num, unread, from, subject),
+                    )
+                    .await?;
+                }
+            }
+
+            ctx.send_line(session, "").await?;
+            ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("mail.total"), total))
+                .await?;
+
+            // Prompt
+            ctx.send(
+                session,
+                &format!(
+                    "[W]={} [Q]={}: ",
+                    ctx.i18n.t("mail.compose"),
+                    ctx.i18n.t("common.back")
+                ),
+            )
+            .await?;
+
+            let input = ctx.read_line(session).await?;
+            let input = input.trim();
+
+            match input.to_ascii_lowercase().as_str() {
+                "q" | "" => return Ok(ScreenResult::Back),
+                "w" => {
+                    Self::compose(ctx, session, user_id).await?;
+                }
+                _ => {
+                    if let Some(num) = ctx.parse_number(input) {
+                        let idx = num as usize - 1;
+                        if idx < mails.len() {
+                            Self::view_mail(ctx, session, mails[idx].id, user_id).await?;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// View a mail.
+    async fn view_mail(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        mail_id: i64,
+        user_id: i64,
+    ) -> Result<()> {
+        // Get mail
+        let mail = match MailRepository::get_by_id(ctx.db.conn(), mail_id)? {
+            Some(m) => m,
+            None => return Ok(()),
+        };
+
+        // Check ownership
+        if mail.recipient_id != user_id && mail.sender_id != user_id {
+            return Ok(());
+        }
+
+        // Mark as read
+        if !mail.is_read && mail.recipient_id == user_id {
+            MailRepository::mark_as_read(ctx.db.conn(), mail_id)?;
+        }
+
+        // Get sender/recipient names
+        let user_repo = UserRepository::new(&ctx.db);
+        let from_name = user_repo
+            .get_by_id(mail.sender_id)?
+            .map(|u| u.nickname)
+            .unwrap_or_else(|| "Unknown".to_string());
+        let to_name = user_repo
+            .get_by_id(mail.recipient_id)?
+            .map(|u| u.nickname)
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        // Display mail
+        ctx.send_line(session, "").await?;
+        ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("mail.inbox")))
+            .await?;
+        ctx.send_line(
+            session,
+            &format!("{}: {}", ctx.i18n.t("mail.from"), from_name),
+        )
+        .await?;
+        ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("mail.to"), to_name))
+            .await?;
+        ctx.send_line(
+            session,
+            &format!("{}: {}", ctx.i18n.t("mail.subject"), mail.subject),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!(
+                "{}: {}",
+                ctx.i18n.t("mail.date"),
+                mail.created_at.format("%Y/%m/%d %H:%M")
+            ),
+        )
+        .await?;
+        ctx.send_line(session, &"-".repeat(40)).await?;
+        ctx.send_line(session, &mail.body).await?;
+        ctx.send_line(session, &"-".repeat(40)).await?;
+
+        // Options
+        loop {
+            ctx.send(
+                session,
+                &format!(
+                    "[R]={} [D]={} [Q]={}: ",
+                    ctx.i18n.t("mail.reply"),
+                    ctx.i18n.t("mail.delete"),
+                    ctx.i18n.t("common.back")
+                ),
+            )
+            .await?;
+
+            let input = ctx.read_line(session).await?;
+            let input = input.trim();
+
+            match input.to_ascii_lowercase().as_str() {
+                "q" | "" => return Ok(()),
+                "r" => {
+                    Self::reply(ctx, session, &mail, user_id).await?;
+                    return Ok(());
+                }
+                "d" => {
+                    MailRepository::delete_by_user(ctx.db.conn(), mail_id, user_id)?;
+                    ctx.send_line(session, ctx.i18n.t("mail.mail_deleted"))
+                        .await?;
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Compose a new mail.
+    async fn compose(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        from_id: i64,
+    ) -> Result<()> {
+        ctx.send_line(session, "").await?;
+        ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("mail.compose")))
+            .await?;
+
+        // Get recipient
+        ctx.send(session, &format!("{}: ", ctx.i18n.t("mail.to")))
+            .await?;
+        let to_name = ctx.read_line(session).await?;
+        let to_name = to_name.trim();
+
+        if to_name.is_empty() {
+            return Ok(());
+        }
+
+        // Find recipient
+        let user_repo = UserRepository::new(&ctx.db);
+        let to_user = match user_repo.get_by_username(to_name)? {
+            Some(u) => u,
+            None => {
+                ctx.send_line(session, ctx.i18n.t("mail.recipient_not_found"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        // Get subject
+        ctx.send(session, &format!("{}: ", ctx.i18n.t("mail.subject")))
+            .await?;
+        let subject = ctx.read_line(session).await?;
+        let subject = subject.trim();
+
+        if subject.is_empty() {
+            return Ok(());
+        }
+
+        // Get body
+        ctx.send_line(
+            session,
+            &format!(
+                "{} ({}): ",
+                ctx.i18n.t("mail.body"),
+                ctx.i18n.t("common.end_with_dot")
+            ),
+        )
+        .await?;
+        let body = Self::read_multiline(ctx, session).await?;
+
+        if body.is_empty() {
+            return Ok(());
+        }
+
+        // Send mail
+        let new_mail = NewMail::new(from_id, to_user.id, subject, &body);
+
+        match MailRepository::create(ctx.db.conn(), &new_mail) {
+            Ok(_) => {
+                ctx.send_line(session, ctx.i18n.t("mail.mail_sent")).await?;
+            }
+            Err(e) => {
+                error!("Failed to send mail: {}", e);
+                ctx.send_line(session, ctx.i18n.t("common.operation_failed"))
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Reply to a mail.
+    async fn reply(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        original: &crate::mail::Mail,
+        from_id: i64,
+    ) -> Result<()> {
+        ctx.send_line(session, "").await?;
+        ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("mail.reply")))
+            .await?;
+
+        // Get subject
+        let default_subject = format!("Re: {}", original.subject);
+        ctx.send(
+            session,
+            &format!("{} [{}]: ", ctx.i18n.t("mail.subject"), default_subject),
+        )
+        .await?;
+        let subject = ctx.read_line(session).await?;
+        let subject = if subject.trim().is_empty() {
+            default_subject
+        } else {
+            subject.trim().to_string()
+        };
+
+        // Get body
+        ctx.send_line(
+            session,
+            &format!(
+                "{} ({}): ",
+                ctx.i18n.t("mail.body"),
+                ctx.i18n.t("common.end_with_dot")
+            ),
+        )
+        .await?;
+        let body = Self::read_multiline(ctx, session).await?;
+
+        if body.is_empty() {
+            return Ok(());
+        }
+
+        // Send reply (reply to sender)
+        let new_mail = NewMail::new(from_id, original.sender_id, &subject, &body);
+
+        match MailRepository::create(ctx.db.conn(), &new_mail) {
+            Ok(_) => {
+                ctx.send_line(session, ctx.i18n.t("mail.mail_sent")).await?;
+            }
+            Err(e) => {
+                error!("Failed to send reply: {}", e);
+                ctx.send_line(session, ctx.i18n.t("common.operation_failed"))
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Read multiline input.
+    async fn read_multiline(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+    ) -> Result<String> {
+        let mut lines = Vec::new();
+
+        loop {
+            ctx.send(session, "> ").await?;
+            let line = ctx.read_line(session).await?;
+
+            if line.trim() == "." {
+                break;
+            }
+
+            lines.push(line);
+        }
+
+        Ok(lines.join("\n"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mail_screen_exists() {
+        let _ = MailScreen;
+    }
+}
