@@ -659,13 +659,52 @@ Select language / Gengo sentaku:
         let mut context = self.create_context();
 
         // Set user info
-        if let Some(username) = session.username() {
-            context.set("user.name", Value::string(username.to_string()));
-            context.set("user.logged_in", Value::bool(true));
+        if let Some(user_id) = session.user_id() {
+            let user_repo = UserRepository::new(&self.db);
+            if let Ok(Some(user)) = user_repo.get_by_id(user_id) {
+                context.set("user.name", Value::string(user.username.clone()));
+                context.set("user.nickname", Value::string(user.nickname.clone()));
+                context.set("user.logged_in", Value::bool(true));
+                context.set("user.is_admin", Value::bool(is_admin));
+
+                // Set role name
+                let role_name = match user.role {
+                    Role::Guest => self.i18n.t("role.guest"),
+                    Role::Member => self.i18n.t("role.member"),
+                    Role::SubOp => self.i18n.t("role.subop"),
+                    Role::SysOp => self.i18n.t("role.sysop"),
+                };
+                context.set("user.role_name", Value::string(role_name.to_string()));
+
+                // Set last login
+                let last_login = user.last_login.as_deref().unwrap_or("-");
+                context.set("user.last_login", Value::string(last_login.to_string()));
+
+                // Set unread mail count (placeholder for now)
+                context.set("user.unread_mail", Value::number(0));
+            } else {
+                // Fallback if user not found
+                context.set("user.name", Value::string(self.i18n.t("user.guest").to_string()));
+                context.set("user.nickname", Value::string(self.i18n.t("user.guest").to_string()));
+                context.set("user.logged_in", Value::bool(false));
+                context.set("user.is_admin", Value::bool(false));
+                context.set("user.role_name", Value::string(self.i18n.t("role.guest").to_string()));
+                context.set("user.last_login", Value::string("-".to_string()));
+                context.set("user.unread_mail", Value::number(0));
+            }
         } else {
-            context.set("user.name", Value::string(self.i18n.t("user.guest")));
+            // Guest user
+            context.set("user.name", Value::string(self.i18n.t("user.guest").to_string()));
+            context.set("user.nickname", Value::string(self.i18n.t("user.guest").to_string()));
             context.set("user.logged_in", Value::bool(false));
+            context.set("user.is_admin", Value::bool(false));
+            context.set("user.role_name", Value::string(self.i18n.t("role.guest").to_string()));
+            context.set("user.last_login", Value::string("-".to_string()));
+            context.set("user.unread_mail", Value::number(0));
         }
+
+        // Set chat online count (placeholder for now)
+        context.set("chat.online_count", Value::number(0));
 
         // Set menu availability
         let menu_items = if is_logged_in {
