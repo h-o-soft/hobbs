@@ -195,6 +195,7 @@ pub fn can_modify_resource(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::CharacterEncoding;
 
     fn create_test_user(role: Role, is_active: bool) -> User {
         User {
@@ -206,6 +207,7 @@ mod tests {
             role,
             profile: None,
             terminal: "standard".to_string(),
+            encoding: CharacterEncoding::default(),
             created_at: "2024-01-01".to_string(),
             last_login: None,
             is_active,

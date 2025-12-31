@@ -5,6 +5,8 @@
 use std::fmt;
 use std::str::FromStr;
 
+use crate::server::CharacterEncoding;
+
 /// User role for permission management.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Role {
@@ -95,6 +97,8 @@ pub struct User {
     pub profile: Option<String>,
     /// Terminal profile preference.
     pub terminal: String,
+    /// Character encoding preference.
+    pub encoding: CharacterEncoding,
     /// Account creation timestamp.
     pub created_at: String,
     /// Last login timestamp (optional).
@@ -135,6 +139,8 @@ pub struct NewUser {
     pub role: Role,
     /// Terminal profile preference (defaults to "standard").
     pub terminal: String,
+    /// Character encoding preference (defaults to ShiftJIS).
+    pub encoding: CharacterEncoding,
 }
 
 impl NewUser {
@@ -151,6 +157,7 @@ impl NewUser {
             email: None,
             role: Role::Member,
             terminal: "standard".to_string(),
+            encoding: CharacterEncoding::default(),
         }
     }
 
@@ -171,6 +178,12 @@ impl NewUser {
         self.terminal = terminal.into();
         self
     }
+
+    /// Set the character encoding.
+    pub fn with_encoding(mut self, encoding: CharacterEncoding) -> Self {
+        self.encoding = encoding;
+        self
+    }
 }
 
 /// Data for updating an existing user.
@@ -188,6 +201,8 @@ pub struct UserUpdate {
     pub profile: Option<Option<String>>,
     /// New terminal preference.
     pub terminal: Option<String>,
+    /// New character encoding preference.
+    pub encoding: Option<CharacterEncoding>,
     /// New active status.
     pub is_active: Option<bool>,
 }
@@ -234,6 +249,12 @@ impl UserUpdate {
         self
     }
 
+    /// Set new character encoding preference.
+    pub fn encoding(mut self, encoding: CharacterEncoding) -> Self {
+        self.encoding = Some(encoding);
+        self
+    }
+
     /// Set active status.
     pub fn is_active(mut self, is_active: bool) -> Self {
         self.is_active = Some(is_active);
@@ -248,6 +269,7 @@ impl UserUpdate {
             && self.role.is_none()
             && self.profile.is_none()
             && self.terminal.is_none()
+            && self.encoding.is_none()
             && self.is_active.is_none()
     }
 }
@@ -337,6 +359,7 @@ mod tests {
             role: Role::SubOp,
             profile: None,
             terminal: "standard".to_string(),
+            encoding: CharacterEncoding::default(),
             created_at: "2024-01-01".to_string(),
             last_login: None,
             is_active: true,
@@ -359,6 +382,7 @@ mod tests {
             role: Role::Member,
             profile: None,
             terminal: "standard".to_string(),
+            encoding: CharacterEncoding::default(),
             created_at: "2024-01-01".to_string(),
             last_login: None,
             is_active: true,
@@ -379,5 +403,28 @@ mod tests {
         assert!(sysop.is_operator());
         assert!(!subop.is_sysop());
         assert!(sysop.is_sysop());
+    }
+
+    #[test]
+    fn test_new_user_with_encoding() {
+        let user =
+            NewUser::new("testuser", "hash", "Test User").with_encoding(CharacterEncoding::Utf8);
+
+        assert_eq!(user.encoding, CharacterEncoding::Utf8);
+    }
+
+    #[test]
+    fn test_new_user_default_encoding() {
+        let user = NewUser::new("testuser", "hash", "Test User");
+        assert_eq!(user.encoding, CharacterEncoding::ShiftJIS);
+    }
+
+    #[test]
+    fn test_user_update_encoding() {
+        let update = UserUpdate::new().encoding(CharacterEncoding::Utf8);
+
+        assert!(update.encoding.is_some());
+        assert_eq!(update.encoding.unwrap(), CharacterEncoding::Utf8);
+        assert!(!update.is_empty());
     }
 }
