@@ -99,6 +99,8 @@ pub struct User {
     pub terminal: String,
     /// Character encoding preference.
     pub encoding: CharacterEncoding,
+    /// Language preference (e.g., "en", "ja").
+    pub language: String,
     /// Account creation timestamp.
     pub created_at: String,
     /// Last login timestamp (optional).
@@ -141,6 +143,8 @@ pub struct NewUser {
     pub terminal: String,
     /// Character encoding preference (defaults to ShiftJIS).
     pub encoding: CharacterEncoding,
+    /// Language preference (defaults to "en").
+    pub language: String,
 }
 
 impl NewUser {
@@ -158,6 +162,7 @@ impl NewUser {
             role: Role::Member,
             terminal: "standard".to_string(),
             encoding: CharacterEncoding::default(),
+            language: "en".to_string(),
         }
     }
 
@@ -184,6 +189,12 @@ impl NewUser {
         self.encoding = encoding;
         self
     }
+
+    /// Set the language preference.
+    pub fn with_language(mut self, language: impl Into<String>) -> Self {
+        self.language = language.into();
+        self
+    }
 }
 
 /// Data for updating an existing user.
@@ -203,6 +214,8 @@ pub struct UserUpdate {
     pub terminal: Option<String>,
     /// New character encoding preference.
     pub encoding: Option<CharacterEncoding>,
+    /// New language preference.
+    pub language: Option<String>,
     /// New active status.
     pub is_active: Option<bool>,
 }
@@ -255,6 +268,12 @@ impl UserUpdate {
         self
     }
 
+    /// Set new language preference.
+    pub fn language(mut self, language: impl Into<String>) -> Self {
+        self.language = Some(language.into());
+        self
+    }
+
     /// Set active status.
     pub fn is_active(mut self, is_active: bool) -> Self {
         self.is_active = Some(is_active);
@@ -270,6 +289,7 @@ impl UserUpdate {
             && self.profile.is_none()
             && self.terminal.is_none()
             && self.encoding.is_none()
+            && self.language.is_none()
             && self.is_active.is_none()
     }
 }
@@ -360,6 +380,7 @@ mod tests {
             profile: None,
             terminal: "standard".to_string(),
             encoding: CharacterEncoding::default(),
+            language: "en".to_string(),
             created_at: "2024-01-01".to_string(),
             last_login: None,
             is_active: true,
@@ -383,6 +404,7 @@ mod tests {
             profile: None,
             terminal: "standard".to_string(),
             encoding: CharacterEncoding::default(),
+            language: "en".to_string(),
             created_at: "2024-01-01".to_string(),
             last_login: None,
             is_active: true,
@@ -426,5 +448,27 @@ mod tests {
         assert!(update.encoding.is_some());
         assert_eq!(update.encoding.unwrap(), CharacterEncoding::Utf8);
         assert!(!update.is_empty());
+    }
+
+    #[test]
+    fn test_new_user_with_language() {
+        let user = NewUser::new("testuser", "hash", "Test User").with_language("ja");
+
+        assert_eq!(user.language, "ja");
+    }
+
+    #[test]
+    fn test_new_user_default_language() {
+        let user = NewUser::new("testuser", "hash", "Test User");
+        assert_eq!(user.language, "en");
+    }
+
+    #[test]
+    fn test_user_update_language() {
+        let update = UserUpdate::new().language("ja");
+
+        assert!(update.language.is_some());
+        assert!(!update.is_empty());
+        assert_eq!(update.language.as_ref().unwrap(), "ja");
     }
 }

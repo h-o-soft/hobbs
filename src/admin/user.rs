@@ -118,7 +118,7 @@ impl<'a> UserAdminService<'a> {
         // Get users with pagination
         let mut stmt = conn.prepare(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
-                    encoding, created_at, last_login, is_active
+                    encoding, language, created_at, last_login, is_active
              FROM users
              ORDER BY created_at DESC
              LIMIT ? OFFSET ?",
@@ -132,7 +132,7 @@ impl<'a> UserAdminService<'a> {
                 let encoding = encoding_str
                     .parse()
                     .unwrap_or(crate::server::CharacterEncoding::default());
-                let is_active: i64 = row.get(11)?;
+                let is_active: i64 = row.get(12)?;
 
                 Ok(User {
                     id: row.get(0)?,
@@ -144,8 +144,9 @@ impl<'a> UserAdminService<'a> {
                     profile: row.get(6)?,
                     terminal: row.get(7)?,
                     encoding,
-                    created_at: row.get(9)?,
-                    last_login: row.get(10)?,
+                    language: row.get(9)?,
+                    created_at: row.get(10)?,
+                    last_login: row.get(11)?,
                     is_active: is_active != 0,
                 })
             })?
@@ -396,7 +397,7 @@ impl<'a> UserAdminService<'a> {
         // Get users with pagination
         let mut stmt = conn.prepare(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
-                    encoding, created_at, last_login, is_active
+                    encoding, language, created_at, last_login, is_active
              FROM users
              WHERE username LIKE ? OR nickname LIKE ?
              ORDER BY username
@@ -413,7 +414,7 @@ impl<'a> UserAdminService<'a> {
                     let encoding = encoding_str
                         .parse()
                         .unwrap_or(crate::server::CharacterEncoding::default());
-                    let is_active: i64 = row.get(11)?;
+                    let is_active: i64 = row.get(12)?;
 
                     Ok(User {
                         id: row.get(0)?,
@@ -425,8 +426,9 @@ impl<'a> UserAdminService<'a> {
                         profile: row.get(6)?,
                         terminal: row.get(7)?,
                         encoding,
-                        created_at: row.get(9)?,
-                        last_login: row.get(10)?,
+                        language: row.get(9)?,
+                        created_at: row.get(10)?,
+                        last_login: row.get(11)?,
                         is_active: is_active != 0,
                     })
                 },
@@ -463,6 +465,7 @@ mod tests {
             profile: None,
             terminal: "standard".to_string(),
             encoding: CharacterEncoding::default(),
+            language: "en".to_string(),
             created_at: "2024-01-01".to_string(),
             last_login: None,
             is_active: true,
@@ -723,6 +726,7 @@ mod tests {
             profile: None,
             terminal: "standard".to_string(),
             encoding: CharacterEncoding::default(),
+            language: "en".to_string(),
             created_at: "2024-01-01".to_string(),
             last_login: None,
             is_active: true,
@@ -788,6 +792,7 @@ mod tests {
             profile: None,
             terminal: "standard".to_string(),
             encoding: CharacterEncoding::default(),
+            language: "en".to_string(),
             created_at: "2024-01-01".to_string(),
             last_login: None,
             is_active: true,

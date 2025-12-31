@@ -230,6 +230,7 @@ mod tests {
             profile: None,
             terminal: "standard".to_string(),
             encoding: CharacterEncoding::default(),
+            language: "en".to_string(),
             created_at: "2024-01-01".to_string(),
             last_login: None,
             is_active: true,

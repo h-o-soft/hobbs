@@ -680,6 +680,7 @@ mod tests {
             profile: Some("Hello!".to_string()),
             terminal: "standard".to_string(),
             encoding: CharacterEncoding::default(),
+            language: "en".to_string(),
             created_at: "2024-01-01".to_string(),
             last_login: Some("2024-01-02".to_string()),
             is_active: true,

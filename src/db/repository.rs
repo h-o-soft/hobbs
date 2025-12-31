@@ -25,8 +25,8 @@ impl<'a> UserRepository<'a> {
     /// Returns the created user with the assigned ID.
     pub fn create(&self, new_user: &NewUser) -> Result<User> {
         self.db.conn().execute(
-            "INSERT INTO users (username, password, nickname, email, role, terminal, encoding)
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO users (username, password, nickname, email, role, terminal, encoding, language)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 &new_user.username,
                 &new_user.password,
@@ -35,6 +35,7 @@ impl<'a> UserRepository<'a> {
                 new_user.role.as_str(),
                 &new_user.terminal,
                 new_user.encoding.as_str(),
+                &new_user.language,
             ],
         )?;
 
@@ -47,7 +48,7 @@ impl<'a> UserRepository<'a> {
     pub fn get_by_id(&self, id: i64) -> Result<Option<User>> {
         let result = self.db.conn().query_row(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
-                    encoding, created_at, last_login, is_active
+                    encoding, language, created_at, last_login, is_active
              FROM users WHERE id = ?",
             [id],
             Self::row_to_user,
@@ -64,7 +65,7 @@ impl<'a> UserRepository<'a> {
     pub fn get_by_username(&self, username: &str) -> Result<Option<User>> {
         let result = self.db.conn().query_row(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
-                    encoding, created_at, last_login, is_active
+                    encoding, language, created_at, last_login, is_active
              FROM users WHERE username = ?",
             [username],
             Self::row_to_user,
@@ -117,6 +118,10 @@ impl<'a> UserRepository<'a> {
             fields.push("encoding = ?");
             values.push(Box::new(encoding.as_str().to_string()));
         }
+        if let Some(ref language) = update.language {
+            fields.push("language = ?");
+            values.push(Box::new(language.clone()));
+        }
         if let Some(is_active) = update.is_active {
             fields.push("is_active = ?");
             values.push(Box::new(if is_active { 1i64 } else { 0i64 }));
@@ -159,7 +164,7 @@ impl<'a> UserRepository<'a> {
     pub fn list_active(&self) -> Result<Vec<User>> {
         let mut stmt = self.db.conn().prepare(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
-                    encoding, created_at, last_login, is_active
+                    encoding, language, created_at, last_login, is_active
              FROM users WHERE is_active = 1 ORDER BY username",
         )?;
 
@@ -174,7 +179,7 @@ impl<'a> UserRepository<'a> {
     pub fn list_all(&self) -> Result<Vec<User>> {
         let mut stmt = self.db.conn().prepare(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
-                    encoding, created_at, last_login, is_active
+                    encoding, language, created_at, last_login, is_active
              FROM users ORDER BY username",
         )?;
 
@@ -189,7 +194,7 @@ impl<'a> UserRepository<'a> {
     pub fn list_by_role(&self, role: Role) -> Result<Vec<User>> {
         let mut stmt = self.db.conn().prepare(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
-                    encoding, created_at, last_login, is_active
+                    encoding, language, created_at, last_login, is_active
              FROM users WHERE role = ? AND is_active = 1 ORDER BY username",
         )?;
 
@@ -235,7 +240,7 @@ impl<'a> UserRepository<'a> {
         let role = role_str.parse().unwrap_or(Role::Member);
         let encoding_str: String = row.get(8)?;
         let encoding = encoding_str.parse().unwrap_or(CharacterEncoding::default());
-        let is_active: i64 = row.get(11)?;
+        let is_active: i64 = row.get(12)?;
 
         Ok(User {
             id: row.get(0)?,
@@ -247,8 +252,9 @@ impl<'a> UserRepository<'a> {
             profile: row.get(6)?,
             terminal: row.get(7)?,
             encoding,
-            created_at: row.get(9)?,
-            last_login: row.get(10)?,
+            language: row.get(9)?,
+            created_at: row.get(10)?,
+            last_login: row.get(11)?,
             is_active: is_active != 0,
         })
     }
@@ -570,5 +576,42 @@ mod tests {
         let updated = repo.update(user.id, &update).unwrap().unwrap();
 
         assert_eq!(updated.encoding, CharacterEncoding::Utf8);
+    }
+
+    #[test]
+    fn test_create_user_with_language() {
+        let db = setup_db();
+        let repo = UserRepository::new(&db);
+
+        let new_user = NewUser::new("testuser", "hash", "Test").with_language("ja");
+        let user = repo.create(&new_user).unwrap();
+
+        assert_eq!(user.language, "ja");
+    }
+
+    #[test]
+    fn test_create_user_default_language() {
+        let db = setup_db();
+        let repo = UserRepository::new(&db);
+
+        let new_user = NewUser::new("testuser", "hash", "Test");
+        let user = repo.create(&new_user).unwrap();
+
+        assert_eq!(user.language, "en");
+    }
+
+    #[test]
+    fn test_update_language() {
+        let db = setup_db();
+        let repo = UserRepository::new(&db);
+
+        let new_user = NewUser::new("testuser", "hash", "Test");
+        let user = repo.create(&new_user).unwrap();
+        assert_eq!(user.language, "en");
+
+        let update = UserUpdate::new().language("ja");
+        let updated = repo.update(user.id, &update).unwrap().unwrap();
+
+        assert_eq!(updated.language, "ja");
     }
 }
