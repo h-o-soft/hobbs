@@ -10,6 +10,7 @@
 mod post;
 mod post_repository;
 mod repository;
+mod service;
 mod thread;
 mod thread_repository;
 mod types;
@@ -17,6 +18,7 @@ mod types;
 pub use post::{NewFlatPost, NewThreadPost, Post, PostUpdate};
 pub use post_repository::PostRepository;
 pub use repository::BoardRepository;
+pub use service::{BoardService, PaginatedResult, Pagination};
 pub use thread::{NewThread, Thread, ThreadUpdate};
 pub use thread_repository::ThreadRepository;
 pub use types::{Board, BoardType, BoardUpdate, NewBoard};
