@@ -8,6 +8,7 @@ pub mod chat;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod file;
 pub mod logging;
 pub mod mail;
 pub mod server;
@@ -34,6 +35,11 @@ pub use chat::{
 pub use config::Config;
 pub use db::{Database, NewUser, Role, User, UserRepository, UserUpdate};
 pub use error::{HobbsError, Result};
+pub use file::{
+    FileMetadata, FileRepository, FileUpdate, Folder, FolderRepository, FolderUpdate, NewFile,
+    NewFolder, DEFAULT_MAX_FILE_SIZE, MAX_DESCRIPTION_LENGTH, MAX_FILENAME_LENGTH,
+    MAX_FOLDER_DEPTH,
+};
 pub use mail::{
     Mail, MailRepository, MailService, MailUpdate, NewMail, SendMailRequest, SystemMailService,
     MAX_BODY_LENGTH as MAX_MAIL_BODY_LENGTH, MAX_SUBJECT_LENGTH as MAX_MAIL_SUBJECT_LENGTH,
