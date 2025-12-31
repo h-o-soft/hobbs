@@ -136,6 +136,40 @@ CREATE INDEX idx_mails_sender_id ON mails(sender_id);
 CREATE INDEX idx_mails_recipient_id ON mails(recipient_id);
 CREATE INDEX idx_mails_created_at ON mails(created_at);
 "#,
+    // v9: Folders table for file management
+    r#"
+-- Folders table for file management (hierarchical structure)
+CREATE TABLE folders (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    description TEXT,
+    parent_id   INTEGER REFERENCES folders(id) ON DELETE CASCADE,
+    permission  TEXT NOT NULL DEFAULT 'member',  -- 閲覧権限
+    upload_perm TEXT NOT NULL DEFAULT 'subop',   -- アップロード権限
+    order_num   INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_folders_parent ON folders(parent_id, order_num);
+"#,
+    // v10: Files table for file metadata
+    r#"
+-- Files table for file metadata
+CREATE TABLE files (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    folder_id    INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+    filename     TEXT NOT NULL,           -- 表示用ファイル名
+    stored_name  TEXT NOT NULL,           -- 保存時のファイル名（UUID）
+    size         INTEGER NOT NULL,        -- バイト数
+    description  TEXT,
+    uploader_id  INTEGER NOT NULL REFERENCES users(id),
+    downloads    INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_files_folder ON files(folder_id);
+CREATE INDEX idx_files_uploader ON files(uploader_id);
+"#,
 ];
 
 #[cfg(test)]
@@ -236,5 +270,35 @@ mod tests {
         assert!(mails_migration.contains("is_deleted_by_sender"));
         assert!(mails_migration.contains("is_deleted_by_recipient"));
         assert!(mails_migration.contains("created_at"));
+    }
+
+    #[test]
+    fn test_folders_migration_contains_folders_table() {
+        let folders_migration = MIGRATIONS[8];
+        assert!(folders_migration.contains("CREATE TABLE folders"));
+        assert!(folders_migration.contains("name"));
+        assert!(folders_migration.contains("description"));
+        assert!(folders_migration.contains("parent_id"));
+        assert!(folders_migration.contains("permission"));
+        assert!(folders_migration.contains("upload_perm"));
+        assert!(folders_migration.contains("order_num"));
+        assert!(folders_migration.contains("created_at"));
+        assert!(folders_migration.contains("idx_folders_parent"));
+    }
+
+    #[test]
+    fn test_files_migration_contains_files_table() {
+        let files_migration = MIGRATIONS[9];
+        assert!(files_migration.contains("CREATE TABLE files"));
+        assert!(files_migration.contains("folder_id"));
+        assert!(files_migration.contains("filename"));
+        assert!(files_migration.contains("stored_name"));
+        assert!(files_migration.contains("size"));
+        assert!(files_migration.contains("description"));
+        assert!(files_migration.contains("uploader_id"));
+        assert!(files_migration.contains("downloads"));
+        assert!(files_migration.contains("created_at"));
+        assert!(files_migration.contains("idx_files_folder"));
+        assert!(files_migration.contains("idx_files_uploader"));
     }
 }
