@@ -4,6 +4,7 @@
 
 pub mod auth;
 pub mod board;
+pub mod chat;
 pub mod config;
 pub mod db;
 pub mod error;
@@ -24,6 +25,7 @@ pub use board::{
     NewThreadPost, PaginatedResult, Pagination, Post, PostRepository, PostUpdate, ReadPosition,
     Thread, ThreadRepository, ThreadUpdate, UnreadRepository,
 };
+pub use chat::{ChatMessage, ChatParticipant, ChatRoom, MessageType};
 pub use config::Config;
 pub use db::{Database, NewUser, Role, User, UserRepository, UserUpdate};
 pub use error::{HobbsError, Result};
