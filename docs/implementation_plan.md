@@ -677,52 +677,58 @@
 
 ---
 
-## Phase 9: テンプレート・国際化
+## Phase 9: テンプレート・国際化 ✅
 
-### 9-1. 言語リソース読み込み
+### 9-1. 言語リソース読み込み ✅
 
 **概要**: TOML 形式の言語リソースを読み込む
 
 **完了条件**:
-- [ ] `src/template/i18n.rs` を作成
-- [ ] `I18n` 構造体
-- [ ] translate() / translate_with() 関数
-- [ ] locales/ja.toml, locales/en.toml を作成
-- [ ] 単体テスト
+- [x] `src/i18n/mod.rs` を作成
+- [x] `I18n` 構造体
+- [x] t() / t_with() 関数
+- [x] locales/ja.toml, locales/en.toml を作成
+- [x] 単体テスト
 
 **関連ファイル**:
-- `src/template/i18n.rs`
+- `src/i18n/mod.rs`
 - `locales/ja.toml`
 - `locales/en.toml`
 
 ---
 
-### 9-2. テンプレートエンジン
+### 9-2. テンプレートエンジン ✅
 
 **概要**: 変数展開と条件分岐をサポートするテンプレートエンジンを実装する
 
 **完了条件**:
-- [ ] `src/template/mod.rs`, `src/template/renderer.rs` を作成
-- [ ] 変数展開 `{{変数名}}`
-- [ ] 翻訳参照 `{{t "キー"}}`
-- [ ] 条件分岐 `{{#if 条件}}...{{/if}}`
-- [ ] 単体テスト
+- [x] `src/template/mod.rs`, `src/template/renderer.rs` を作成
+- [x] 変数展開 `{{変数名}}`
+- [x] 翻訳参照 `{{t "キー"}}`
+- [x] 条件分岐 `{{#if 条件}}...{{/if}}`
+- [x] ループ `{{#each items}}...{{/each}}`
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/template/mod.rs`
+- `src/template/engine.rs`
+- `src/template/parser.rs`
 - `src/template/renderer.rs`
+- `src/template/context.rs`
+- `src/template/value.rs`
 
 ---
 
-### 9-3. テンプレートファイル作成
+### 9-3. テンプレートファイル作成 ✅
 
 **概要**: 画面テンプレートファイルを作成する
 
 **完了条件**:
-- [ ] templates/80/ ディレクトリ（welcome.txt, main_menu.txt, help.txt）
-- [ ] templates/40/ ディレクトリ（同上）
-- [ ] 端末幅による自動選択
-- [ ] 動作確認
+- [x] templates/80/ ディレクトリ（welcome.txt, main_menu.txt, help.txt）
+- [x] templates/40/ ディレクトリ（同上）
+- [x] 掲示板・チャット・メール・ファイル・管理テンプレート
+- [x] 端末幅による自動選択
+- [x] 動作確認
 
 **関連ファイル**:
 - `templates/80/*.txt`
@@ -731,16 +737,16 @@
 
 ---
 
-### 9-4. 画面表示・ANSI対応
+### 9-4. 画面表示・ANSI対応 ✅
 
 **概要**: ANSI エスケープシーケンスによる画面装飾を実装する
 
 **完了条件**:
-- [ ] `src/screen/mod.rs`, `src/screen/ansi.rs` を作成
-- [ ] 色定数（Color 列挙型）
-- [ ] color_text(), goto() などのヘルパー
-- [ ] ANSI 無効時のプレーンテキスト対応
-- [ ] 単体テスト
+- [x] `src/screen/mod.rs`, `src/screen/ansi.rs` を作成
+- [x] 色定数（Color 列挙型）
+- [x] color_text(), goto() などのヘルパー
+- [x] ANSI 無効時のプレーンテキスト対応
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/screen/mod.rs`
