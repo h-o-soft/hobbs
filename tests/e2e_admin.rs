@@ -25,12 +25,14 @@ async fn test_admin_requires_admin_role() {
     let response = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
 
     // Should be denied (A might not even show in menu for non-admin)
-    // Or should show permission denied message
+    // Or should show permission denied message or invalid selection
     assert!(
         response.contains("permission")
             || response.contains("denied")
             || response.contains("権限")
             || response.contains("admin")
+            || response.contains("Invalid")
+            || response.contains("無効")
             || response.contains("B")
             || response.contains("Menu")
             || response.contains("Select"),
