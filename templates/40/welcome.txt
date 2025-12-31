@@ -15,6 +15,7 @@
   {{t "welcome.description_short"}}
 
 ========================================
-[L]{{t "auth.login"}} [N]{{t "auth.register"}} [G]{{t "auth.guest"}} [Q]{{t "common.quit"}}
+[L]{{t "auth.login"}} [N]{{t "auth.register"}}
+[G]{{t "auth.guest"}} [Q]{{t "common.quit"}}
 ----------------------------------------
 {{t "menu.select_prompt"}}
