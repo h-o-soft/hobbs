@@ -85,6 +85,21 @@ CREATE INDEX idx_posts_thread_id ON posts(thread_id);
 CREATE INDEX idx_posts_author_id ON posts(author_id);
 CREATE INDEX idx_posts_created_at ON posts(created_at);
 "#,
+    // v6: Read positions table for unread management
+    r#"
+-- Read positions table for tracking user's last read position per board
+CREATE TABLE read_positions (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    board_id            INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    last_read_post_id   INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    last_read_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, board_id)
+);
+
+CREATE INDEX idx_read_positions_user_id ON read_positions(user_id);
+CREATE INDEX idx_read_positions_board_id ON read_positions(board_id);
+"#,
 ];
 
 #[cfg(test)]
@@ -148,5 +163,16 @@ mod tests {
         assert!(posts_migration.contains("author_id"));
         assert!(posts_migration.contains("title"));
         assert!(posts_migration.contains("body"));
+    }
+
+    #[test]
+    fn test_read_positions_migration_contains_read_positions_table() {
+        let read_positions_migration = MIGRATIONS[5];
+        assert!(read_positions_migration.contains("CREATE TABLE read_positions"));
+        assert!(read_positions_migration.contains("user_id"));
+        assert!(read_positions_migration.contains("board_id"));
+        assert!(read_positions_migration.contains("last_read_post_id"));
+        assert!(read_positions_migration.contains("last_read_at"));
+        assert!(read_positions_migration.contains("UNIQUE(user_id, board_id)"));
     }
 }
