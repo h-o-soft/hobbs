@@ -359,87 +359,91 @@
 
 ---
 
-## Phase 4: 掲示板機能
+## Phase 4: 掲示板機能 ✅
 
-### 4-1. 掲示板テーブル実装
+### 4-1. 掲示板テーブル実装 ✅
 
 **概要**: boards テーブルとリポジトリを実装する
 
 **完了条件**:
-- [ ] マイグレーション追加（boards テーブル）
-- [ ] 掲示板 CRUD 操作
-- [ ] 権限による絞り込み
-- [ ] 単体テスト
+- [x] マイグレーション追加（boards テーブル）
+- [x] 掲示板 CRUD 操作
+- [x] 権限による絞り込み
+- [x] 単体テスト
 
 **関連ファイル**:
-- `src/db/migrations/002_boards.sql`
+- `src/db/schema.rs` (マイグレーション v3)
 - `src/board/mod.rs`
 - `src/board/repository.rs`
+- `src/board/types.rs`
 
 ---
 
-### 4-2. スレッド・投稿テーブル実装
+### 4-2. スレッド・投稿テーブル実装 ✅
 
 **概要**: threads, posts テーブルとリポジトリを実装する
 
 **完了条件**:
-- [ ] マイグレーション追加
-- [ ] スレッド CRUD
-- [ ] 投稿 CRUD
-- [ ] スレッド形式 / フラット形式の区別
-- [ ] 単体テスト
+- [x] マイグレーション追加
+- [x] スレッド CRUD
+- [x] 投稿 CRUD
+- [x] スレッド形式 / フラット形式の区別
+- [x] 単体テスト
 
 **関連ファイル**:
-- `src/db/migrations/003_threads_posts.sql`
+- `src/db/schema.rs` (マイグレーション v4, v5)
 - `src/board/thread.rs`
+- `src/board/thread_repository.rs`
 - `src/board/post.rs`
+- `src/board/post_repository.rs`
 
 ---
 
-### 4-3. 掲示板一覧・詳細表示
+### 4-3. 掲示板一覧・詳細表示 ✅
 
 **概要**: 掲示板一覧と詳細の取得ロジックを実装する
 
 **完了条件**:
-- [ ] list_boards() 関数
-- [ ] get_board() 関数
-- [ ] ページング対応
-- [ ] 単体テスト
+- [x] list_boards() 関数
+- [x] get_board() 関数
+- [x] ページング対応
+- [x] 単体テスト
 
 **関連ファイル**:
-- `src/board/mod.rs`
+- `src/board/service.rs`
 
 ---
 
-### 4-4. スレッド・投稿の作成と削除
+### 4-4. スレッド・投稿の作成と削除 ✅
 
 **概要**: 投稿の作成・削除ロジックを実装する
 
 **完了条件**:
-- [ ] create_thread() 関数
-- [ ] create_post() 関数
-- [ ] delete_post() 関数（権限チェック付き）
-- [ ] スレッドの updated_at 更新
-- [ ] 単体テスト
+- [x] create_thread() 関数
+- [x] create_post() 関数
+- [x] delete_post() 関数（権限チェック付き）
+- [x] スレッドの updated_at 更新
+- [x] post_count の自動更新
+- [x] 単体テスト
 
 **関連ファイル**:
-- `src/board/mod.rs`
+- `src/board/service.rs`
 
 ---
 
-### 4-5. 未読管理
+### 4-5. 未読管理 ✅
 
 **概要**: 未読管理機能を実装する
 
 **完了条件**:
-- [ ] read_positions テーブル実装
-- [ ] get_unread_count() 関数
-- [ ] mark_as_read() 関数
-- [ ] 未読一気読み用の get_unread_posts() 関数
-- [ ] 単体テスト
+- [x] read_positions テーブル実装
+- [x] get_unread_count() 関数
+- [x] mark_as_read() 関数
+- [x] 未読一気読み用の get_unread_posts() 関数
+- [x] 単体テスト
 
 **関連ファイル**:
-- `src/db/migrations/004_read_positions.sql`
+- `src/db/schema.rs` (マイグレーション v6)
 - `src/board/unread.rs`
 
 ---
