@@ -16,9 +16,10 @@ pub mod server;
 pub mod terminal;
 
 pub use admin::{
-    can_change_role, can_edit_user, generate_password, is_admin, is_sysop, require_admin,
-    AdminError, AdminService, BoardAdminService, ContentAdminService, CreateBoardRequest,
-    FolderAdminService, PostDeletionMode, UserAdminService, UserDetail, DEFAULT_PASSWORD_LENGTH,
+    can_change_role, can_edit_user, format_duration, format_session_state, generate_password,
+    is_admin, is_sysop, require_admin, AdminError, AdminService, BoardAdminService,
+    ContentAdminService, CreateBoardRequest, FolderAdminService, PostDeletionMode,
+    SessionAdminService, SessionStatistics, UserAdminService, UserDetail, DEFAULT_PASSWORD_LENGTH,
     DELETED_POST_MESSAGE,
 };
 pub use auth::{
@@ -56,6 +57,7 @@ pub use server::{
     decode_from_client, decode_shiftjis, decode_shiftjis_strict, encode_for_client,
     encode_shiftjis, encode_shiftjis_strict, initial_negotiation, CharacterEncoding, DecodeResult,
     EchoMode, EncodeResult, InputResult, LineBuffer, MultiLineBuffer, NegotiationState,
-    TelnetCommand, TelnetParser, TelnetServer,
+    SessionInfo, SessionManager as TelnetSessionManager, SessionState, TelnetCommand, TelnetParser,
+    TelnetServer, TelnetSession,
 };
 pub use terminal::TerminalProfile;

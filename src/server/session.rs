@@ -225,8 +225,14 @@ pub struct SessionInfo {
     pub idle_duration: Duration,
     /// Username if logged in.
     pub username: Option<String>,
+    /// User ID if logged in.
+    pub user_id: Option<i64>,
     /// Character encoding.
     pub encoding: CharacterEncoding,
+    /// When the session was connected.
+    pub connected_at: std::time::Instant,
+    /// Whether this session should be forcefully disconnected.
+    pub force_disconnect: bool,
 }
 
 /// Manager for all active sessions.
@@ -257,7 +263,10 @@ impl SessionManager {
             state: session.state(),
             idle_duration: Duration::ZERO,
             username: session.username().map(String::from),
+            user_id: session.user_id(),
             encoding: session.encoding(),
+            connected_at: Instant::now(),
+            force_disconnect: false,
         };
 
         let mut sessions = self.sessions.write().await;
@@ -276,6 +285,7 @@ impl SessionManager {
             info.state = session.state();
             info.idle_duration = session.last_activity().elapsed();
             info.username = session.username().map(String::from);
+            info.user_id = session.user_id();
             info.encoding = session.encoding();
         }
     }
@@ -333,6 +343,53 @@ impl SessionManager {
         sessions
             .values()
             .any(|info| info.username.as_deref() == Some(username))
+    }
+
+    /// Request a session to be forcefully disconnected.
+    ///
+    /// Returns true if the session was found and marked for disconnect.
+    pub async fn request_disconnect(&self, session_id: Uuid) -> bool {
+        let mut sessions = self.sessions.write().await;
+        if let Some(info) = sessions.get_mut(&session_id) {
+            info.force_disconnect = true;
+            info!(
+                "Session {} marked for force disconnect (user: {:?})",
+                session_id, info.username
+            );
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Check if a session should be forcefully disconnected.
+    ///
+    /// This is called by the session handler to check if it should terminate.
+    pub async fn should_disconnect(&self, session_id: Uuid) -> bool {
+        let sessions = self.sessions.read().await;
+        sessions
+            .get(&session_id)
+            .is_some_and(|info| info.force_disconnect)
+    }
+
+    /// Clear the force disconnect flag for a session.
+    ///
+    /// This is called after the disconnect has been processed.
+    pub async fn clear_disconnect_flag(&self, session_id: Uuid) {
+        let mut sessions = self.sessions.write().await;
+        if let Some(info) = sessions.get_mut(&session_id) {
+            info.force_disconnect = false;
+        }
+    }
+
+    /// Get sessions by user ID.
+    pub async fn find_by_user_id(&self, user_id: i64) -> Vec<SessionInfo> {
+        let sessions = self.sessions.read().await;
+        sessions
+            .values()
+            .filter(|info| info.user_id == Some(user_id))
+            .cloned()
+            .collect()
     }
 }
 

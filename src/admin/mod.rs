@@ -14,11 +14,13 @@
 mod board;
 mod content;
 mod folder;
+mod session;
 mod user;
 
 pub use board::{BoardAdminService, CreateBoardRequest};
 pub use content::{ContentAdminService, PostDeletionMode, DELETED_POST_MESSAGE};
 pub use folder::FolderAdminService;
+pub use session::{format_duration, format_session_state, SessionAdminService, SessionStatistics};
 pub use user::{generate_password, UserAdminService, UserDetail, DEFAULT_PASSWORD_LENGTH};
 
 use thiserror::Error;
