@@ -30,6 +30,7 @@ user = "ユーザー"
 current = "現在"
 people = "人"
 only = "のみ"
+end_with_dot = "終了は . のみの行で"
 
 [system]
 name = "HOBBS"

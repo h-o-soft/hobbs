@@ -20,6 +20,8 @@ pub use help::HelpScreen;
 pub use mail::MailScreen;
 pub use profile::ProfileScreen;
 
+use crate::server::CharacterEncoding;
+
 /// Result of a screen action.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScreenResult {
@@ -31,6 +33,13 @@ pub enum ScreenResult {
     Logout,
     /// User wants to quit.
     Quit,
+    /// User changed language/encoding settings.
+    SettingsChanged {
+        /// New language setting (e.g., "en", "ja").
+        language: String,
+        /// New character encoding setting.
+        encoding: CharacterEncoding,
+    },
 }
 
 #[cfg(test)]
