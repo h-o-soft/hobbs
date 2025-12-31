@@ -6,6 +6,7 @@
 //! - Post management for both thread and flat boards
 //! - Board types (thread-based and flat)
 //! - Role-based access control for read/write permissions
+//! - Unread management for tracking user's read positions
 
 mod post;
 mod post_repository;
@@ -14,6 +15,7 @@ mod service;
 mod thread;
 mod thread_repository;
 mod types;
+mod unread;
 
 pub use post::{NewFlatPost, NewThreadPost, Post, PostUpdate};
 pub use post_repository::PostRepository;
@@ -22,3 +24,4 @@ pub use service::{BoardService, PaginatedResult, Pagination};
 pub use thread::{NewThread, Thread, ThreadUpdate};
 pub use thread_repository::ThreadRepository;
 pub use types::{Board, BoardType, BoardUpdate, NewBoard};
+pub use unread::{ReadPosition, UnreadRepository};

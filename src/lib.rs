@@ -21,8 +21,8 @@ pub use auth::{
 };
 pub use board::{
     Board, BoardRepository, BoardService, BoardType, BoardUpdate, NewBoard, NewFlatPost, NewThread,
-    NewThreadPost, PaginatedResult, Pagination, Post, PostRepository, PostUpdate, Thread,
-    ThreadRepository, ThreadUpdate,
+    NewThreadPost, PaginatedResult, Pagination, Post, PostRepository, PostUpdate, ReadPosition,
+    Thread, ThreadRepository, ThreadUpdate, UnreadRepository,
 };
 pub use config::Config;
 pub use db::{Database, NewUser, Role, User, UserRepository, UserUpdate};
