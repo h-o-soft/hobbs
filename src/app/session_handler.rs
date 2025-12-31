@@ -88,6 +88,9 @@ impl SessionHandler {
             warn!("Telnet negotiation failed: {}", e);
         }
 
+        // Show language/encoding selection screen
+        self.show_language_selection(session).await?;
+
         // Show welcome screen
         self.show_welcome(session).await?;
 
@@ -237,6 +240,70 @@ impl SessionHandler {
         session.stream_mut().write_all(&negotiation_bytes).await?;
         session.stream_mut().flush().await?;
         Ok(())
+    }
+
+    /// Show language/encoding selection screen.
+    ///
+    /// This screen is shown in ASCII-only to work regardless of the current
+    /// encoding setting. After selection, the encoding and language are applied.
+    async fn show_language_selection(&mut self, session: &mut TelnetSession) -> Result<()> {
+        // Display ASCII-only selection screen
+        let selection_screen = r#"
+=======================================
+Select language / Gengo sentaku:
+=======================================
+
+[E] English (UTF-8)
+[J] Nihongo (ShiftJIS)
+[U] Nihongo (UTF-8)
+
+"#;
+        self.send(session, selection_screen).await?;
+        self.send(session, "> ").await?;
+
+        // Read user input
+        let input = self.read_line(session).await?;
+        let input = input.trim().to_uppercase();
+
+        // Apply selection
+        match input.as_str() {
+            "E" | "1" => {
+                // English (UTF-8)
+                self.set_language("en");
+                session.set_encoding(CharacterEncoding::Utf8);
+                self.line_buffer.set_encoding(CharacterEncoding::Utf8);
+            }
+            "J" | "2" => {
+                // Japanese (ShiftJIS)
+                self.set_language("ja");
+                session.set_encoding(CharacterEncoding::ShiftJIS);
+                self.line_buffer.set_encoding(CharacterEncoding::ShiftJIS);
+            }
+            "U" | "3" => {
+                // Japanese (UTF-8)
+                self.set_language("ja");
+                session.set_encoding(CharacterEncoding::Utf8);
+                self.line_buffer.set_encoding(CharacterEncoding::Utf8);
+            }
+            _ => {
+                // Default to English (UTF-8) for invalid input
+                self.set_language("en");
+                session.set_encoding(CharacterEncoding::Utf8);
+                self.line_buffer.set_encoding(CharacterEncoding::Utf8);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Set the current language for i18n.
+    fn set_language(&mut self, lang: &str) {
+        self.i18n = self
+            .i18n_manager
+            .get(lang)
+            .cloned()
+            .map(Arc::new)
+            .unwrap_or_else(|| Arc::new(I18n::empty(lang)));
     }
 
     /// Show the welcome screen.

@@ -51,7 +51,12 @@ async fn test_guest_mode() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
-    // Wait for welcome, enter guest mode
+    // Wait for language selection screen
+    client.recv_until("Gengo").await.unwrap();
+    // Select English
+    client.send_line("E").await.unwrap();
+
+    // Wait for welcome screen prompt
     client.recv_until("Select:").await.unwrap();
     client.send_line("G").await.unwrap();
 

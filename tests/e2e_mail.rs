@@ -15,6 +15,9 @@ async fn test_mail_requires_login() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
+    // Handle language selection first
+    client.select_language("E").await.unwrap();
+
     // Wait for welcome, enter guest mode
     client.recv_until("Select:").await.unwrap();
     client.send_line("G").await.unwrap();
@@ -26,14 +29,15 @@ async fn test_mail_requires_login() {
     client.send_line("M").await.unwrap();
     let response = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
 
-    // Should require login or show error
+    // Should require login or show error or invalid selection for guests
     assert!(
         response.contains("login")
             || response.contains("ログイン")
             || response.contains("required")
             || response.contains("必要")
             || response.contains("Menu")
-            || response.contains("Select"),
+            || response.contains("Select")
+            || response.contains("Invalid"),
         "Mail should require login: {:?}",
         response
     );

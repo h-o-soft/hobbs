@@ -203,9 +203,21 @@ impl TestClient {
         Ok(())
     }
 
+    /// Select language/encoding.
+    /// Handles the language selection screen that appears before the welcome screen.
+    pub async fn select_language(&mut self, choice: &str) -> Result<(), std::io::Error> {
+        // Wait for language selection screen
+        self.recv_until("Gengo").await?;
+        self.send_line(choice).await?;
+        Ok(())
+    }
+
     /// Perform login sequence.
-    /// Assumes client is at the welcome screen or ready to receive it.
+    /// Assumes client is at the language selection screen or ready to receive it.
     pub async fn login(&mut self, username: &str, password: &str) -> Result<bool, std::io::Error> {
+        // Handle language selection first
+        self.select_language("E").await?;
+
         // Choose login - wait for the welcome menu prompt
         self.recv_until("Select:").await?;
         self.send_line("L").await?;
@@ -226,13 +238,16 @@ impl TestClient {
     }
 
     /// Perform registration sequence.
-    /// Assumes client is at the welcome screen or ready to receive it.
+    /// Assumes client is at the language selection screen or ready to receive it.
     pub async fn register(
         &mut self,
         username: &str,
         password: &str,
         nickname: &str,
     ) -> Result<bool, std::io::Error> {
+        // Handle language selection first
+        self.select_language("E").await?;
+
         // Wait for welcome menu prompt
         self.recv_until("Select:").await?;
         self.send_line("R").await?;
