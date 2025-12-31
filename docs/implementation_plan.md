@@ -98,18 +98,18 @@
 
 ---
 
-## Phase 2: Telnetサーバ基盤
+## Phase 2: Telnetサーバ基盤 ✅
 
-### 2-1. TCP接続受付
+### 2-1. TCP接続受付 ✅
 
 **概要**: tokio を使用した TCP リスナーを実装する
 
 **完了条件**:
-- [ ] `src/server/mod.rs`, `src/server/listener.rs` を作成
-- [ ] `TelnetServer` 構造体を定義
-- [ ] 指定ポートで接続を受け付ける
-- [ ] 最大接続数の制御
-- [ ] 統合テスト（接続・切断）
+- [x] `src/server/mod.rs`, `src/server/listener.rs` を作成
+- [x] `TelnetServer` 構造体を定義
+- [x] 指定ポートで接続を受け付ける
+- [x] 最大接続数の制御
+- [x] 統合テスト（接続・切断）
 
 **関連ファイル**:
 - `src/server/mod.rs`
@@ -117,17 +117,17 @@
 
 ---
 
-### 2-2. セッション管理基盤
+### 2-2. セッション管理基盤 ✅
 
 **概要**: 接続ごとのセッション管理を実装する
 
 **完了条件**:
-- [ ] `src/server/session.rs` を作成
-- [ ] `TelnetSession` 構造体を定義
-- [ ] セッション状態（SessionState）の定義
-- [ ] アイドルタイムアウト処理
-- [ ] セッション一覧管理（HashMap）
-- [ ] 単体テスト
+- [x] `src/server/session.rs` を作成
+- [x] `TelnetSession` 構造体を定義
+- [x] セッション状態（SessionState）の定義
+- [x] アイドルタイムアウト処理
+- [x] セッション一覧管理（HashMap）
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/server/session.rs`
@@ -135,33 +135,33 @@
 
 ---
 
-### 2-3. ShiftJIS変換
+### 2-3. ShiftJIS変換 ✅
 
 **概要**: encoding_rs を使用した文字コード変換を実装する
 
 **完了条件**:
-- [ ] `src/server/encoding.rs` を作成
-- [ ] ShiftJIS → UTF-8 変換（受信用）
-- [ ] UTF-8 → ShiftJIS 変換（送信用）
-- [ ] 変換エラーのハンドリング
-- [ ] 単体テスト（日本語文字列、制御文字）
+- [x] `src/server/encoding.rs` を作成
+- [x] ShiftJIS → UTF-8 変換（受信用）
+- [x] UTF-8 → ShiftJIS 変換（送信用）
+- [x] 変換エラーのハンドリング
+- [x] 単体テスト（日本語文字列、制御文字）
 
 **関連ファイル**:
 - `src/server/encoding.rs`
 
 ---
 
-### 2-4. 端末プロファイル
+### 2-4. 端末プロファイル ✅
 
 **概要**: 端末タイプ（80x24, C64等）を管理する
 
 **完了条件**:
-- [ ] `src/terminal/mod.rs`, `src/terminal/profile.rs` を作成
-- [ ] `TerminalProfile` 構造体を定義
-- [ ] standard(), c64(), c64_ansi() プリセット
-- [ ] display_width() 関数（全角幅計算）
-- [ ] truncate_to_width() 関数
-- [ ] 単体テスト
+- [x] `src/terminal/mod.rs`, `src/terminal/profile.rs` を作成
+- [x] `TerminalProfile` 構造体を定義
+- [x] standard(), c64(), c64_ansi() プリセット
+- [x] display_width() 関数（全角幅計算）
+- [x] truncate_to_width() 関数
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/terminal/mod.rs`
@@ -169,19 +169,20 @@
 
 ---
 
-### 2-5. 入力処理・Telnetプロトコル
+### 2-5. 入力処理・Telnetプロトコル ✅
 
 **概要**: Telnet IAC コマンドと入力処理を実装する
 
 **完了条件**:
-- [ ] Telnet ネゴシエーション（ECHO, SGA）
-- [ ] 行バッファリング入力
-- [ ] バックスペース、Ctrl+C 処理
-- [ ] パスワード入力（エコーなし）
-- [ ] 統合テスト
+- [x] Telnet ネゴシエーション（ECHO, SGA）
+- [x] 行バッファリング入力
+- [x] バックスペース、Ctrl+C 処理
+- [x] パスワード入力（エコーなし）
+- [x] 統合テスト
 
 **関連ファイル**:
-- `src/server/session.rs`（拡張）
+- `src/server/telnet.rs`
+- `src/server/input.rs`
 
 ---
 
