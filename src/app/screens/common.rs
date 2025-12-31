@@ -38,6 +38,7 @@ impl ScreenContext {
         template_loader: Arc<TemplateLoader>,
         profile: TerminalProfile,
         i18n: Arc<I18n>,
+        encoding: CharacterEncoding,
     ) -> Self {
         Self {
             db,
@@ -45,7 +46,7 @@ impl ScreenContext {
             template_loader,
             profile,
             i18n,
-            line_buffer: LineBuffer::with_encoding(1024, CharacterEncoding::default()),
+            line_buffer: LineBuffer::with_encoding(1024, encoding),
         }
     }
 
