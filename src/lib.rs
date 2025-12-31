@@ -19,7 +19,10 @@ pub use auth::{
     RegistrationError, RegistrationRequest, SessionError, SessionManager, UserProfile,
     ValidationError, MAX_PROFILE_LENGTH,
 };
-pub use board::{Board, BoardRepository, BoardType, BoardUpdate, NewBoard};
+pub use board::{
+    Board, BoardRepository, BoardType, BoardUpdate, NewBoard, NewFlatPost, NewThread,
+    NewThreadPost, Post, PostRepository, PostUpdate, Thread, ThreadRepository, ThreadUpdate,
+};
 pub use config::Config;
 pub use db::{Database, NewUser, Role, User, UserRepository, UserUpdate};
 pub use error::{HobbsError, Result};

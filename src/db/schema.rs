@@ -50,6 +50,41 @@ CREATE TABLE boards (
 CREATE INDEX idx_boards_sort_order ON boards(sort_order);
 CREATE INDEX idx_boards_is_active ON boards(is_active);
 "#,
+    // v4: Threads table for thread-based boards
+    r#"
+-- Threads table for thread-based boards
+CREATE TABLE threads (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id    INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    author_id   INTEGER NOT NULL REFERENCES users(id),
+    post_count  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_threads_board_id ON threads(board_id);
+CREATE INDEX idx_threads_author_id ON threads(author_id);
+CREATE INDEX idx_threads_updated_at ON threads(updated_at);
+"#,
+    // v5: Posts table for both thread and flat boards
+    r#"
+-- Posts table for both thread and flat boards
+CREATE TABLE posts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id    INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    thread_id   INTEGER REFERENCES threads(id) ON DELETE CASCADE,  -- NULL for flat boards
+    author_id   INTEGER NOT NULL REFERENCES users(id),
+    title       TEXT,                                               -- Used for flat boards
+    body        TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_posts_board_id ON posts(board_id);
+CREATE INDEX idx_posts_thread_id ON posts(thread_id);
+CREATE INDEX idx_posts_author_id ON posts(author_id);
+CREATE INDEX idx_posts_created_at ON posts(created_at);
+"#,
 ];
 
 #[cfg(test)]
@@ -91,5 +126,27 @@ mod tests {
         assert!(boards_migration.contains("board_type"));
         assert!(boards_migration.contains("min_read_role"));
         assert!(boards_migration.contains("min_write_role"));
+    }
+
+    #[test]
+    fn test_threads_migration_contains_threads_table() {
+        let threads_migration = MIGRATIONS[3];
+        assert!(threads_migration.contains("CREATE TABLE threads"));
+        assert!(threads_migration.contains("board_id"));
+        assert!(threads_migration.contains("title"));
+        assert!(threads_migration.contains("author_id"));
+        assert!(threads_migration.contains("post_count"));
+        assert!(threads_migration.contains("updated_at"));
+    }
+
+    #[test]
+    fn test_posts_migration_contains_posts_table() {
+        let posts_migration = MIGRATIONS[4];
+        assert!(posts_migration.contains("CREATE TABLE posts"));
+        assert!(posts_migration.contains("board_id"));
+        assert!(posts_migration.contains("thread_id"));
+        assert!(posts_migration.contains("author_id"));
+        assert!(posts_migration.contains("title"));
+        assert!(posts_migration.contains("body"));
     }
 }
