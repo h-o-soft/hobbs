@@ -3,9 +3,11 @@
 //! Provides the main application logic and session handling.
 
 mod menu;
+pub mod screens;
 mod session_handler;
 
 pub use menu::{MenuAction, MenuError};
+pub use screens::ScreenResult;
 pub use session_handler::SessionHandler;
 
 use std::sync::Arc;

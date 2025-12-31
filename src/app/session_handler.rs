@@ -147,34 +147,73 @@ impl SessionHandler {
                     }
                 },
                 SessionState::Board => {
-                    // TODO: Implement board handling
-                    self.send_line(session, self.i18n.t("feature.not_implemented"))
-                        .await?;
-                    session.set_state(SessionState::MainMenu);
+                    let mut screen_ctx = self.create_screen_context();
+                    match super::screens::BoardScreen::run_list(&mut screen_ctx, session).await? {
+                        super::screens::ScreenResult::Logout => {
+                            session.clear_user();
+                            session.set_state(SessionState::Welcome);
+                        }
+                        super::screens::ScreenResult::Quit => {
+                            break;
+                        }
+                        _ => {
+                            session.set_state(SessionState::MainMenu);
+                        }
+                    }
                 }
                 SessionState::Chat => {
-                    // TODO: Implement chat handling
+                    // Chat requires ChatRoomManager which is not available in session_handler
+                    // For now, show not implemented
                     self.send_line(session, self.i18n.t("feature.not_implemented"))
                         .await?;
                     session.set_state(SessionState::MainMenu);
                 }
                 SessionState::Mail => {
-                    // TODO: Implement mail handling
-                    self.send_line(session, self.i18n.t("feature.not_implemented"))
-                        .await?;
-                    session.set_state(SessionState::MainMenu);
+                    let mut screen_ctx = self.create_screen_context();
+                    match super::screens::MailScreen::run_inbox(&mut screen_ctx, session).await? {
+                        super::screens::ScreenResult::Logout => {
+                            session.clear_user();
+                            session.set_state(SessionState::Welcome);
+                        }
+                        super::screens::ScreenResult::Quit => {
+                            break;
+                        }
+                        _ => {
+                            session.set_state(SessionState::MainMenu);
+                        }
+                    }
                 }
                 SessionState::Files => {
-                    // TODO: Implement file handling
-                    self.send_line(session, self.i18n.t("feature.not_implemented"))
-                        .await?;
-                    session.set_state(SessionState::MainMenu);
+                    let mut screen_ctx = self.create_screen_context();
+                    match super::screens::FileScreen::run_browser(&mut screen_ctx, session, None)
+                        .await?
+                    {
+                        super::screens::ScreenResult::Logout => {
+                            session.clear_user();
+                            session.set_state(SessionState::Welcome);
+                        }
+                        super::screens::ScreenResult::Quit => {
+                            break;
+                        }
+                        _ => {
+                            session.set_state(SessionState::MainMenu);
+                        }
+                    }
                 }
                 SessionState::Admin => {
-                    // TODO: Implement admin handling
-                    self.send_line(session, self.i18n.t("feature.not_implemented"))
-                        .await?;
-                    session.set_state(SessionState::MainMenu);
+                    let mut screen_ctx = self.create_screen_context();
+                    match super::screens::AdminScreen::run(&mut screen_ctx, session).await? {
+                        super::screens::ScreenResult::Logout => {
+                            session.clear_user();
+                            session.set_state(SessionState::Welcome);
+                        }
+                        super::screens::ScreenResult::Quit => {
+                            break;
+                        }
+                        _ => {
+                            session.set_state(SessionState::MainMenu);
+                        }
+                    }
                 }
                 SessionState::Closing => {
                     break;
@@ -448,7 +487,16 @@ impl SessionHandler {
             }
             MenuAction::Profile => {
                 if is_logged_in {
-                    self.show_profile(session).await?;
+                    let mut screen_ctx = self.create_screen_context();
+                    match super::screens::ProfileScreen::run(&mut screen_ctx, session).await? {
+                        super::screens::ScreenResult::Logout => {
+                            return Ok(MenuResult::Logout);
+                        }
+                        super::screens::ScreenResult::Quit => {
+                            return Ok(MenuResult::Quit);
+                        }
+                        _ => {}
+                    }
                 } else {
                     self.send_line(session, self.i18n.t("menu.login_required"))
                         .await?;
@@ -463,7 +511,8 @@ impl SessionHandler {
                 }
             }
             MenuAction::Help => {
-                self.show_help(session).await?;
+                let mut screen_ctx = self.create_screen_context();
+                let _ = super::screens::HelpScreen::run(&mut screen_ctx, session).await;
             }
             MenuAction::Logout => {
                 return Ok(MenuResult::Logout);
@@ -616,6 +665,17 @@ impl SessionHandler {
             Value::string(self.config.bbs.sysop_name.clone()),
         );
         context
+    }
+
+    /// Create a screen context for screen handlers.
+    fn create_screen_context(&self) -> super::screens::ScreenContext {
+        super::screens::ScreenContext::new(
+            Arc::clone(&self.db),
+            Arc::clone(&self.config),
+            Arc::clone(&self.template_loader),
+            self.profile.clone(),
+            Arc::clone(&self.i18n),
+        )
     }
 
     /// Send data to the client.
