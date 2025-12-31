@@ -36,9 +36,9 @@ pub use config::Config;
 pub use db::{Database, NewUser, Role, User, UserRepository, UserUpdate};
 pub use error::{HobbsError, Result};
 pub use file::{
-    FileMetadata, FileRepository, FileStorage, FileUpdate, Folder, FolderRepository, FolderUpdate,
-    NewFile, NewFolder, DEFAULT_MAX_FILE_SIZE, MAX_DESCRIPTION_LENGTH, MAX_FILENAME_LENGTH,
-    MAX_FOLDER_DEPTH,
+    DownloadResult, FileMetadata, FileRepository, FileService, FileStorage, FileUpdate, Folder,
+    FolderRepository, FolderUpdate, NewFile, NewFolder, UploadRequest, DEFAULT_MAX_FILE_SIZE,
+    MAX_DESCRIPTION_LENGTH, MAX_FILENAME_LENGTH, MAX_FOLDER_DEPTH,
 };
 pub use mail::{
     Mail, MailRepository, MailService, MailUpdate, NewMail, SendMailRequest, SystemMailService,
