@@ -11,6 +11,14 @@
 //! - SubOp: Most admin functions except destructive operations
 //! - SysOp: All admin functions including destructive operations
 
+mod board;
+mod content;
+mod folder;
+
+pub use board::{BoardAdminService, CreateBoardRequest};
+pub use content::{ContentAdminService, PostDeletionMode, DELETED_POST_MESSAGE};
+pub use folder::FolderAdminService;
+
 use thiserror::Error;
 
 use crate::auth::{require_subop, require_sysop, PermissionError};
@@ -42,6 +50,10 @@ pub enum AdminError {
     /// Database error.
     #[error("データベースエラー: {0}")]
     Database(#[from] rusqlite::Error),
+
+    /// General HOBBS error.
+    #[error("{0}")]
+    Hobbs(#[from] crate::HobbsError),
 }
 
 /// Require admin access (SubOp or higher).

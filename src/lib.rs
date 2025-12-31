@@ -17,6 +17,8 @@ pub mod terminal;
 
 pub use admin::{
     can_change_role, can_edit_user, is_admin, is_sysop, require_admin, AdminError, AdminService,
+    BoardAdminService, ContentAdminService, CreateBoardRequest, FolderAdminService,
+    PostDeletionMode, DELETED_POST_MESSAGE,
 };
 pub use auth::{
     can_modify_resource, change_password, check_permission, get_profile, get_profile_by_username,
