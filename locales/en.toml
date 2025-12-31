@@ -167,6 +167,7 @@ mark_all_read = "Mark all as read"
 
 [chat]
 room_list = "Chat Rooms"
+room_name = "Room Name"
 enter_room = "Enter"
 leave_room = "Leave"
 current_room = "Current Room"
@@ -274,6 +275,14 @@ guest = "Guest"
 member = "Member"
 subop = "Sub-Op"
 sysop = "SysOp"
+
+[member]
+list = "Member List"
+username = "Username"
+nickname = "Nickname"
+role = "Role"
+no_members = "No members found"
+total = "Total: {{count}} members"
 
 [time]
 now = "now"

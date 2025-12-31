@@ -167,6 +167,7 @@ mark_all_read = "すべて既読にする"
 
 [chat]
 room_list = "チャットルーム一覧"
+room_name = "部屋名"
 enter_room = "入室"
 leave_room = "退室"
 current_room = "現在の部屋"
@@ -274,6 +275,14 @@ guest = "ゲスト"
 member = "一般会員"
 subop = "副管理者"
 sysop = "システム管理者"
+
+[member]
+list = "会員一覧"
+username = "ユーザーID"
+nickname = "ニックネーム"
+role = "権限"
+no_members = "会員がいません"
+total = "合計: {{count}}人"
 
 [time]
 now = "今"
