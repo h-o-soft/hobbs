@@ -1,0 +1,20 @@
+================================================================================
+    {{t "file.library"}}{{#if current_folder}} > {{current_folder.name}}{{/if}}
+================================================================================
+
+    No.  {{t "file.filename"}}                {{t "file.size"}}      {{t "file.download_count"}}    {{t "file.date"}}
+    -------------------------------------------------------------------------------
+{{#each files}}
+    {{@index}}   {{name}}                {{size}}       {{download_count}}    {{date}}
+{{/each}}
+
+    {{t "file.folders"}}:
+{{#each folders}}
+     [{{key}}] {{name}}
+{{/each}}
+
+    {{t "common.page"}}: {{current_page}}/{{total_pages}}
+--------------------------------------------------------------------------------
+    [{{t "common.number"}}] {{t "file.download"}}    [U] {{t "file.upload"}}    [Q] {{t "common.back"}}
+--------------------------------------------------------------------------------
+{{t "menu.select_prompt"}}

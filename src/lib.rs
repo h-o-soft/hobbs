@@ -65,4 +65,7 @@ pub use server::{
 pub use terminal::TerminalProfile;
 
 pub use i18n::{I18n, I18nError, I18nManager, DEFAULT_LOCALE};
-pub use template::{Node, Parser, Renderer, TemplateContext, TemplateEngine, TemplateError, Value};
+pub use template::{
+    create_system_context, Node, Parser, Renderer, TemplateContext, TemplateEngine, TemplateError,
+    TemplateLoader, Value, WIDTH_40, WIDTH_80,
+};
