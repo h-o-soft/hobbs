@@ -197,7 +197,10 @@ impl I18n {
     ///
     /// If the key is not found, returns the fallback string.
     pub fn t_or<'a>(&'a self, key: &str, fallback: &'a str) -> &'a str {
-        self.messages.get(key).map(|s| s.as_str()).unwrap_or(fallback)
+        self.messages
+            .get(key)
+            .map(|s| s.as_str())
+            .unwrap_or(fallback)
     }
 
     /// Merge another I18n instance into this one.
@@ -335,9 +338,7 @@ impl I18nManager {
     ///
     /// Falls back to the key itself if not found.
     pub fn t<'a>(&'a self, key: &'a str) -> &'a str {
-        self.current()
-            .map(|i18n| i18n.t(key))
-            .unwrap_or(key)
+        self.current().map(|i18n| i18n.t(key)).unwrap_or(key)
     }
 
     /// Translate a key with parameters using the current locale.
@@ -572,10 +573,18 @@ main = "Main Menu"
     fn test_i18n_manager_add_locale() {
         let mut manager = I18nManager::new();
 
-        let ja = I18n::from_str("ja", r#"[menu]
-main = "メインメニュー""#).unwrap();
-        let en = I18n::from_str("en", r#"[menu]
-main = "Main Menu""#).unwrap();
+        let ja = I18n::from_str(
+            "ja",
+            r#"[menu]
+main = "メインメニュー""#,
+        )
+        .unwrap();
+        let en = I18n::from_str(
+            "en",
+            r#"[menu]
+main = "Main Menu""#,
+        )
+        .unwrap();
 
         manager.add_locale(ja);
         manager.add_locale(en);
@@ -589,10 +598,18 @@ main = "Main Menu""#).unwrap();
     fn test_i18n_manager_set_locale() {
         let mut manager = I18nManager::new();
 
-        let ja = I18n::from_str("ja", r#"[menu]
-main = "メインメニュー""#).unwrap();
-        let en = I18n::from_str("en", r#"[menu]
-main = "Main Menu""#).unwrap();
+        let ja = I18n::from_str(
+            "ja",
+            r#"[menu]
+main = "メインメニュー""#,
+        )
+        .unwrap();
+        let en = I18n::from_str(
+            "en",
+            r#"[menu]
+main = "Main Menu""#,
+        )
+        .unwrap();
 
         manager.add_locale(ja);
         manager.add_locale(en);
@@ -613,10 +630,18 @@ main = "Main Menu""#).unwrap();
     fn test_i18n_manager_load_all() {
         let temp_dir = TempDir::new().unwrap();
 
-        create_test_locale_file(temp_dir.path(), "ja", r#"[menu]
-main = "メインメニュー""#);
-        create_test_locale_file(temp_dir.path(), "en", r#"[menu]
-main = "Main Menu""#);
+        create_test_locale_file(
+            temp_dir.path(),
+            "ja",
+            r#"[menu]
+main = "メインメニュー""#,
+        );
+        create_test_locale_file(
+            temp_dir.path(),
+            "en",
+            r#"[menu]
+main = "Main Menu""#,
+        );
 
         let manager = I18nManager::load_all(temp_dir.path()).unwrap();
 
@@ -629,8 +654,12 @@ main = "Main Menu""#);
     fn test_i18n_manager_t_with() {
         let mut manager = I18nManager::new();
 
-        let ja = I18n::from_str("ja", r#"[welcome]
-message = "こんにちは、{{name}}さん""#).unwrap();
+        let ja = I18n::from_str(
+            "ja",
+            r#"[welcome]
+message = "こんにちは、{{name}}さん""#,
+        )
+        .unwrap();
 
         manager.add_locale(ja);
         manager.set_locale("ja");
@@ -645,8 +674,12 @@ message = "こんにちは、{{name}}さん""#).unwrap();
     fn test_i18n_manager_get() {
         let mut manager = I18nManager::new();
 
-        let ja = I18n::from_str("ja", r#"[menu]
-main = "メインメニュー""#).unwrap();
+        let ja = I18n::from_str(
+            "ja",
+            r#"[menu]
+main = "メインメニュー""#,
+        )
+        .unwrap();
 
         manager.add_locale(ja);
 

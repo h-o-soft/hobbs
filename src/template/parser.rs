@@ -34,16 +34,10 @@ pub enum Node {
     },
 
     /// Unless block (inverse of if): `{{#unless condition}}...{{/unless}}`
-    Unless {
-        condition: String,
-        body: Vec<Node>,
-    },
+    Unless { condition: String, body: Vec<Node> },
 
     /// With block (scope change): `{{#with object}}...{{/with}}`
-    With {
-        variable: String,
-        body: Vec<Node>,
-    },
+    With { variable: String, body: Vec<Node> },
 }
 
 /// Template parser.

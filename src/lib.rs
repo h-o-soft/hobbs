@@ -3,6 +3,7 @@
 //! A retro BBS host program accessible via Telnet, implemented in Rust.
 
 pub mod admin;
+pub mod app;
 pub mod auth;
 pub mod board;
 pub mod chat;
@@ -56,15 +57,15 @@ pub use mail::{
     MAX_BODY_LENGTH as MAX_MAIL_BODY_LENGTH, MAX_SUBJECT_LENGTH as MAX_MAIL_SUBJECT_LENGTH,
     WELCOME_MAIL_BODY, WELCOME_MAIL_SUBJECT,
 };
+pub use screen::{
+    create_screen, create_screen_from_profile, AnsiScreen, Color, PlainScreen, Screen,
+};
 pub use server::{
     decode_from_client, decode_shiftjis, decode_shiftjis_strict, encode_for_client,
     encode_shiftjis, encode_shiftjis_strict, initial_negotiation, CharacterEncoding, DecodeResult,
     EchoMode, EncodeResult, InputResult, LineBuffer, MultiLineBuffer, NegotiationState,
     SessionInfo, SessionManager as TelnetSessionManager, SessionState, TelnetCommand, TelnetParser,
     TelnetServer, TelnetSession,
-};
-pub use screen::{
-    create_screen, create_screen_from_profile, AnsiScreen, Color, PlainScreen, Screen,
 };
 pub use terminal::TerminalProfile;
 
@@ -73,3 +74,5 @@ pub use template::{
     create_system_context, Node, Parser, Renderer, TemplateContext, TemplateEngine, TemplateError,
     TemplateLoader, Value, WIDTH_40, WIDTH_80,
 };
+
+pub use app::{Application, MenuAction, MenuError, SessionHandler};

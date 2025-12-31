@@ -85,7 +85,11 @@ impl TemplateLoader {
             Ok(content) => Ok(content),
             Err(_) => {
                 // Fallback to other width
-                let fallback_width = if width >= WIDTH_80 { WIDTH_40 } else { WIDTH_80 };
+                let fallback_width = if width >= WIDTH_80 {
+                    WIDTH_40
+                } else {
+                    WIDTH_80
+                };
                 self.load(name, fallback_width)
             }
         }
@@ -134,14 +138,12 @@ fn collect_templates_recursive(
     prefix: &str,
     templates: &mut Vec<String>,
 ) -> Result<()> {
-    let entries = fs::read_dir(dir).map_err(|e| {
-        TemplateError::Render(format!("Failed to read directory {dir:?}: {e}"))
-    })?;
+    let entries = fs::read_dir(dir)
+        .map_err(|e| TemplateError::Render(format!("Failed to read directory {dir:?}: {e}")))?;
 
     for entry in entries {
-        let entry = entry.map_err(|e| {
-            TemplateError::Render(format!("Failed to read entry: {e}"))
-        })?;
+        let entry =
+            entry.map_err(|e| TemplateError::Render(format!("Failed to read entry: {e}")))?;
         let path = entry.path();
 
         if path.is_dir() {
@@ -192,8 +194,14 @@ pub fn create_system_context(i18n: Arc<I18n>) -> TemplateContext {
     let now = Local::now();
 
     // System variables
-    context.set("system.date", Value::String(now.format("%Y/%m/%d").to_string()));
-    context.set("system.time", Value::String(now.format("%H:%M:%S").to_string()));
+    context.set(
+        "system.date",
+        Value::String(now.format("%Y/%m/%d").to_string()),
+    );
+    context.set(
+        "system.time",
+        Value::String(now.format("%H:%M:%S").to_string()),
+    );
     context.set(
         "system.datetime",
         Value::String(now.format("%Y/%m/%d %H:%M:%S").to_string()),
@@ -334,7 +342,10 @@ mod tests {
 
         let i18n = Arc::new(I18n::empty("ja"));
         let mut context = TemplateContext::new(i18n);
-        context.set("user.name", super::super::Value::String("たろう".to_string()));
+        context.set(
+            "user.name",
+            super::super::Value::String("たろう".to_string()),
+        );
         context.set("user.unread_mail", super::super::Value::Number(5));
 
         let result = loader.render("greeting", 80, &context).unwrap();

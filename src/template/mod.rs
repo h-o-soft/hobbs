@@ -339,13 +339,19 @@ mod tests {
     // Value tests
     #[test]
     fn test_value_to_display_string() {
-        assert_eq!(Value::String("hello".to_string()).to_display_string(), "hello");
+        assert_eq!(
+            Value::String("hello".to_string()).to_display_string(),
+            "hello"
+        );
         assert_eq!(Value::Number(42).to_display_string(), "42");
         assert_eq!(Value::Float(3.14).to_display_string(), "3.14");
         assert_eq!(Value::Bool(true).to_display_string(), "true");
         assert_eq!(Value::Bool(false).to_display_string(), "false");
         assert_eq!(Value::List(vec![]).to_display_string(), "[list]");
-        assert_eq!(Value::Object(HashMap::new()).to_display_string(), "[object]");
+        assert_eq!(
+            Value::Object(HashMap::new()).to_display_string(),
+            "[object]"
+        );
         assert_eq!(Value::Null.to_display_string(), "");
     }
 
