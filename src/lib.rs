@@ -25,7 +25,10 @@ pub use board::{
     NewThreadPost, PaginatedResult, Pagination, Post, PostRepository, PostUpdate, ReadPosition,
     Thread, ThreadRepository, ThreadUpdate, UnreadRepository,
 };
-pub use chat::{ChatMessage, ChatParticipant, ChatRoom, MessageType};
+pub use chat::{
+    format_help, format_who, get_command_help, parse_input, ChatCommand, ChatInput, ChatMessage,
+    ChatParticipant, ChatRoom, CommandInfo, MessageType,
+};
 pub use config::Config;
 pub use db::{Database, NewUser, Role, User, UserRepository, UserUpdate};
 pub use error::{HobbsError, Result};
