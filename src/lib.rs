@@ -2,6 +2,7 @@
 //!
 //! A retro BBS host program accessible via Telnet, implemented in Rust.
 
+pub mod admin;
 pub mod auth;
 pub mod board;
 pub mod chat;
@@ -14,6 +15,9 @@ pub mod mail;
 pub mod server;
 pub mod terminal;
 
+pub use admin::{
+    can_change_role, can_edit_user, is_admin, is_sysop, require_admin, AdminError, AdminService,
+};
 pub use auth::{
     can_modify_resource, change_password, check_permission, get_profile, get_profile_by_username,
     hash_password, register, register_with_role, require_member, require_subop, require_sysop,
