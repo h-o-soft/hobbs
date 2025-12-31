@@ -16,6 +16,4 @@ pub use encoding::{
 pub use input::{EchoMode, InputResult, LineBuffer, MultiLineBuffer};
 pub use listener::{ConnectionPermit, TelnetServer};
 pub use session::{SessionInfo, SessionManager, SessionState, TelnetSession};
-pub use telnet::{
-    iac, initial_negotiation, option, NegotiationState, TelnetCommand, TelnetParser,
-};
+pub use telnet::{iac, initial_negotiation, option, NegotiationState, TelnetCommand, TelnetParser};
