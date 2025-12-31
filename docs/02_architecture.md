@@ -191,8 +191,17 @@ pub struct TelnetSession {
     user: Option<User>,           // ログイン中のユーザー（ゲスト/未ログインはNone）
     auth_session: Option<AuthSession>,  // 認証セッション
     terminal: TerminalProfile,    // 端末プロファイル
+    encoding: CharacterEncoding,  // 文字エンコーディング（ShiftJIS/UTF-8）
     state: SessionState,
     last_activity: Instant,
+}
+
+/// 文字エンコーディング
+#[derive(Debug, Clone, Copy, Default)]
+pub enum CharacterEncoding {
+    #[default]
+    ShiftJIS,  // レガシー端末向け
+    Utf8,      // モダン端末向け
 }
 ```
 
@@ -348,7 +357,63 @@ impl Database {
        └─> 投稿完了画面表示
 ```
 
-## 6. 設定ファイル
+## 6. エンコーディング処理
+
+### 6.1 処理フロー
+
+```
+受信（クライアント→サーバ）:
+┌─────────────┐    ┌──────────────────┐    ┌─────────────┐
+│  バイト列   │ -> │ encoding.rsで変換 │ -> │   UTF-8     │
+│ (ShiftJIS/  │    │ (ユーザー設定に   │    │ (内部処理)  │
+│  UTF-8)     │    │  基づく)          │    │             │
+└─────────────┘    └──────────────────┘    └─────────────┘
+
+送信（サーバ→クライアント）:
+┌─────────────┐    ┌──────────────────┐    ┌─────────────┐
+│   UTF-8     │ -> │ encoding.rsで変換 │ -> │  バイト列   │
+│ (内部処理)  │    │ (ユーザー設定に   │    │ (ShiftJIS/  │
+│             │    │  基づく)          │    │  UTF-8)     │
+└─────────────┘    └──────────────────┘    └─────────────┘
+```
+
+### 6.2 エンコーディング変換の実装
+
+```rust
+// server/encoding.rs
+
+pub fn encode_for_client(text: &str, encoding: CharacterEncoding) -> Vec<u8> {
+    match encoding {
+        CharacterEncoding::Utf8 => text.as_bytes().to_vec(),
+        CharacterEncoding::ShiftJIS => encode_shiftjis(text),
+    }
+}
+
+pub fn decode_from_client(bytes: &[u8], encoding: CharacterEncoding) -> String {
+    match encoding {
+        CharacterEncoding::Utf8 => String::from_utf8_lossy(bytes).to_string(),
+        CharacterEncoding::ShiftJIS => decode_shiftjis(bytes),
+    }
+}
+```
+
+### 6.3 ユーザー設定との連携
+
+```
+1. ログイン時
+   └─> User.encoding をセッションに適用
+       └─> TelnetSession.encoding を設定
+
+2. ゲストアクセス時
+   └─> 端末選択画面でエンコーディングも選択
+       └─> セッションに一時保存（DB非保存）
+
+3. プロフィール変更時
+   └─> User.encoding を更新
+       └─> 現在のセッションにも即時反映
+```
+
+## 7. 設定ファイル
 
 ```toml
 # config.toml
@@ -382,7 +447,7 @@ level = "info"
 file = "logs/hobbs.log"
 ```
 
-## 7. エラーハンドリング
+## 8. エラーハンドリング
 
 ```rust
 // 共通エラー型
@@ -407,7 +472,7 @@ pub enum HobbsError {
 pub type Result<T> = std::result::Result<T, HobbsError>;
 ```
 
-## 8. 非同期処理モデル
+## 9. 非同期処理モデル
 
 tokioランタイムを使用し、各接続を独立したタスクとして処理：
 
@@ -428,7 +493,7 @@ async fn main() -> Result<()> {
 }
 ```
 
-## 9. チャットのブロードキャスト
+## 10. チャットのブロードキャスト
 
 チャットメッセージは `tokio::sync::broadcast` チャネルで配信：
 
@@ -447,3 +512,44 @@ impl ChatRoom {
     }
 }
 ```
+
+## 11. 将来のプロトコル拡張
+
+### 11.1 SSH対応（Phase 7以降）
+
+現在のアーキテクチャはTelnet固有の処理を `src/server/telnet.rs` に局所化しており、
+SSH対応を後から追加しても設計に大きな影響を与えない。
+
+```
+将来の構成:
+
+                     ┌──────────────────────────┐
+                     │   Application Layer      │
+                     │ (Session, Auth, BBS等)   │
+                     └───────────┬──────────────┘
+                                 │
+         ┌───────────────────────┼───────────────────────┐
+         │                       │                       │
+    ┌────▼────┐            ┌─────▼─────┐          ┌──────▼──────┐
+    │ Telnet  │            │    SSH    │          │  (Future)   │
+    │  Layer  │            │   Layer   │          │  WebSocket  │
+    │ :2323   │            │   :2222   │          │    etc.     │
+    └─────────┘            └───────────┘          └─────────────┘
+```
+
+**共通インターフェース:**
+
+```rust
+/// プロトコル層が実装するトレイト
+pub trait ConnectionHandler: Send + Sync {
+    /// データ受信
+    async fn read(&mut self, buf: &mut [u8]) -> io::Result<usize>;
+    /// データ送信
+    async fn write(&mut self, buf: &[u8]) -> io::Result<usize>;
+    /// 接続終了
+    async fn close(&mut self) -> io::Result<()>;
+}
+```
+
+SSH対応時は `src/server/ssh.rs` を追加し、`ConnectionHandler` を実装することで
+既存のセッション管理・アプリケーション層と統合可能。
