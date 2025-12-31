@@ -194,8 +194,13 @@ fn validate_profile_text(text: &str) -> Result<(), ProfileError> {
         return Err(ProfileError::ProfileTooLong);
     }
     // Check for control characters (except newlines)
-    if text.chars().any(|c| c.is_control() && c != '\n' && c != '\r') {
-        return Err(ProfileError::Validation(ValidationError::NicknameInvalidChars));
+    if text
+        .chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\r')
+    {
+        return Err(ProfileError::Validation(
+            ValidationError::NicknameInvalidChars,
+        ));
     }
     Ok(())
 }
@@ -695,10 +700,7 @@ mod tests {
             .terminal("c64");
 
         assert_eq!(request.nickname, Some("Nick".to_string()));
-        assert_eq!(
-            request.email,
-            Some(Some("a@b.com".to_string()))
-        );
+        assert_eq!(request.email, Some(Some("a@b.com".to_string())));
         assert_eq!(request.profile, Some(Some("Profile".to_string())));
         assert_eq!(request.terminal, Some("c64".to_string()));
         assert!(!request.is_empty());
@@ -712,9 +714,15 @@ mod tests {
 
     #[test]
     fn test_profile_error_display() {
-        assert!(ProfileError::UserNotFound.to_string().contains("見つかりません"));
-        assert!(ProfileError::WrongPassword.to_string().contains("正しくありません"));
-        assert!(ProfileError::ProfileTooLong.to_string().contains("文字以内"));
+        assert!(ProfileError::UserNotFound
+            .to_string()
+            .contains("見つかりません"));
+        assert!(ProfileError::WrongPassword
+            .to_string()
+            .contains("正しくありません"));
+        assert!(ProfileError::ProfileTooLong
+            .to_string()
+            .contains("文字以内"));
     }
 
     #[test]

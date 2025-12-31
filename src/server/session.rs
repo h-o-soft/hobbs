@@ -10,6 +10,8 @@ use tokio::sync::RwLock;
 use tracing::{debug, info};
 use uuid::Uuid;
 
+use super::encoding::CharacterEncoding;
+
 /// Session state representing the current phase of the connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionState {
@@ -57,6 +59,8 @@ pub struct TelnetSession {
     user_id: Option<i64>,
     /// Username if logged in.
     username: Option<String>,
+    /// Character encoding for this session.
+    encoding: CharacterEncoding,
 }
 
 impl TelnetSession {
@@ -73,6 +77,31 @@ impl TelnetSession {
             last_activity: Instant::now(),
             user_id: None,
             username: None,
+            encoding: CharacterEncoding::default(),
+        }
+    }
+
+    /// Create a new session with a specific encoding.
+    pub fn with_encoding(
+        stream: TcpStream,
+        peer_addr: SocketAddr,
+        encoding: CharacterEncoding,
+    ) -> Self {
+        let id = Uuid::new_v4();
+        debug!(
+            "Created new session {} for {} with encoding {:?}",
+            id, peer_addr, encoding
+        );
+
+        Self {
+            id,
+            stream,
+            peer_addr,
+            state: SessionState::Welcome,
+            last_activity: Instant::now(),
+            user_id: None,
+            username: None,
+            encoding,
         }
     }
 
@@ -162,6 +191,21 @@ impl TelnetSession {
         self.touch();
     }
 
+    /// Get the character encoding for this session.
+    pub fn encoding(&self) -> CharacterEncoding {
+        self.encoding
+    }
+
+    /// Set the character encoding for this session.
+    pub fn set_encoding(&mut self, encoding: CharacterEncoding) {
+        debug!(
+            "Session {} encoding changed: {:?} -> {:?}",
+            self.id, self.encoding, encoding
+        );
+        self.encoding = encoding;
+        self.touch();
+    }
+
     /// Consume the session and return the TCP stream.
     pub fn into_stream(self) -> TcpStream {
         self.stream
@@ -181,6 +225,8 @@ pub struct SessionInfo {
     pub idle_duration: Duration,
     /// Username if logged in.
     pub username: Option<String>,
+    /// Character encoding.
+    pub encoding: CharacterEncoding,
 }
 
 /// Manager for all active sessions.
@@ -211,6 +257,7 @@ impl SessionManager {
             state: session.state(),
             idle_duration: Duration::ZERO,
             username: session.username().map(String::from),
+            encoding: session.encoding(),
         };
 
         let mut sessions = self.sessions.write().await;
@@ -229,6 +276,7 @@ impl SessionManager {
             info.state = session.state();
             info.idle_duration = session.last_activity().elapsed();
             info.username = session.username().map(String::from);
+            info.encoding = session.encoding();
         }
     }
 
@@ -439,5 +487,55 @@ mod tests {
     #[tokio::test]
     async fn test_session_state_default() {
         assert_eq!(SessionState::default(), SessionState::Welcome);
+    }
+
+    #[tokio::test]
+    async fn test_session_encoding_default() {
+        let session = create_test_session().await;
+        // Default encoding is ShiftJIS
+        assert_eq!(session.encoding(), CharacterEncoding::ShiftJIS);
+    }
+
+    #[tokio::test]
+    async fn test_session_with_encoding() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let client = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let (stream, peer_addr) = listener.accept().await.unwrap();
+        drop(client);
+
+        let session = TelnetSession::with_encoding(stream, peer_addr, CharacterEncoding::Utf8);
+        assert_eq!(session.encoding(), CharacterEncoding::Utf8);
+    }
+
+    #[tokio::test]
+    async fn test_session_set_encoding() {
+        let mut session = create_test_session().await;
+
+        assert_eq!(session.encoding(), CharacterEncoding::ShiftJIS);
+
+        session.set_encoding(CharacterEncoding::Utf8);
+        assert_eq!(session.encoding(), CharacterEncoding::Utf8);
+
+        session.set_encoding(CharacterEncoding::ShiftJIS);
+        assert_eq!(session.encoding(), CharacterEncoding::ShiftJIS);
+    }
+
+    #[tokio::test]
+    async fn test_session_info_encoding() {
+        let manager = SessionManager::new(300);
+        let mut session = create_test_session().await;
+        let session_id = session.id();
+
+        // Register with default encoding
+        manager.register(&session).await;
+        let info = manager.get(session_id).await.unwrap();
+        assert_eq!(info.encoding, CharacterEncoding::ShiftJIS);
+
+        // Change encoding and update
+        session.set_encoding(CharacterEncoding::Utf8);
+        manager.update(&session).await;
+        let info = manager.get(session_id).await.unwrap();
+        assert_eq!(info.encoding, CharacterEncoding::Utf8);
     }
 }
