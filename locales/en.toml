@@ -30,6 +30,7 @@ user = "User"
 current = "Online"
 people = ""
 only = " only"
+end_with_dot = "End with . on a new line"
 
 [system]
 name = "HOBBS"

@@ -5,9 +5,9 @@ use tracing::error;
 use super::common::ScreenContext;
 use super::ScreenResult;
 use crate::auth::{change_password, update_profile, ProfileUpdateRequest};
-use crate::db::UserRepository;
+use crate::db::{UserRepository, UserUpdate};
 use crate::error::Result;
-use crate::server::{EchoMode, TelnetSession};
+use crate::server::{CharacterEncoding, EchoMode, TelnetSession};
 
 /// Profile screen handler.
 pub struct ProfileScreen;
@@ -93,9 +93,10 @@ impl ProfileScreen {
             ctx.send(
                 session,
                 &format!(
-                    "[E]={} [P]={} [Q]={}: ",
+                    "[E]={} [P]={} [S]={} [Q]={}: ",
                     ctx.i18n.t("profile.edit"),
                     ctx.i18n.t("profile.change_password"),
+                    ctx.i18n.t("menu.settings"),
                     ctx.i18n.t("common.back")
                 ),
             )
@@ -111,6 +112,11 @@ impl ProfileScreen {
                 }
                 "p" => {
                     Self::change_password(ctx, session, user_id).await?;
+                }
+                "s" => {
+                    if let Some(result) = Self::change_settings(ctx, session, user_id).await? {
+                        return Ok(result);
+                    }
                 }
                 _ => {}
             }
@@ -290,6 +296,143 @@ impl ProfileScreen {
         }
 
         Ok(())
+    }
+
+    /// Change language and encoding settings.
+    async fn change_settings(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        user_id: i64,
+    ) -> Result<Option<ScreenResult>> {
+        // Get current settings
+        let (current_language, current_encoding) = {
+            let user_repo = UserRepository::new(&ctx.db);
+            let user = match user_repo.get_by_id(user_id)? {
+                Some(u) => u,
+                None => return Ok(None),
+            };
+            (user.language.clone(), user.encoding)
+        };
+
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("menu.settings")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        // Show current settings
+        ctx.send_line(
+            session,
+            &format!(
+                "{}: {}",
+                ctx.i18n.t("settings.language"),
+                if current_language == "ja" {
+                    "日本語"
+                } else {
+                    "English"
+                }
+            ),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!(
+                "{}: {}",
+                ctx.i18n.t("settings.encoding"),
+                current_encoding.as_str().to_uppercase()
+            ),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        // Language selection
+        ctx.send_line(session, &format!("{}:", ctx.i18n.t("settings.language")))
+            .await?;
+        ctx.send_line(session, "  [1] English").await?;
+        ctx.send_line(session, "  [2] 日本語 (Japanese)").await?;
+        ctx.send(
+            session,
+            &format!(
+                "{} [{}]: ",
+                ctx.i18n.t("common.number"),
+                if current_language == "ja" { "2" } else { "1" }
+            ),
+        )
+        .await?;
+
+        let lang_input = ctx.read_line(session).await?;
+        let lang_input = lang_input.trim();
+
+        let new_language = match lang_input {
+            "1" => "en".to_string(),
+            "2" => "ja".to_string(),
+            "" => current_language.clone(),
+            _ => current_language.clone(),
+        };
+
+        // Encoding selection
+        ctx.send_line(session, "").await?;
+        ctx.send_line(session, &format!("{}:", ctx.i18n.t("settings.encoding")))
+            .await?;
+        ctx.send_line(session, "  [1] UTF-8").await?;
+        ctx.send_line(session, "  [2] ShiftJIS").await?;
+        ctx.send(
+            session,
+            &format!(
+                "{} [{}]: ",
+                ctx.i18n.t("common.number"),
+                if current_encoding == CharacterEncoding::ShiftJIS {
+                    "2"
+                } else {
+                    "1"
+                }
+            ),
+        )
+        .await?;
+
+        let enc_input = ctx.read_line(session).await?;
+        let enc_input = enc_input.trim();
+
+        let new_encoding = match enc_input {
+            "1" => CharacterEncoding::Utf8,
+            "2" => CharacterEncoding::ShiftJIS,
+            "" => current_encoding,
+            _ => current_encoding,
+        };
+
+        // Check if anything changed
+        if new_language == current_language && new_encoding == current_encoding {
+            ctx.send_line(session, "").await?;
+            return Ok(None);
+        }
+
+        // Save to database
+        let user_repo = UserRepository::new(&ctx.db);
+        let update = UserUpdate::new()
+            .language(new_language.clone())
+            .encoding(new_encoding);
+
+        match user_repo.update(user_id, &update) {
+            Ok(_) => {
+                ctx.send_line(session, "").await?;
+                ctx.send_line(session, ctx.i18n.t("settings.settings_saved"))
+                    .await?;
+
+                // Return SettingsChanged to signal session_handler to update
+                Ok(Some(ScreenResult::SettingsChanged {
+                    language: new_language,
+                    encoding: new_encoding,
+                }))
+            }
+            Err(e) => {
+                error!("Failed to save settings: {}", e);
+                ctx.send_line(session, ctx.i18n.t("common.operation_failed"))
+                    .await?;
+                Ok(None)
+            }
+        }
     }
 
     /// Read multiline input.

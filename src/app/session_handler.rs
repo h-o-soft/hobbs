@@ -571,6 +571,12 @@ Select language / Gengo sentaku:
                         super::screens::ScreenResult::Quit => {
                             return Ok(MenuResult::Quit);
                         }
+                        super::screens::ScreenResult::SettingsChanged { language, encoding } => {
+                            // Apply new settings to session
+                            session.set_encoding(encoding);
+                            self.line_buffer.set_encoding(encoding);
+                            self.set_language(&language);
+                        }
                         _ => {}
                     }
                 } else {
