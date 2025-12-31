@@ -170,6 +170,10 @@ CREATE TABLE files (
 CREATE INDEX idx_files_folder ON files(folder_id);
 CREATE INDEX idx_files_uploader ON files(uploader_id);
 "#,
+    // v11: Add language column for user language preference
+    r#"
+ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'en';
+"#,
 ];
 
 #[cfg(test)]
