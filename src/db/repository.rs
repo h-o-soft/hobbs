@@ -142,7 +142,10 @@ impl<'a> UserRepository<'a> {
     ///
     /// Returns true if a user was deleted, false if not found.
     pub fn delete(&self, id: i64) -> Result<bool> {
-        let affected = self.db.conn().execute("DELETE FROM users WHERE id = ?", [id])?;
+        let affected = self
+            .db
+            .conn()
+            .execute("DELETE FROM users WHERE id = ?", [id])?;
         Ok(affected > 0)
     }
 
@@ -202,12 +205,11 @@ impl<'a> UserRepository<'a> {
 
     /// Count active users.
     pub fn count_active(&self) -> Result<i64> {
-        let count: i64 = self
-            .db
-            .conn()
-            .query_row("SELECT COUNT(*) FROM users WHERE is_active = 1", [], |row| {
-                row.get(0)
-            })?;
+        let count: i64 = self.db.conn().query_row(
+            "SELECT COUNT(*) FROM users WHERE is_active = 1",
+            [],
+            |row| row.get(0),
+        )?;
         Ok(count)
     }
 
@@ -469,16 +471,14 @@ mod tests {
         let db = setup_db();
         let repo = UserRepository::new(&db);
 
-        repo.create(&NewUser::new("member1", "pw", "Member 1")).unwrap();
-        repo.create(&NewUser::new("member2", "pw", "Member 2")).unwrap();
-        repo.create(
-            &NewUser::new("subop", "pw", "SubOp").with_role(Role::SubOp),
-        )
-        .unwrap();
-        repo.create(
-            &NewUser::new("sysop", "pw", "SysOp").with_role(Role::SysOp),
-        )
-        .unwrap();
+        repo.create(&NewUser::new("member1", "pw", "Member 1"))
+            .unwrap();
+        repo.create(&NewUser::new("member2", "pw", "Member 2"))
+            .unwrap();
+        repo.create(&NewUser::new("subop", "pw", "SubOp").with_role(Role::SubOp))
+            .unwrap();
+        repo.create(&NewUser::new("sysop", "pw", "SysOp").with_role(Role::SysOp))
+            .unwrap();
 
         let members = repo.list_by_role(Role::Member).unwrap();
         assert_eq!(members.len(), 2);
@@ -518,7 +518,8 @@ mod tests {
 
         assert!(!repo.username_exists("testuser").unwrap());
 
-        repo.create(&NewUser::new("testuser", "pw", "Test")).unwrap();
+        repo.create(&NewUser::new("testuser", "pw", "Test"))
+            .unwrap();
 
         assert!(repo.username_exists("testuser").unwrap());
         assert!(!repo.username_exists("other").unwrap());

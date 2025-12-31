@@ -290,19 +290,17 @@ impl TelnetParser {
                     }
                 }
             }
-            TelnetCommand::Dont(opt) => {
-                match *opt {
-                    option::ECHO => {
-                        state.echo_enabled = false;
-                        vec![iac::IAC, iac::WONT, option::ECHO]
-                    }
-                    option::SGA => {
-                        state.sga_enabled = false;
-                        vec![iac::IAC, iac::WONT, option::SGA]
-                    }
-                    _ => vec![],
+            TelnetCommand::Dont(opt) => match *opt {
+                option::ECHO => {
+                    state.echo_enabled = false;
+                    vec![iac::IAC, iac::WONT, option::ECHO]
                 }
-            }
+                option::SGA => {
+                    state.sga_enabled = false;
+                    vec![iac::IAC, iac::WONT, option::SGA]
+                }
+                _ => vec![],
+            },
             TelnetCommand::Will(opt) => {
                 // Client wants to enable an option
                 match *opt {
@@ -435,7 +433,8 @@ mod tests {
     #[test]
     fn test_respond_to_do_echo() {
         let mut state = NegotiationState::default();
-        let response = TelnetParser::respond_to_command(&TelnetCommand::Do(option::ECHO), &mut state);
+        let response =
+            TelnetParser::respond_to_command(&TelnetCommand::Do(option::ECHO), &mut state);
         assert!(response.is_empty()); // Already sent WILL
         assert!(state.echo_enabled);
     }

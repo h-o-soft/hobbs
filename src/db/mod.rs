@@ -117,10 +117,7 @@ impl Database {
         let migrations = MIGRATIONS;
 
         if current_version as usize >= migrations.len() {
-            debug!(
-                "Database is up to date (version {})",
-                current_version
-            );
+            debug!("Database is up to date (version {})", current_version);
             return Ok(());
         }
 
@@ -150,16 +147,16 @@ impl Database {
             tx.execute_batch(migration)?;
 
             // Record the migration
-            tx.execute(
-                "INSERT INTO schema_version (version) VALUES (?)",
-                [version],
-            )?;
+            tx.execute("INSERT INTO schema_version (version) VALUES (?)", [version])?;
 
             tx.commit()?;
             debug!("Migration v{} applied successfully", version);
         }
 
-        info!("Database migration complete (now at version {})", migrations.len());
+        info!(
+            "Database migration complete (now at version {})",
+            migrations.len()
+        );
         Ok(())
     }
 

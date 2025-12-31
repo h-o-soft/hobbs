@@ -114,7 +114,11 @@ pub struct NewUser {
 
 impl NewUser {
     /// Create a new user with minimal required fields.
-    pub fn new(username: impl Into<String>, password: impl Into<String>, nickname: impl Into<String>) -> Self {
+    pub fn new(
+        username: impl Into<String>,
+        password: impl Into<String>,
+        nickname: impl Into<String>,
+    ) -> Self {
         Self {
             username: username.into(),
             password: password.into(),

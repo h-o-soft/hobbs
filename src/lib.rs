@@ -10,7 +10,10 @@ pub mod logging;
 pub mod server;
 pub mod terminal;
 
-pub use auth::{hash_password, validate_password, verify_password, PasswordError};
+pub use auth::{
+    hash_password, validate_password, verify_password, AuthSession, LimitResult, LoginLimiter,
+    PasswordError, SessionError, SessionManager,
+};
 pub use config::Config;
 pub use db::{Database, NewUser, Role, User, UserRepository, UserUpdate};
 pub use error::{HobbsError, Result};

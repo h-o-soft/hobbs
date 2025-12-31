@@ -70,7 +70,9 @@ fn test_input_with_telnet_commands() {
     let results = buffer.process_bytes(&data);
 
     // Find the Line result
-    let line_result = results.iter().find(|(r, _)| matches!(r, InputResult::Line(_)));
+    let line_result = results
+        .iter()
+        .find(|(r, _)| matches!(r, InputResult::Line(_)));
     assert!(line_result.is_some());
     if let (InputResult::Line(line), _) = line_result.unwrap() {
         assert_eq!(line, "Hello");
@@ -213,8 +215,7 @@ fn test_echo_toggle() {
     };
 
     // Client sends DONT ECHO (disable echo)
-    let response =
-        TelnetParser::respond_to_command(&TelnetCommand::Dont(option::ECHO), &mut state);
+    let response = TelnetParser::respond_to_command(&TelnetCommand::Dont(option::ECHO), &mut state);
     assert_eq!(response, vec![iac::IAC, iac::WONT, option::ECHO]);
     assert!(!state.echo_enabled);
 

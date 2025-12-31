@@ -110,9 +110,7 @@ impl TerminalProfile {
         if self.cjk_width == 1 {
             s.chars().count()
         } else {
-            s.chars()
-                .map(|c| if c.is_ascii() { 1 } else { 2 })
-                .sum()
+            s.chars().map(|c| if c.is_ascii() { 1 } else { 2 }).sum()
         }
     }
 
@@ -211,7 +209,12 @@ impl TerminalProfile {
             let total_padding = target_width - current_width;
             let left_padding = total_padding / 2;
             let right_padding = total_padding - left_padding;
-            format!("{}{}{}", " ".repeat(left_padding), s, " ".repeat(right_padding))
+            format!(
+                "{}{}{}",
+                " ".repeat(left_padding),
+                s,
+                " ".repeat(right_padding)
+            )
         }
     }
 }
@@ -307,8 +310,14 @@ mod tests {
     fn test_truncate_ascii_standard() {
         let profile = TerminalProfile::standard();
         assert_eq!(profile.truncate_to_width("Hello, World!", 5), "Hello");
-        assert_eq!(profile.truncate_to_width("Hello, World!", 13), "Hello, World!");
-        assert_eq!(profile.truncate_to_width("Hello, World!", 100), "Hello, World!");
+        assert_eq!(
+            profile.truncate_to_width("Hello, World!", 13),
+            "Hello, World!"
+        );
+        assert_eq!(
+            profile.truncate_to_width("Hello, World!", 100),
+            "Hello, World!"
+        );
     }
 
     #[test]
@@ -366,7 +375,8 @@ mod tests {
     #[test]
     fn test_center_cjk() {
         let profile = TerminalProfile::standard();
-        assert_eq!(profile.center_to_width("こんにちは", 14), "  こんにちは  "); // 10 + 4 (2 each side)
+        assert_eq!(profile.center_to_width("こんにちは", 14), "  こんにちは  ");
+        // 10 + 4 (2 each side)
     }
 
     #[test]

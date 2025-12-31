@@ -111,7 +111,10 @@ impl LineBuffer {
             control::ETX => {
                 // Ctrl+C - cancel
                 self.clear();
-                (InputResult::Cancel, vec![b'^', b'C', control::CR, control::LF])
+                (
+                    InputResult::Cancel,
+                    vec![b'^', b'C', control::CR, control::LF],
+                )
             }
             control::EOT => {
                 // Ctrl+D - EOF
@@ -403,7 +406,10 @@ mod tests {
         assert_eq!(results[1], (InputResult::Buffering, vec![b'i']));
         assert_eq!(
             results[2],
-            (InputResult::Line("Hi".to_string()), vec![control::CR, control::LF])
+            (
+                InputResult::Line("Hi".to_string()),
+                vec![control::CR, control::LF]
+            )
         );
     }
 
