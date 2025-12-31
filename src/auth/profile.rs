@@ -668,6 +668,8 @@ mod tests {
 
     #[test]
     fn test_user_profile_from_user() {
+        use crate::server::CharacterEncoding;
+
         let user = User {
             id: 1,
             username: "testuser".to_string(),
@@ -677,6 +679,7 @@ mod tests {
             role: Role::Member,
             profile: Some("Hello!".to_string()),
             terminal: "standard".to_string(),
+            encoding: CharacterEncoding::default(),
             created_at: "2024-01-01".to_string(),
             last_login: Some("2024-01-02".to_string()),
             is_active: true,

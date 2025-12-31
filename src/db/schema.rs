@@ -28,6 +28,10 @@ CREATE TABLE users (
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_role ON users(role);
 "#,
+    // v2: Add encoding column for character encoding preference
+    r#"
+ALTER TABLE users ADD COLUMN encoding TEXT NOT NULL DEFAULT 'shiftjis';
+"#,
 ];
 
 #[cfg(test)]

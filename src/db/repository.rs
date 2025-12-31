@@ -6,6 +6,7 @@ use rusqlite::{params, Row};
 
 use super::user::{NewUser, Role, User, UserUpdate};
 use super::Database;
+use crate::server::CharacterEncoding;
 use crate::{HobbsError, Result};
 
 /// Repository for user CRUD operations.
@@ -24,8 +25,8 @@ impl<'a> UserRepository<'a> {
     /// Returns the created user with the assigned ID.
     pub fn create(&self, new_user: &NewUser) -> Result<User> {
         self.db.conn().execute(
-            "INSERT INTO users (username, password, nickname, email, role, terminal)
-             VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO users (username, password, nickname, email, role, terminal, encoding)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
             params![
                 &new_user.username,
                 &new_user.password,
@@ -33,6 +34,7 @@ impl<'a> UserRepository<'a> {
                 &new_user.email,
                 new_user.role.as_str(),
                 &new_user.terminal,
+                new_user.encoding.as_str(),
             ],
         )?;
 
@@ -45,7 +47,7 @@ impl<'a> UserRepository<'a> {
     pub fn get_by_id(&self, id: i64) -> Result<Option<User>> {
         let result = self.db.conn().query_row(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
-                    created_at, last_login, is_active
+                    encoding, created_at, last_login, is_active
              FROM users WHERE id = ?",
             [id],
             Self::row_to_user,
@@ -62,7 +64,7 @@ impl<'a> UserRepository<'a> {
     pub fn get_by_username(&self, username: &str) -> Result<Option<User>> {
         let result = self.db.conn().query_row(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
-                    created_at, last_login, is_active
+                    encoding, created_at, last_login, is_active
              FROM users WHERE username = ?",
             [username],
             Self::row_to_user,
@@ -111,6 +113,10 @@ impl<'a> UserRepository<'a> {
             fields.push("terminal = ?");
             values.push(Box::new(terminal.clone()));
         }
+        if let Some(encoding) = update.encoding {
+            fields.push("encoding = ?");
+            values.push(Box::new(encoding.as_str().to_string()));
+        }
         if let Some(is_active) = update.is_active {
             fields.push("is_active = ?");
             values.push(Box::new(if is_active { 1i64 } else { 0i64 }));
@@ -153,7 +159,7 @@ impl<'a> UserRepository<'a> {
     pub fn list_active(&self) -> Result<Vec<User>> {
         let mut stmt = self.db.conn().prepare(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
-                    created_at, last_login, is_active
+                    encoding, created_at, last_login, is_active
              FROM users WHERE is_active = 1 ORDER BY username",
         )?;
 
@@ -168,7 +174,7 @@ impl<'a> UserRepository<'a> {
     pub fn list_all(&self) -> Result<Vec<User>> {
         let mut stmt = self.db.conn().prepare(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
-                    created_at, last_login, is_active
+                    encoding, created_at, last_login, is_active
              FROM users ORDER BY username",
         )?;
 
@@ -183,7 +189,7 @@ impl<'a> UserRepository<'a> {
     pub fn list_by_role(&self, role: Role) -> Result<Vec<User>> {
         let mut stmt = self.db.conn().prepare(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
-                    created_at, last_login, is_active
+                    encoding, created_at, last_login, is_active
              FROM users WHERE role = ? AND is_active = 1 ORDER BY username",
         )?;
 
@@ -227,7 +233,9 @@ impl<'a> UserRepository<'a> {
     fn row_to_user(row: &Row<'_>) -> rusqlite::Result<User> {
         let role_str: String = row.get(5)?;
         let role = role_str.parse().unwrap_or(Role::Member);
-        let is_active: i64 = row.get(10)?;
+        let encoding_str: String = row.get(8)?;
+        let encoding = encoding_str.parse().unwrap_or(CharacterEncoding::default());
+        let is_active: i64 = row.get(11)?;
 
         Ok(User {
             id: row.get(0)?,
@@ -238,8 +246,9 @@ impl<'a> UserRepository<'a> {
             role,
             profile: row.get(6)?,
             terminal: row.get(7)?,
-            created_at: row.get(8)?,
-            last_login: row.get(9)?,
+            encoding,
+            created_at: row.get(9)?,
+            last_login: row.get(10)?,
             is_active: is_active != 0,
         })
     }
@@ -523,5 +532,43 @@ mod tests {
 
         assert!(repo.username_exists("testuser").unwrap());
         assert!(!repo.username_exists("other").unwrap());
+    }
+
+    #[test]
+    fn test_create_user_with_encoding() {
+        let db = setup_db();
+        let repo = UserRepository::new(&db);
+
+        let new_user =
+            NewUser::new("testuser", "hash", "Test").with_encoding(CharacterEncoding::Utf8);
+        let user = repo.create(&new_user).unwrap();
+
+        assert_eq!(user.encoding, CharacterEncoding::Utf8);
+    }
+
+    #[test]
+    fn test_create_user_default_encoding() {
+        let db = setup_db();
+        let repo = UserRepository::new(&db);
+
+        let new_user = NewUser::new("testuser", "hash", "Test");
+        let user = repo.create(&new_user).unwrap();
+
+        assert_eq!(user.encoding, CharacterEncoding::ShiftJIS);
+    }
+
+    #[test]
+    fn test_update_encoding() {
+        let db = setup_db();
+        let repo = UserRepository::new(&db);
+
+        let new_user = NewUser::new("testuser", "hash", "Test");
+        let user = repo.create(&new_user).unwrap();
+        assert_eq!(user.encoding, CharacterEncoding::ShiftJIS);
+
+        let update = UserUpdate::new().encoding(CharacterEncoding::Utf8);
+        let updated = repo.update(user.id, &update).unwrap().unwrap();
+
+        assert_eq!(updated.encoding, CharacterEncoding::Utf8);
     }
 }
