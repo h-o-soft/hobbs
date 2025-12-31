@@ -20,8 +20,9 @@ pub use auth::{
     ValidationError, MAX_PROFILE_LENGTH,
 };
 pub use board::{
-    Board, BoardRepository, BoardType, BoardUpdate, NewBoard, NewFlatPost, NewThread,
-    NewThreadPost, Post, PostRepository, PostUpdate, Thread, ThreadRepository, ThreadUpdate,
+    Board, BoardRepository, BoardService, BoardType, BoardUpdate, NewBoard, NewFlatPost, NewThread,
+    NewThreadPost, PaginatedResult, Pagination, Post, PostRepository, PostUpdate, Thread,
+    ThreadRepository, ThreadUpdate,
 };
 pub use config::Config;
 pub use db::{Database, NewUser, Role, User, UserRepository, UserUpdate};
