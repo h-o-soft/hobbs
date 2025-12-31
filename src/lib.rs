@@ -11,7 +11,8 @@ pub mod terminal;
 pub use config::Config;
 pub use error::{HobbsError, Result};
 pub use server::{
-    decode_shiftjis, decode_shiftjis_strict, encode_shiftjis, encode_shiftjis_strict, DecodeResult,
-    EncodeResult, TelnetServer,
+    decode_shiftjis, decode_shiftjis_strict, encode_shiftjis, encode_shiftjis_strict,
+    initial_negotiation, DecodeResult, EchoMode, EncodeResult, InputResult, LineBuffer,
+    MultiLineBuffer, NegotiationState, TelnetCommand, TelnetParser, TelnetServer,
 };
 pub use terminal::TerminalProfile;
