@@ -29,6 +29,31 @@ impl Role {
             Role::SysOp => "sysop",
         }
     }
+
+    /// Get display name for the role.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Role::Guest => "ゲスト",
+            Role::Member => "メンバー",
+            Role::SubOp => "副管理者",
+            Role::SysOp => "管理者",
+        }
+    }
+
+    /// Check if this role has at least the required permission level.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hobbs::db::Role;
+    ///
+    /// assert!(Role::SysOp.can_access(Role::Member));
+    /// assert!(Role::Member.can_access(Role::Member));
+    /// assert!(!Role::Guest.can_access(Role::Member));
+    /// ```
+    pub fn can_access(&self, required: Role) -> bool {
+        *self >= required
+    }
 }
 
 impl fmt::Display for Role {
