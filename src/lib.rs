@@ -3,6 +3,7 @@
 //! A retro BBS host program accessible via Telnet, implemented in Rust.
 
 pub mod auth;
+pub mod board;
 pub mod config;
 pub mod db;
 pub mod error;
@@ -18,6 +19,7 @@ pub use auth::{
     RegistrationError, RegistrationRequest, SessionError, SessionManager, UserProfile,
     ValidationError, MAX_PROFILE_LENGTH,
 };
+pub use board::{Board, BoardRepository, BoardType, BoardUpdate, NewBoard};
 pub use config::Config;
 pub use db::{Database, NewUser, Role, User, UserRepository, UserUpdate};
 pub use error::{HobbsError, Result};

@@ -188,19 +188,19 @@
 
 ---
 
-## Phase 3: データベース・認証
+## Phase 3: データベース・認証 ✅
 
-### 3-1. データベース基盤
+### 3-1. データベース基盤 ✅
 
 **概要**: SQLite 接続とマイグレーション機能を実装する
 
 **完了条件**:
-- [ ] `src/db/mod.rs`, `src/db/schema.rs` を作成
-- [ ] `Database` 構造体（接続プール的な管理）
-- [ ] マイグレーション機能
-- [ ] schema_version テーブル
-- [ ] 初期スキーマ（users テーブル）
-- [ ] 単体テスト
+- [x] `src/db/mod.rs`, `src/db/schema.rs` を作成
+- [x] `Database` 構造体（接続プール的な管理）
+- [x] マイグレーション機能
+- [x] schema_version テーブル
+- [x] 初期スキーマ（users テーブル）
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/db/mod.rs`
@@ -209,15 +209,15 @@
 
 ---
 
-### 3-2. ユーザーリポジトリ
+### 3-2. ユーザーリポジトリ ✅
 
 **概要**: ユーザーの CRUD 操作を実装する
 
 **完了条件**:
-- [ ] `src/db/repository.rs` または `src/auth/repository.rs` を作成
-- [ ] ユーザー作成・取得・更新・削除
-- [ ] ユーザー名による検索
-- [ ] 単体テスト
+- [x] `src/db/repository.rs` または `src/auth/repository.rs` を作成
+- [x] ユーザー作成・取得・更新・削除
+- [x] ユーザー名による検索
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/db/repository.rs`
@@ -225,33 +225,33 @@
 
 ---
 
-### 3-3. パスワードハッシュ
+### 3-3. パスワードハッシュ ✅
 
 **概要**: Argon2id によるパスワードハッシュを実装する
 
 **完了条件**:
-- [ ] `src/auth/password.rs` を作成
-- [ ] hash_password() 関数
-- [ ] verify_password() 関数
-- [ ] 単体テスト
+- [x] `src/auth/password.rs` を作成
+- [x] hash_password() 関数
+- [x] verify_password() 関数
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/auth/password.rs`
 
 ---
 
-### 3-4. ログイン・ログアウト
+### 3-4. ログイン・ログアウト ✅
 
 **概要**: ログイン認証とセッション作成を実装する
 
 **完了条件**:
-- [ ] `src/auth/mod.rs`, `src/auth/session.rs` を作成
-- [ ] `AuthSession` 構造体
-- [ ] login() 関数（認証 + セッション作成）
-- [ ] logout() 関数
-- [ ] セッション検証
-- [ ] ログイン試行制限（3回、5分ロック）
-- [ ] 単体テスト
+- [x] `src/auth/mod.rs`, `src/auth/session.rs` を作成
+- [x] `AuthSession` 構造体
+- [x] login() 関数（認証 + セッション作成）
+- [x] logout() 関数
+- [x] セッション検証
+- [x] ログイン試行制限（3回、5分ロック）
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/auth/mod.rs`
@@ -259,16 +259,16 @@
 
 ---
 
-### 3-5. 新規登録
+### 3-5. 新規登録 ✅
 
 **概要**: ユーザー登録機能を実装する
 
 **完了条件**:
-- [ ] register() 関数
-- [ ] バリデーション（ユーザーID、パスワード、ニックネーム）
-- [ ] 禁止ユーザーIDチェック
-- [ ] 重複チェック
-- [ ] 単体テスト
+- [x] register() 関数
+- [x] バリデーション（ユーザーID、パスワード、ニックネーム）
+- [x] 禁止ユーザーIDチェック
+- [x] 重複チェック
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/auth/mod.rs`（拡張）
@@ -276,63 +276,63 @@
 
 ---
 
-### 3-6. 権限チェック
+### 3-6. 権限チェック ✅
 
 **概要**: Role ベースの権限チェックを実装する
 
 **完了条件**:
-- [ ] `src/auth/permission.rs` を作成
-- [ ] `Role` 列挙型（Guest, Member, SubOp, SysOp）
-- [ ] can_access() 関数
-- [ ] check_permission() 関数
-- [ ] 単体テスト
+- [x] `src/auth/permission.rs` を作成
+- [x] `Role` 列挙型（Guest, Member, SubOp, SysOp）
+- [x] can_access() 関数
+- [x] check_permission() 関数
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/auth/permission.rs`
 
 ---
 
-### 3-7. プロフィール管理
+### 3-7. プロフィール管理 ✅
 
 **概要**: ユーザープロフィールの閲覧・編集を実装する
 
 **完了条件**:
-- [ ] get_profile() 関数
-- [ ] update_profile() 関数
-- [ ] change_password() 関数
-- [ ] 単体テスト
+- [x] get_profile() 関数
+- [x] update_profile() 関数
+- [x] change_password() 関数
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/auth/mod.rs`（拡張）
 
 ---
 
-## Phase 3.5: エンコーディング対応
+## Phase 3.5: エンコーディング対応 ✅
 
-### 3.5-1. CharacterEncoding基盤
+### 3.5-1. CharacterEncoding基盤 ✅
 
 **概要**: 文字エンコーディング選択の基盤を実装する
 
 **完了条件**:
-- [ ] `CharacterEncoding` enum定義（ShiftJIS, UTF-8）
-- [ ] `src/server/encoding.rs` にエンコーディング判定ヘルパー追加
-- [ ] `encode_for_client()`, `decode_from_client()` 関数
-- [ ] 単体テスト
+- [x] `CharacterEncoding` enum定義（ShiftJIS, UTF-8）
+- [x] `src/server/encoding.rs` にエンコーディング判定ヘルパー追加
+- [x] `encode_for_client()`, `decode_from_client()` 関数
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/server/encoding.rs`
 
 ---
 
-### 3.5-2. セッションエンコーディング対応
+### 3.5-2. セッションエンコーディング対応 ✅
 
 **概要**: Telnetセッションでエンコーディング設定を使用する
 
 **完了条件**:
-- [ ] `TelnetSession` に `encoding` フィールド追加
-- [ ] `LineBuffer` のエンコーディング対応
-- [ ] 入出力処理のエンコーディング変換
-- [ ] 統合テスト
+- [x] `TelnetSession` に `encoding` フィールド追加
+- [x] `LineBuffer` のエンコーディング対応
+- [x] 入出力処理のエンコーディング変換
+- [x] 統合テスト
 
 **関連ファイル**:
 - `src/server/session.rs`
@@ -340,17 +340,17 @@
 
 ---
 
-### 3.5-3. ユーザーエンコーディング設定
+### 3.5-3. ユーザーエンコーディング設定 ✅
 
 **概要**: ユーザー設定でエンコーディングを選択・保存する
 
 **完了条件**:
-- [ ] `users` テーブルに `encoding` カラム追加（マイグレーション）
-- [ ] `User`, `NewUser`, `UserUpdate` 構造体に `encoding` フィールド追加
-- [ ] `UserRepository` 更新
-- [ ] ログイン時のエンコーディング設定読み込み
-- [ ] ゲスト用のエンコーディング選択（セッションのみ）
-- [ ] 単体テスト
+- [x] `users` テーブルに `encoding` カラム追加（マイグレーション）
+- [x] `User`, `NewUser`, `UserUpdate` 構造体に `encoding` フィールド追加
+- [x] `UserRepository` 更新
+- [x] ログイン時のエンコーディング設定読み込み
+- [x] ゲスト用のエンコーディング選択（セッションのみ）
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/db/schema.rs` (マイグレーション追加)
