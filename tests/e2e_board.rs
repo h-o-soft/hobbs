@@ -16,6 +16,9 @@ async fn test_board_list_guest() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
+    // Handle language selection first
+    client.select_language("E").await.unwrap();
+
     // Wait for welcome, enter guest mode
     client.recv_until("Select:").await.unwrap();
     client.send_line("G").await.unwrap();

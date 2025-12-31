@@ -112,6 +112,9 @@ async fn test_registration_duplicate_username() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
+    // Handle language selection first
+    client.select_language("E").await.unwrap();
+
     // Wait for welcome then try to register with existing username
     client.recv_until("Select:").await.unwrap();
     client.send_line("R").await.unwrap();
@@ -137,6 +140,9 @@ async fn test_login_empty_username() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
+
+    // Handle language selection first
+    client.select_language("E").await.unwrap();
 
     // Wait for welcome then try to login with empty username
     client.recv_until("Select:").await.unwrap();

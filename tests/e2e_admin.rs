@@ -143,6 +143,9 @@ async fn test_admin_not_visible_to_guest() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
+    // Handle language selection first
+    client.select_language("E").await.unwrap();
+
     // Wait for welcome, enter guest mode
     client.recv_until("Select:").await.unwrap();
     client.send_line("G").await.unwrap();
