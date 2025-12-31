@@ -26,7 +26,8 @@
 | 8 | 管理機能 | 管理メニュー, ユーザー/コンテンツ管理 | Phase 4-7 |
 | 9 | テンプレート・国際化 | テンプレートエンジン, i18n | Phase 2 |
 | 10 | 統合・調整 | 画面遷移, E2Eテスト | Phase 1-9 |
-| 11+ | 将来拡張 | SSH対応, WebSocket等 | Phase 10 |
+| 10.5 | 言語・エンコーディング動的選択 | 接続時の言語選択、ユーザー設定適用 | Phase 10 |
+| 11+ | 将来拡張 | SSH対応, WebSocket等 | Phase 10.5 |
 
 ---
 
@@ -816,6 +817,94 @@
 **関連ファイル**:
 - `README.md`
 - `CLAUDE.md`
+
+---
+
+## Phase 10.5: 言語・エンコーディング動的選択
+
+### 10.5-1. usersテーブルにlanguageカラム追加
+
+**概要**: ユーザーごとの言語設定を保存するため、usersテーブルにlanguageカラムを追加する
+
+**完了条件**:
+- [ ] マイグレーション追加（ALTER TABLE users ADD COLUMN language）
+- [ ] User, NewUser, UserUpdate構造体にlanguageフィールド追加
+- [ ] UserRepository更新
+- [ ] 単体テスト
+
+**関連ファイル**:
+- `src/db/schema.rs`
+- `src/db/user.rs`
+- `src/db/repository.rs`
+
+---
+
+### 10.5-2. ウェルカム画面で言語/エンコーディング選択
+
+**概要**: 接続直後に言語とエンコーディングを選択できるようにする
+
+**画面イメージ**:
+```
+Select language / 言語選択:
+[E] English (UTF-8)
+[J] Japanese / 日本語 (ShiftJIS)
+[U] Japanese / 日本語 (UTF-8)
+```
+
+**完了条件**:
+- [ ] ウェルカム画面の前に選択画面を追加
+- [ ] セッションに選択結果を適用（encoding, i18n）
+- [ ] 選択後にウェルカム画面を表示
+- [ ] 統合テスト
+
+**関連ファイル**:
+- `src/app/session_handler.rs`
+
+---
+
+### 10.5-3. SessionHandlerの言語動的変更対応
+
+**概要**: SessionHandlerで言語（i18n）を動的に変更できるようにする
+
+**完了条件**:
+- [ ] SessionHandlerにset_language()メソッド追加
+- [ ] i18nフィールドを変更可能に（Arc<I18n>のまま差し替え）
+- [ ] ScreenContextへの反映
+- [ ] 単体テスト
+
+**関連ファイル**:
+- `src/app/session_handler.rs`
+- `src/app/screens/common.rs`
+
+---
+
+### 10.5-4. ログイン時のユーザー設定適用
+
+**概要**: ログイン時にDBからユーザーのlanguage/encoding設定を読み込み、セッションに適用する
+
+**完了条件**:
+- [ ] ログイン処理でユーザー設定を読み込み
+- [ ] セッションのencoding/i18nを更新
+- [ ] ゲストの場合はウェルカム選択を維持
+- [ ] 統合テスト
+
+**関連ファイル**:
+- `src/app/session_handler.rs`
+
+---
+
+### 10.5-5. 設定画面での言語/エンコーディング変更
+
+**概要**: プロフィール編集または設定画面で言語/エンコーディングを変更・保存できるようにする
+
+**完了条件**:
+- [ ] 設定変更画面の実装
+- [ ] DB保存処理
+- [ ] 即時反映（セッション更新）
+- [ ] 統合テスト
+
+**関連ファイル**:
+- `src/app/screens/profile.rs` または `src/app/screens/settings.rs`
 
 ---
 
