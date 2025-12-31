@@ -11,10 +11,12 @@ pub mod server;
 pub mod terminal;
 
 pub use auth::{
-    can_modify_resource, check_permission, hash_password, register, register_with_role,
-    require_member, require_subop, require_sysop, validate_password, verify_password, AuthSession,
-    LimitResult, LoginLimiter, PasswordError, PermissionError, RegistrationError,
-    RegistrationRequest, SessionError, SessionManager, ValidationError,
+    can_modify_resource, change_password, check_permission, get_profile, get_profile_by_username,
+    hash_password, register, register_with_role, require_member, require_subop, require_sysop,
+    reset_password, update_profile, validate_password, verify_password, AuthSession, LimitResult,
+    LoginLimiter, PasswordError, PermissionError, ProfileError, ProfileUpdateRequest,
+    RegistrationError, RegistrationRequest, SessionError, SessionManager, UserProfile,
+    ValidationError, MAX_PROFILE_LENGTH,
 };
 pub use config::Config;
 pub use db::{Database, NewUser, Role, User, UserRepository, UserUpdate};
