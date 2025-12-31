@@ -500,49 +500,51 @@
 
 ---
 
-## Phase 6: メール機能
+## Phase 6: メール機能 ✅
 
-### 6-1. メールテーブル実装
+### 6-1. メールテーブル実装 ✅
 
 **概要**: mails テーブルとリポジトリを実装する
 
 **完了条件**:
-- [ ] マイグレーション追加
-- [ ] メール CRUD
-- [ ] 論理削除対応
-- [ ] 単体テスト
+- [x] マイグレーション追加
+- [x] メール CRUD
+- [x] 論理削除対応
+- [x] 単体テスト
 
 **関連ファイル**:
-- `src/db/migrations/006_mails.sql`
+- `src/db/schema.rs` (マイグレーション v8)
 - `src/mail/mod.rs`
 - `src/mail/repository.rs`
+- `src/mail/types.rs`
 
 ---
 
-### 6-2. メール送受信
+### 6-2. メール送受信 ✅
 
 **概要**: メールの送受信ロジックを実装する
 
 **完了条件**:
-- [ ] send_mail() 関数
-- [ ] list_inbox() / list_sent() 関数
-- [ ] get_mail() 関数（既読化含む）
-- [ ] delete_mail() 関数
-- [ ] 単体テスト
+- [x] send_mail() 関数
+- [x] list_inbox() / list_sent() 関数
+- [x] get_mail() 関数（既読化含む）
+- [x] delete_mail() 関数
+- [x] 単体テスト
 
 **関連ファイル**:
-- `src/mail/mod.rs`
+- `src/mail/service.rs`
 
 ---
 
-### 6-3. システムメール
+### 6-3. システムメール ✅
 
 **概要**: ウェルカムメールなどのシステムメールを実装する
 
 **完了条件**:
-- [ ] send_welcome_mail() 関数
-- [ ] SysOp ユーザーの取得方法
-- [ ] 単体テスト
+- [x] send_welcome_mail() 関数
+- [x] get_sysop_user() ヘルパー
+- [x] send_notification() / broadcast_notification() 関数
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/mail/system.rs`
