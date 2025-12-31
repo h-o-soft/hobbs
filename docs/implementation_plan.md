@@ -28,17 +28,17 @@
 
 ---
 
-## Phase 1: プロジェクト基盤
+## Phase 1: プロジェクト基盤 ✅
 
-### 1-1. Cargo.toml と基本構造の作成
+### 1-1. Cargo.toml と基本構造の作成 ✅
 
 **概要**: プロジェクトの骨格を作成する
 
 **完了条件**:
-- [ ] Cargo.toml に依存クレートを記載
-- [ ] src/main.rs, src/lib.rs を作成
-- [ ] `cargo build` が成功する
-- [ ] `cargo test` が実行できる（テストは空でも可）
+- [x] Cargo.toml に依存クレートを記載
+- [x] src/main.rs, src/lib.rs を作成
+- [x] `cargo build` が成功する
+- [x] `cargo test` が実行できる（テストは空でも可）
 
 **関連ファイル**:
 - `Cargo.toml`
@@ -47,16 +47,16 @@
 
 ---
 
-### 1-2. エラー型の定義
+### 1-2. エラー型の定義 ✅
 
 **概要**: 共通エラー型 `HobbsError` を定義する
 
 **完了条件**:
-- [ ] `src/error.rs` を作成
-- [ ] `HobbsError` 列挙型を定義（Database, Io, Auth, Permission, Validation, NotFound）
-- [ ] `thiserror` を使用
-- [ ] `Result<T>` エイリアスを定義
-- [ ] 単体テストを作成
+- [x] `src/error.rs` を作成
+- [x] `HobbsError` 列挙型を定義（Database, Io, Auth, Permission, Validation, NotFound）
+- [x] `thiserror` を使用
+- [x] `Result<T>` エイリアスを定義
+- [x] 単体テストを作成
 
 **関連ファイル**:
 - `src/error.rs`
@@ -64,17 +64,17 @@
 
 ---
 
-### 1-3. 設定ファイル読み込み
+### 1-3. 設定ファイル読み込み ✅
 
 **概要**: config.toml を読み込む機能を実装する
 
 **完了条件**:
-- [ ] `src/config.rs` を作成
-- [ ] `Config` 構造体を定義（server, database, files, bbs, locale, templates, logging）
-- [ ] TOML ファイルの読み込み機能
-- [ ] デフォルト値の設定
-- [ ] 単体テスト（正常系・異常系）
-- [ ] サンプル `config.toml` を作成
+- [x] `src/config.rs` を作成
+- [x] `Config` 構造体を定義（server, database, files, bbs, locale, templates, logging）
+- [x] TOML ファイルの読み込み機能
+- [x] デフォルト値の設定
+- [x] 単体テスト（正常系・異常系）
+- [x] サンプル `config.toml` を作成
 
 **関連ファイル**:
 - `src/config.rs`
@@ -82,15 +82,15 @@
 
 ---
 
-### 1-4. ロギング設定
+### 1-4. ロギング設定 ✅
 
 **概要**: tracing を使用したログ出力を設定する
 
 **完了条件**:
-- [ ] tracing-subscriber の初期化
-- [ ] ログレベル設定（config.toml から読み込み）
-- [ ] ファイル出力設定
-- [ ] 動作確認テスト
+- [x] tracing-subscriber の初期化
+- [x] ログレベル設定（config.toml から読み込み）
+- [x] ファイル出力設定
+- [x] 動作確認テスト
 
 **関連ファイル**:
 - `src/main.rs`（初期化処理）
