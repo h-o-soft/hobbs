@@ -14,10 +14,12 @@
 mod board;
 mod content;
 mod folder;
+mod user;
 
 pub use board::{BoardAdminService, CreateBoardRequest};
 pub use content::{ContentAdminService, PostDeletionMode, DELETED_POST_MESSAGE};
 pub use folder::FolderAdminService;
+pub use user::{generate_password, UserAdminService, UserDetail, DEFAULT_PASSWORD_LENGTH};
 
 use thiserror::Error;
 
