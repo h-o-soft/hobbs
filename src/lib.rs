@@ -22,8 +22,9 @@ pub use config::Config;
 pub use db::{Database, NewUser, Role, User, UserRepository, UserUpdate};
 pub use error::{HobbsError, Result};
 pub use server::{
-    decode_shiftjis, decode_shiftjis_strict, encode_shiftjis, encode_shiftjis_strict,
-    initial_negotiation, DecodeResult, EchoMode, EncodeResult, InputResult, LineBuffer,
-    MultiLineBuffer, NegotiationState, TelnetCommand, TelnetParser, TelnetServer,
+    decode_from_client, decode_shiftjis, decode_shiftjis_strict, encode_for_client, encode_shiftjis,
+    encode_shiftjis_strict, initial_negotiation, CharacterEncoding, DecodeResult, EchoMode,
+    EncodeResult, InputResult, LineBuffer, MultiLineBuffer, NegotiationState, TelnetCommand,
+    TelnetParser, TelnetServer,
 };
 pub use terminal::TerminalProfile;

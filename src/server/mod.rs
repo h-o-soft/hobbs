@@ -10,8 +10,9 @@ mod session;
 pub mod telnet;
 
 pub use encoding::{
-    decode_shiftjis, decode_shiftjis_strict, encode_shiftjis, encode_shiftjis_strict, DecodeResult,
-    EncodeResult,
+    decode_from_client, decode_from_client_detailed, decode_shiftjis, decode_shiftjis_strict,
+    encode_for_client, encode_for_client_detailed, encode_shiftjis, encode_shiftjis_strict,
+    CharacterEncoding, DecodeResult, EncodeResult,
 };
 pub use input::{EchoMode, InputResult, LineBuffer, MultiLineBuffer};
 pub use listener::{ConnectionPermit, TelnetServer};
