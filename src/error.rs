@@ -28,6 +28,10 @@ pub enum HobbsError {
     /// Resource not found.
     #[error("{0} not found")]
     NotFound(String),
+
+    /// Template error.
+    #[error("template error: {0}")]
+    Template(#[from] crate::template::TemplateError),
 }
 
 /// Result type alias for HOBBS operations.

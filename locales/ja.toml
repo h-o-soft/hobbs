@@ -23,6 +23,8 @@ operation_failed = "操作に失敗しました"
 operation_success = "操作が完了しました"
 access_denied = "アクセスが拒否されました"
 permission_denied = "権限がありません"
+press_enter = "[Enter]キーを押してください..."
+number = "番号"
 
 [system]
 name = "HOBBS"
@@ -34,6 +36,44 @@ maintenance = "ただいまメンテナンス中です"
 server_full = "サーバーが満員です。しばらくしてから再接続してください。"
 connection_timeout = "接続がタイムアウトしました"
 session_expired = "セッションが期限切れです。再度ログインしてください。"
+
+[session]
+goodbye = "ご利用ありがとうございました。またのお越しをお待ちしております。"
+force_disconnected = "管理者により切断されました。"
+
+[welcome]
+prompt = "[L]ログイン [R]新規登録 [G]ゲスト [Q]終了"
+invalid_choice = "無効な選択です。ゲストとしてログインします。"
+
+[login]
+title = "=== ログイン ==="
+username = "ユーザーID"
+password = "パスワード"
+success = "ログインしました。ようこそ、{{username}}さん！"
+invalid_credentials = "ユーザーIDまたはパスワードが正しくありません。"
+locked_out = "ログイン試行回数が上限に達しました。しばらくお待ちください。"
+account_disabled = "このアカウントは停止されています。"
+
+[register]
+title = "=== 新規登録 ==="
+username = "ユーザーID"
+password = "パスワード"
+confirm_password = "パスワード（確認）"
+nickname = "ニックネーム"
+username_taken = "このユーザーIDは既に使用されています。"
+password_mismatch = "パスワードが一致しません。"
+password_too_short = "パスワードは8文字以上で入力してください。"
+success = "登録が完了しました。ようこそ、{{username}}さん！"
+failed = "登録に失敗しました。"
+
+[user]
+guest = "ゲスト"
+
+[feature]
+not_implemented = "この機能は現在実装中です。"
+
+[error]
+database = "データベースエラーが発生しました。"
 
 [auth]
 login = "ログイン"
@@ -78,7 +118,9 @@ profile = "プロフィール"
 settings = "設定"
 admin = "管理"
 select_prompt = "選択してください: "
-invalid_selection = "無効な選択です"
+invalid_selection = "無効な選択です: {{input}}"
+login_required = "この機能を使用するにはログインが必要です。"
+admin_required = "この機能を使用するには管理者権限が必要です。"
 
 [board]
 list = "掲示板一覧"
@@ -163,6 +205,7 @@ upload_failed = "アップロードに失敗しました"
 download_started = "ダウンロードを開始します..."
 
 [profile]
+title = "プロフィール"
 view = "プロフィール表示"
 edit = "プロフィール編集"
 change_password = "パスワード変更"
@@ -172,6 +215,8 @@ post_count = "投稿数"
 profile_updated = "プロフィールを更新しました"
 bio = "自己紹介"
 location = "居住地"
+username = "ユーザーID"
+nickname = "ニックネーム"
 
 [settings]
 terminal = "端末設定"

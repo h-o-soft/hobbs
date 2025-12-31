@@ -123,9 +123,7 @@ impl<'a> Renderer<'a> {
         let list = match self.context.get(variable) {
             Some(Value::List(items)) => items,
             Some(_) => {
-                return Err(TemplateError::Render(format!(
-                    "'{variable}' is not a list"
-                )));
+                return Err(TemplateError::Render(format!("'{variable}' is not a list")));
             }
             None => return Ok(String::new()),
         };

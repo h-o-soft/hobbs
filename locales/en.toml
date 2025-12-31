@@ -23,6 +23,8 @@ operation_failed = "Operation failed"
 operation_success = "Operation completed"
 access_denied = "Access denied"
 permission_denied = "Permission denied"
+press_enter = "Press [Enter] to continue..."
+number = "No."
 
 [system]
 name = "HOBBS"
@@ -34,6 +36,44 @@ maintenance = "System is under maintenance"
 server_full = "Server is full. Please try again later."
 connection_timeout = "Connection timed out"
 session_expired = "Session expired. Please login again."
+
+[session]
+goodbye = "Thank you for visiting. See you again!"
+force_disconnected = "You have been disconnected by an administrator."
+
+[welcome]
+prompt = "[L]Login [R]Register [G]Guest [Q]Quit"
+invalid_choice = "Invalid choice. Logging in as guest."
+
+[login]
+title = "=== Login ==="
+username = "Username"
+password = "Password"
+success = "Login successful. Welcome, {{username}}!"
+invalid_credentials = "Invalid username or password."
+locked_out = "Too many login attempts. Please wait."
+account_disabled = "This account has been disabled."
+
+[register]
+title = "=== Registration ==="
+username = "Username"
+password = "Password"
+confirm_password = "Confirm Password"
+nickname = "Nickname"
+username_taken = "This username is already taken."
+password_mismatch = "Passwords do not match."
+password_too_short = "Password must be at least 8 characters."
+success = "Registration complete. Welcome, {{username}}!"
+failed = "Registration failed."
+
+[user]
+guest = "Guest"
+
+[feature]
+not_implemented = "This feature is not yet implemented."
+
+[error]
+database = "A database error occurred."
 
 [auth]
 login = "Login"
@@ -78,7 +118,9 @@ profile = "Profile"
 settings = "Settings"
 admin = "Admin"
 select_prompt = "Select: "
-invalid_selection = "Invalid selection"
+invalid_selection = "Invalid selection: {{input}}"
+login_required = "Please login to use this feature."
+admin_required = "Admin privileges required."
 
 [board]
 list = "Board List"
@@ -163,6 +205,7 @@ upload_failed = "Upload failed"
 download_started = "Starting download..."
 
 [profile]
+title = "Profile"
 view = "View Profile"
 edit = "Edit Profile"
 change_password = "Change Password"
@@ -172,6 +215,8 @@ post_count = "Posts"
 profile_updated = "Profile updated"
 bio = "Bio"
 location = "Location"
+username = "Username"
+nickname = "Nickname"
 
 [settings]
 terminal = "Terminal"
