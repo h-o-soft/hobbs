@@ -14,6 +14,7 @@ pub mod i18n;
 pub mod logging;
 pub mod mail;
 pub mod server;
+pub mod template;
 pub mod terminal;
 
 pub use admin::{
@@ -64,3 +65,4 @@ pub use server::{
 pub use terminal::TerminalProfile;
 
 pub use i18n::{I18n, I18nError, I18nManager, DEFAULT_LOCALE};
+pub use template::{Node, Parser, Renderer, TemplateContext, TemplateEngine, TemplateError, Value};
