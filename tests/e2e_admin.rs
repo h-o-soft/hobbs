@@ -161,6 +161,7 @@ async fn test_admin_not_visible_to_guest() {
     // Should either show invalid command or permission denied
     assert!(
         response.contains("invalid")
+            || response.contains("Invalid")
             || response.contains("無効")
             || response.contains("permission")
             || response.contains("admin")
