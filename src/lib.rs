@@ -10,6 +10,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod file;
+pub mod i18n;
 pub mod logging;
 pub mod mail;
 pub mod server;
@@ -61,3 +62,5 @@ pub use server::{
     TelnetServer, TelnetSession,
 };
 pub use terminal::TerminalProfile;
+
+pub use i18n::{I18n, I18nError, I18nManager, DEFAULT_LOCALE};
