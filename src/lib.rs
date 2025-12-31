@@ -13,6 +13,7 @@ pub mod file;
 pub mod i18n;
 pub mod logging;
 pub mod mail;
+pub mod screen;
 pub mod server;
 pub mod template;
 pub mod terminal;
@@ -61,6 +62,9 @@ pub use server::{
     EchoMode, EncodeResult, InputResult, LineBuffer, MultiLineBuffer, NegotiationState,
     SessionInfo, SessionManager as TelnetSessionManager, SessionState, TelnetCommand, TelnetParser,
     TelnetServer, TelnetSession,
+};
+pub use screen::{
+    create_screen, create_screen_from_profile, AnsiScreen, Color, PlainScreen, Screen,
 };
 pub use terminal::TerminalProfile;
 
