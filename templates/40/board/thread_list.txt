@@ -1,0 +1,16 @@
+========================================
+  {{t "board.board"}}: {{board.name}}   {{t "board.unread"}}:{{board.unread}}
+========================================
+
+No. {{t "board.title"}}        {{t "board.author"}} Res {{t "board.unread"}}
+----------------------------------------
+{{#each threads}}
+{{@index}}  {{title}}  {{author}} {{reply_count}}  {{unread}}{{#if has_unread}}*{{/if}}
+{{/each}}
+
+{{t "common.page"}}: {{current_page}}/{{total_pages}}  [N]{{t "common.next"}} [P]{{t "common.previous"}}
+----------------------------------------
+[{{t "common.number"}}]{{t "board.open"}} [U]{{t "board.unread"}} [A]{{t "board.mark_read"}} [W]{{t "board.new_thread"}}
+[Q]{{t "common.back"}}
+----------------------------------------
+{{t "menu.select_prompt"}}

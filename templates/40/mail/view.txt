@@ -1,0 +1,15 @@
+========================================
+       {{t "mail.detail"}}
+========================================
+{{t "mail.from"}}: {{mail.from}}
+{{t "mail.to"}}:   {{mail.to}}
+{{t "mail.subject"}}:   {{mail.subject}}
+{{t "mail.date"}}:   {{mail.date_short}}
+----------------------------------------
+
+{{mail.body}}
+
+----------------------------------------
+[R]{{t "mail.reply"}} [D]{{t "mail.delete"}} [N]{{t "common.next"}} [P]{{t "common.previous"}} [Q]{{t "common.back"}}
+----------------------------------------
+>

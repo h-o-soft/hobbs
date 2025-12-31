@@ -28,6 +28,7 @@
 //! assert_eq!(result, "Hello, World!");
 //! ```
 
+mod loader;
 mod parser;
 mod renderer;
 
@@ -38,6 +39,7 @@ use thiserror::Error;
 
 use crate::i18n::I18n;
 
+pub use loader::{create_system_context, TemplateLoader, WIDTH_40, WIDTH_80};
 pub use parser::{Node, Parser};
 pub use renderer::Renderer;
 

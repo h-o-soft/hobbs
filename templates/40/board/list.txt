@@ -1,0 +1,14 @@
+========================================
+  {{t "board.list"}}        {{t "board.unread"}}:{{total_unread}}
+========================================
+
+No. {{t "board.name"}}        {{t "board.post_count"}} {{t "board.unread"}}
+----------------------------------------
+{{#each boards}}
+{{@index}}  {{name}}          {{post_count}}  {{unread}}{{#if has_unread}}*{{/if}}
+{{/each}}
+
+----------------------------------------
+[{{t "common.number"}}]{{t "board.open"}} [U]{{t "board.unread"}} [A]{{t "board.mark_read"}} [Q]{{t "common.back"}}
+----------------------------------------
+{{t "menu.select_prompt"}}

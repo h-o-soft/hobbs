@@ -1,0 +1,14 @@
+========================================
+{{board.name}} > {{thread.title}}
+              {{t "board.replies"}} {{post.number}}/{{thread.reply_count}}
+========================================
+{{t "board.author"}}: {{post.author}}
+{{t "board.date"}}: {{post.date_short}}
+----------------------------------------
+
+{{post.body}}
+
+----------------------------------------
+[R]{{t "board.reply"}} [N]{{t "common.next"}} [P]{{t "common.previous"}} [Q]{{t "common.back"}}
+----------------------------------------
+>

@@ -1,0 +1,13 @@
+========================================
+  {{t "chat.room_title"}}         {{participant_count}}{{t "common.people"}}
+========================================
+
+{{#each messages}}
+[{{time_short}}] {{#if is_system}}{{content}}{{else}}{{author}}: {{content}}{{/if}}
+{{/each}}
+
+{{t "chat.participants_short"}}: {{participants}}
+----------------------------------------
+/quit:{{t "chat.leave"}} /who:{{t "chat.who"}} /help
+----------------------------------------
+{{t "chat.message_prompt"}}

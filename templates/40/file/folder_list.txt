@@ -1,0 +1,19 @@
+========================================
+{{t "file.library"}}{{#if current_folder}} > {{current_folder.name}}{{/if}}
+========================================
+
+No. {{t "file.filename"}}      {{t "file.size"}} DL
+----------------------------------------
+{{#each files}}
+{{@index}}  {{name}}       {{size}} {{download_count}}
+{{/each}}
+
+{{t "file.folders"}}:
+{{#each folders}}
+ [{{key}}] {{name}}
+{{/each}}
+
+----------------------------------------
+[{{t "common.number"}}]DL [U]UP [Q]{{t "common.back"}}
+----------------------------------------
+{{t "menu.select_prompt"}}

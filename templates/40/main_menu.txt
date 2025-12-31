@@ -1,0 +1,22 @@
+========================================
+     {{t "menu.main"}}
+        {{t "common.user"}}: {{user.nickname}}
+========================================
+
+ [B] {{t "menu.board"}}
+ [C] {{t "menu.chat"}}        ({{chat.online_count}}{{t "common.people"}})
+ [M] {{t "menu.mail"}}        ({{t "mail.unread"}}{{user.unread_mail}})
+ [F] {{t "menu.file"}}
+ [P] {{t "menu.profile"}}
+ [W] {{t "menu.user_list"}}
+
+{{#if user.is_admin}}
+ [A] {{t "menu.admin"}} *{{t "role.sysop"}}{{t "common.only"}}
+{{/if}}
+
+ [Q] {{t "auth.logout"}}
+
+----------------------------------------
+{{t "profile.last_login_short"}}: {{user.last_login_short}}
+----------------------------------------
+{{t "menu.select_prompt"}}

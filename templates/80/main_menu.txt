@@ -1,0 +1,21 @@
+================================================================================
+    {{t "menu.main"}}                          {{t "common.user"}}: {{user.nickname}} [{{user.role_name}}]
+================================================================================
+
+    [B] {{t "menu.board"}}            - {{t "menu.board_desc"}}
+    [C] {{t "menu.chat"}}          - {{t "menu.chat_desc"}} ({{t "common.current"}} {{chat.online_count}}{{t "common.people"}})
+    [M] {{t "menu.mail"}}            - {{t "menu.mail_desc"}} ({{t "mail.unread_count" count=user.unread_mail}})
+    [F] {{t "menu.file"}}          - {{t "menu.file_desc"}}
+    [P] {{t "menu.profile"}}      - {{t "menu.profile_desc"}}
+    [W] {{t "menu.user_list"}}          - {{t "menu.user_list_desc"}}
+
+{{#if user.is_admin}}
+    [A] {{t "menu.admin"}}      - {{t "menu.admin_desc"}}
+
+{{/if}}
+    [Q] {{t "auth.logout"}}
+
+--------------------------------------------------------------------------------
+    {{t "profile.last_login"}}: {{user.last_login}}
+--------------------------------------------------------------------------------
+{{t "menu.select_prompt"}}

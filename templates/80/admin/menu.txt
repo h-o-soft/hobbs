@@ -1,0 +1,25 @@
+================================================================================
+    {{t "admin.menu"}}                                              {{t "admin.role"}}: {{user.role_name}}
+================================================================================
+
+    === {{t "admin.board_management"}} ===
+    [1] {{t "admin.board_list"}}
+    [2] {{t "admin.create_board"}}
+    [3] {{t "admin.delete_post"}}
+
+    === {{t "admin.file_management"}} ===
+    [4] {{t "admin.folder_list"}}
+    [5] {{t "admin.create_folder"}}
+    [6] {{t "admin.delete_file"}}
+
+    === {{t "admin.user_management"}} ===
+    [7] {{t "admin.user_list"}}
+    [8] {{t "admin.edit_user"}}
+    [9] {{t "admin.change_role"}}
+
+    === {{t "admin.system"}} ===
+    [0] {{t "admin.session_list"}}
+
+    [Q] {{t "admin.back_to_main"}}
+--------------------------------------------------------------------------------
+{{t "menu.select_prompt"}}

@@ -1,0 +1,15 @@
+========================================
+   {{t "mail.inbox"}}     {{t "mail.unread"}}:{{unread_count}}
+========================================
+
+No. *  {{t "mail.from"}}    {{t "mail.subject"}}
+----------------------------------------
+{{#each mails}}
+{{@index}}  {{#if unread}}*{{else}} {{/if}}  {{from}}    {{subject}}
+{{/each}}
+
+* = {{t "mail.unread"}}  {{t "common.page"}}: {{current_page}}/{{total_pages}}
+----------------------------------------
+[{{t "common.number"}}]{{t "mail.read"}} [W]{{t "mail.compose"}} [Q]{{t "common.back"}}
+----------------------------------------
+{{t "menu.select_prompt"}}
