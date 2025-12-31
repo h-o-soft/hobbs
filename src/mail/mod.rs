@@ -7,7 +7,9 @@
 //! - Logical deletion (per sender/recipient)
 
 mod repository;
+mod service;
 mod types;
 
 pub use repository::MailRepository;
+pub use service::{MailService, SendMailRequest};
 pub use types::{Mail, MailUpdate, NewMail, MAX_BODY_LENGTH, MAX_SUBJECT_LENGTH};
