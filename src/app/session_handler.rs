@@ -679,8 +679,11 @@ impl SessionHandler {
     }
 
     /// Send data to the client.
+    /// Converts LF to CRLF for Telnet compatibility.
     async fn send(&self, session: &mut TelnetSession, data: &str) -> Result<()> {
-        let encoded = encode_for_client(data, session.encoding());
+        // Convert LF to CRLF for Telnet (but avoid converting already-CRLF sequences)
+        let data = data.replace("\r\n", "\n").replace('\n', "\r\n");
+        let encoded = encode_for_client(&data, session.encoding());
         session.stream_mut().write_all(&encoded).await?;
         session.stream_mut().flush().await?;
         Ok(())
