@@ -3,6 +3,7 @@
 //! This module provides line buffering, special key handling, and
 //! input processing for Telnet connections.
 
+use super::encoding::{decode_from_client, CharacterEncoding};
 use super::telnet::control;
 
 /// Result of processing input.
@@ -39,6 +40,8 @@ pub struct LineBuffer {
     max_size: usize,
     /// Current echo mode.
     echo_mode: EchoMode,
+    /// Character encoding for decoding input.
+    encoding: CharacterEncoding,
 }
 
 impl LineBuffer {
@@ -48,6 +51,17 @@ impl LineBuffer {
             buffer: Vec::with_capacity(max_size.min(1024)),
             max_size,
             echo_mode: EchoMode::Normal,
+            encoding: CharacterEncoding::default(),
+        }
+    }
+
+    /// Create a new line buffer with a specific encoding.
+    pub fn with_encoding(max_size: usize, encoding: CharacterEncoding) -> Self {
+        Self {
+            buffer: Vec::with_capacity(max_size.min(1024)),
+            max_size,
+            echo_mode: EchoMode::Normal,
+            encoding,
         }
     }
 
@@ -64,6 +78,16 @@ impl LineBuffer {
     /// Set the echo mode.
     pub fn set_echo_mode(&mut self, mode: EchoMode) {
         self.echo_mode = mode;
+    }
+
+    /// Get the current character encoding.
+    pub fn encoding(&self) -> CharacterEncoding {
+        self.encoding
+    }
+
+    /// Set the character encoding.
+    pub fn set_encoding(&mut self, encoding: CharacterEncoding) {
+        self.encoding = encoding;
     }
 
     /// Get the current buffer contents.
@@ -167,9 +191,11 @@ impl LineBuffer {
     }
 
     /// Take the current buffer contents as a string and clear the buffer.
+    ///
+    /// Uses the configured encoding to decode the bytes.
     fn take_line(&mut self) -> String {
         let bytes = std::mem::take(&mut self.buffer);
-        String::from_utf8_lossy(&bytes).into_owned()
+        decode_from_client(&bytes, self.encoding)
     }
 }
 
@@ -479,5 +505,92 @@ mod tests {
 
         buffer.clear();
         assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn test_line_buffer_encoding_default() {
+        let buffer = LineBuffer::new(100);
+        assert_eq!(buffer.encoding(), CharacterEncoding::ShiftJIS);
+    }
+
+    #[test]
+    fn test_line_buffer_with_encoding() {
+        let buffer = LineBuffer::with_encoding(100, CharacterEncoding::Utf8);
+        assert_eq!(buffer.encoding(), CharacterEncoding::Utf8);
+        assert_eq!(buffer.echo_mode(), EchoMode::Normal);
+    }
+
+    #[test]
+    fn test_line_buffer_set_encoding() {
+        let mut buffer = LineBuffer::new(100);
+        assert_eq!(buffer.encoding(), CharacterEncoding::ShiftJIS);
+
+        buffer.set_encoding(CharacterEncoding::Utf8);
+        assert_eq!(buffer.encoding(), CharacterEncoding::Utf8);
+    }
+
+    #[test]
+    fn test_line_buffer_decode_utf8() {
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::Utf8);
+
+        // UTF-8 encoded "こんにちは" (hello in Japanese)
+        let bytes: &[u8] = "こんにちは".as_bytes();
+        for &b in bytes {
+            buffer.process_byte(b);
+        }
+
+        let (result, _) = buffer.process_byte(control::CR);
+        match result {
+            InputResult::Line(line) => assert_eq!(line, "こんにちは"),
+            _ => panic!("Expected Line result"),
+        }
+    }
+
+    #[test]
+    fn test_line_buffer_decode_shiftjis() {
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::ShiftJIS);
+
+        // ShiftJIS encoded "こんにちは"
+        // こ=0x82 0xB1, ん=0x82 0xF1, に=0x82 0xC9, ち=0x82 0xBF, は=0x82 0xCD
+        let shiftjis_bytes: &[u8] = &[
+            0x82, 0xB1, // こ
+            0x82, 0xF1, // ん
+            0x82, 0xC9, // に
+            0x82, 0xBF, // ち
+            0x82, 0xCD, // は
+        ];
+        for &b in shiftjis_bytes {
+            buffer.process_byte(b);
+        }
+
+        let (result, _) = buffer.process_byte(control::CR);
+        match result {
+            InputResult::Line(line) => assert_eq!(line, "こんにちは"),
+            _ => panic!("Expected Line result"),
+        }
+    }
+
+    #[test]
+    fn test_line_buffer_decode_ascii_same_for_both() {
+        // ASCII should decode the same for both encodings
+        let mut buffer_shiftjis = LineBuffer::with_encoding(100, CharacterEncoding::ShiftJIS);
+        let mut buffer_utf8 = LineBuffer::with_encoding(100, CharacterEncoding::Utf8);
+
+        for &b in b"Hello" {
+            buffer_shiftjis.process_byte(b);
+            buffer_utf8.process_byte(b);
+        }
+
+        let (result_sj, _) = buffer_shiftjis.process_byte(control::CR);
+        let (result_utf8, _) = buffer_utf8.process_byte(control::CR);
+
+        match (result_sj, result_utf8) {
+            (InputResult::Line(line_sj), InputResult::Line(line_utf8)) => {
+                assert_eq!(line_sj, "Hello");
+                assert_eq!(line_utf8, "Hello");
+                assert_eq!(line_sj, line_utf8);
+            }
+            _ => panic!("Expected Line results"),
+        }
     }
 }

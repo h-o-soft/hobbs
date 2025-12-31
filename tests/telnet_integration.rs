@@ -274,21 +274,29 @@ fn test_masked_password_mode() {
 fn test_shiftjis_input_processing() {
     use hobbs::{decode_shiftjis, encode_shiftjis};
 
-    let mut buffer = LineBuffer::with_defaults();
-
-    // Simulate ShiftJIS input "テスト" (already decoded to UTF-8)
+    // Test the encoding/decoding functions directly
     let shiftjis_bytes = vec![0x83, 0x65, 0x83, 0x58, 0x83, 0x67];
+
+    // Decode ShiftJIS bytes to UTF-8 string
     let decoded = decode_shiftjis(&shiftjis_bytes);
     assert!(!decoded.had_errors);
     assert_eq!(decoded.text, "テスト");
 
-    // Process UTF-8 bytes
-    for byte in decoded.text.as_bytes() {
-        buffer.process_byte(*byte);
+    // Encode UTF-8 string back to ShiftJIS bytes
+    let encoded = encode_shiftjis(&decoded.text);
+    assert!(!encoded.had_errors);
+    assert_eq!(encoded.bytes, shiftjis_bytes);
+
+    // Now test with LineBuffer using ShiftJIS encoding
+    // Feed ShiftJIS bytes directly to the buffer
+    let mut buffer = LineBuffer::with_defaults(); // Default is ShiftJIS
+    for &byte in &shiftjis_bytes {
+        buffer.process_byte(byte);
     }
 
     let (result, _) = buffer.process_byte(control::CR);
     if let InputResult::Line(line) = result {
+        // Buffer with ShiftJIS encoding should decode ShiftJIS bytes correctly
         assert_eq!(line, "テスト");
 
         // Encode back to ShiftJIS for sending
@@ -298,4 +306,98 @@ fn test_shiftjis_input_processing() {
     } else {
         panic!("Expected Line result");
     }
+}
+
+#[test]
+fn test_line_buffer_shiftjis_encoding() {
+    use hobbs::CharacterEncoding;
+
+    // Create a buffer with ShiftJIS encoding
+    let mut buffer = LineBuffer::with_encoding(1024, CharacterEncoding::ShiftJIS);
+
+    // ShiftJIS encoded "こんにちは" (hello in Japanese)
+    let shiftjis_hello: &[u8] = &[
+        0x82, 0xB1, // こ
+        0x82, 0xF1, // ん
+        0x82, 0xC9, // に
+        0x82, 0xBF, // ち
+        0x82, 0xCD, // は
+    ];
+
+    for &byte in shiftjis_hello {
+        buffer.process_byte(byte);
+    }
+
+    let (result, _) = buffer.process_byte(control::CR);
+    if let InputResult::Line(line) = result {
+        assert_eq!(line, "こんにちは");
+    } else {
+        panic!("Expected Line result");
+    }
+}
+
+#[test]
+fn test_line_buffer_utf8_encoding() {
+    use hobbs::CharacterEncoding;
+
+    // Create a buffer with UTF-8 encoding
+    let mut buffer = LineBuffer::with_encoding(1024, CharacterEncoding::Utf8);
+
+    // UTF-8 encoded "こんにちは"
+    let utf8_hello = "こんにちは".as_bytes();
+
+    for &byte in utf8_hello {
+        buffer.process_byte(byte);
+    }
+
+    let (result, _) = buffer.process_byte(control::CR);
+    if let InputResult::Line(line) = result {
+        assert_eq!(line, "こんにちは");
+    } else {
+        panic!("Expected Line result");
+    }
+}
+
+#[test]
+fn test_encoding_roundtrip_integration() {
+    use hobbs::{decode_from_client, encode_for_client, CharacterEncoding};
+
+    let original = "日本語テスト ABC 123";
+
+    // Test ShiftJIS roundtrip
+    let shiftjis_encoded = encode_for_client(original, CharacterEncoding::ShiftJIS);
+    let shiftjis_decoded = decode_from_client(&shiftjis_encoded, CharacterEncoding::ShiftJIS);
+    assert_eq!(shiftjis_decoded, original);
+
+    // Test UTF-8 roundtrip
+    let utf8_encoded = encode_for_client(original, CharacterEncoding::Utf8);
+    let utf8_decoded = decode_from_client(&utf8_encoded, CharacterEncoding::Utf8);
+    assert_eq!(utf8_decoded, original);
+}
+
+#[test]
+fn test_line_buffer_encoding_change() {
+    use hobbs::CharacterEncoding;
+
+    // Start with default (ShiftJIS)
+    let mut buffer = LineBuffer::with_defaults();
+    assert_eq!(buffer.encoding(), CharacterEncoding::ShiftJIS);
+
+    // Process ASCII text
+    for &byte in b"Hello" {
+        buffer.process_byte(byte);
+    }
+    let (result, _) = buffer.process_byte(control::CR);
+    assert_eq!(result, InputResult::Line("Hello".to_string()));
+
+    // Change to UTF-8
+    buffer.set_encoding(CharacterEncoding::Utf8);
+    assert_eq!(buffer.encoding(), CharacterEncoding::Utf8);
+
+    // Process UTF-8 Japanese text
+    for &byte in "世界".as_bytes() {
+        buffer.process_byte(byte);
+    }
+    let (result, _) = buffer.process_byte(control::CR);
+    assert_eq!(result, InputResult::Line("世界".to_string()));
 }
