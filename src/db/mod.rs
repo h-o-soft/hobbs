@@ -2,9 +2,13 @@
 //!
 //! This module provides SQLite database connectivity and migration management.
 
+mod repository;
 mod schema;
+mod user;
 
+pub use repository::UserRepository;
 pub use schema::MIGRATIONS;
+pub use user::{NewUser, Role, User, UserUpdate};
 
 use std::path::Path;
 
