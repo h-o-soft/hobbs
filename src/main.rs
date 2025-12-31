@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use tracing::{error, info};
 
+use hobbs::server::SessionManager;
 use hobbs::{
     Application, Config, Database, I18nManager, TelnetServer, TelnetSession, TemplateLoader,
 };
-use hobbs::server::SessionManager;
 
 fn main() {
     // Load configuration

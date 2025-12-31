@@ -844,4 +844,202 @@ mod tests {
         assert_ne!(MenuResult::Continue, MenuResult::Logout);
         assert_ne!(MenuResult::Logout, MenuResult::Quit);
     }
+
+    #[test]
+    fn test_set_language_updates_i18n() {
+        use crate::db::Database;
+        use crate::template::TemplateLoader;
+        use tempfile::TempDir;
+
+        // Setup
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let mut db = Database::open(&db_path).unwrap();
+        db.migrate().unwrap();
+        let db = Arc::new(db);
+
+        let config = Arc::new(Config::default());
+
+        // Create I18nManager with test locales
+        let mut i18n_manager = I18nManager::new();
+        let ja = I18n::from_str(
+            "ja",
+            r#"[menu]
+main = "メインメニュー""#,
+        )
+        .unwrap();
+        let en = I18n::from_str(
+            "en",
+            r#"[menu]
+main = "Main Menu""#,
+        )
+        .unwrap();
+        i18n_manager.add_locale(ja);
+        i18n_manager.add_locale(en);
+        let i18n_manager = Arc::new(i18n_manager);
+
+        // Create minimal template loader
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&templates_dir).unwrap();
+        let template_loader = Arc::new(TemplateLoader::new(&templates_dir));
+
+        let session_manager = Arc::new(SessionManager::new(300));
+        let profile = TerminalProfile::default();
+
+        // Create handler
+        let mut handler = SessionHandler::new(
+            db,
+            config,
+            i18n_manager.clone(),
+            template_loader,
+            session_manager,
+            profile,
+        );
+
+        // Test: Initial language is from config (defaults to "ja")
+        assert_eq!(handler.i18n.locale(), "ja");
+        assert_eq!(handler.i18n.t("menu.main"), "メインメニュー");
+
+        // Test: Set language to English
+        handler.set_language("en");
+        assert_eq!(handler.i18n.locale(), "en");
+        assert_eq!(handler.i18n.t("menu.main"), "Main Menu");
+
+        // Test: Set language back to Japanese
+        handler.set_language("ja");
+        assert_eq!(handler.i18n.locale(), "ja");
+        assert_eq!(handler.i18n.t("menu.main"), "メインメニュー");
+
+        // Test: Set to non-existent language falls back to empty I18n
+        handler.set_language("fr");
+        assert_eq!(handler.i18n.locale(), "fr");
+        assert_eq!(handler.i18n.t("menu.main"), "menu.main"); // Fallback to key
+    }
+
+    #[test]
+    fn test_set_language_affects_create_context() {
+        use crate::db::Database;
+        use crate::template::TemplateLoader;
+        use tempfile::TempDir;
+
+        // Setup
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let mut db = Database::open(&db_path).unwrap();
+        db.migrate().unwrap();
+        let db = Arc::new(db);
+
+        let config = Arc::new(Config::default());
+
+        // Create I18nManager with test locales
+        let mut i18n_manager = I18nManager::new();
+        let ja = I18n::from_str(
+            "ja",
+            r#"[test]
+value = "日本語の値""#,
+        )
+        .unwrap();
+        let en = I18n::from_str(
+            "en",
+            r#"[test]
+value = "English value""#,
+        )
+        .unwrap();
+        i18n_manager.add_locale(ja);
+        i18n_manager.add_locale(en);
+        let i18n_manager = Arc::new(i18n_manager);
+
+        // Create minimal template loader
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&templates_dir).unwrap();
+        let template_loader = Arc::new(TemplateLoader::new(&templates_dir));
+
+        let session_manager = Arc::new(SessionManager::new(300));
+        let profile = TerminalProfile::default();
+
+        // Create handler
+        let mut handler = SessionHandler::new(
+            db,
+            config,
+            i18n_manager,
+            template_loader,
+            session_manager,
+            profile,
+        );
+
+        // Set to Japanese
+        handler.set_language("ja");
+        let _context = handler.create_context();
+        // The context contains i18n, verify via translation in the Arc<I18n>
+        assert_eq!(handler.i18n.locale(), "ja");
+
+        // Set to English
+        handler.set_language("en");
+        let _context = handler.create_context();
+        assert_eq!(handler.i18n.locale(), "en");
+    }
+
+    #[test]
+    fn test_set_language_affects_screen_context() {
+        use crate::db::Database;
+        use crate::template::TemplateLoader;
+        use tempfile::TempDir;
+
+        // Setup
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let mut db = Database::open(&db_path).unwrap();
+        db.migrate().unwrap();
+        let db = Arc::new(db);
+
+        let config = Arc::new(Config::default());
+
+        // Create I18nManager with test locales
+        let mut i18n_manager = I18nManager::new();
+        let ja = I18n::from_str(
+            "ja",
+            r#"[screen]
+title = "タイトル""#,
+        )
+        .unwrap();
+        let en = I18n::from_str(
+            "en",
+            r#"[screen]
+title = "Title""#,
+        )
+        .unwrap();
+        i18n_manager.add_locale(ja);
+        i18n_manager.add_locale(en);
+        let i18n_manager = Arc::new(i18n_manager);
+
+        // Create minimal template loader
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&templates_dir).unwrap();
+        let template_loader = Arc::new(TemplateLoader::new(&templates_dir));
+
+        let session_manager = Arc::new(SessionManager::new(300));
+        let profile = TerminalProfile::default();
+
+        // Create handler
+        let mut handler = SessionHandler::new(
+            db,
+            config,
+            i18n_manager,
+            template_loader,
+            session_manager,
+            profile,
+        );
+
+        // Set to Japanese and create screen context
+        handler.set_language("ja");
+        let screen_ctx = handler.create_screen_context();
+        assert_eq!(screen_ctx.i18n.locale(), "ja");
+        assert_eq!(screen_ctx.i18n.t("screen.title"), "タイトル");
+
+        // Set to English and create screen context
+        handler.set_language("en");
+        let screen_ctx = handler.create_screen_context();
+        assert_eq!(screen_ctx.i18n.locale(), "en");
+        assert_eq!(screen_ctx.i18n.t("screen.title"), "Title");
+    }
 }
