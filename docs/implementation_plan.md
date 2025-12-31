@@ -604,66 +604,76 @@
 
 ---
 
-## Phase 8: 管理機能
+## Phase 8: 管理機能 ✅
 
-### 8-1. 管理メニュー基盤
+### 8-1. 管理メニュー基盤 ✅
 
 **概要**: 管理メニューの基盤を実装する
 
 **完了条件**:
-- [ ] `src/admin/mod.rs` を作成
-- [ ] 権限チェック（SubOp/SysOp）
-- [ ] 管理メニュー構造
-- [ ] 単体テスト
+- [x] `src/admin/mod.rs` を作成
+- [x] 権限チェック（SubOp/SysOp）
+- [x] 管理メニュー構造（AdminService, AdminError）
+- [x] 権限ヘルパー（require_admin, is_admin, is_sysop, can_change_role, can_edit_user）
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/admin/mod.rs`
 
 ---
 
-### 8-2. 掲示板・フォルダ管理
+### 8-2. 掲示板・フォルダ管理 ✅
 
 **概要**: 掲示板・フォルダの管理機能を実装する
 
 **完了条件**:
-- [ ] 掲示板の追加・編集・削除
-- [ ] フォルダの追加・編集・削除
-- [ ] 権限による制限（SysOpのみ削除可能等）
-- [ ] 単体テスト
+- [x] 掲示板の追加・編集・削除（BoardAdminService）
+- [x] フォルダの追加・編集・削除（FolderAdminService）
+- [x] コンテンツ管理（ContentAdminService: 投稿・ファイル削除）
+- [x] 権限による制限（SysOpのみ削除可能等）
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/admin/board.rs`
 - `src/admin/folder.rs`
+- `src/admin/content.rs`
 
 ---
 
-### 8-3. ユーザー管理
+### 8-3. ユーザー管理 ✅
 
 **概要**: ユーザー管理機能を実装する
 
 **完了条件**:
-- [ ] ユーザー一覧
-- [ ] ユーザー編集（SubOpは一般会員のみ）
-- [ ] 権限変更（SysOpのみ）
-- [ ] アカウント停止/復活
-- [ ] 単体テスト
+- [x] ユーザー一覧（ページネーション対応）
+- [x] ユーザー詳細（UserDetail: 投稿数・ファイル数・メール数）
+- [x] ユーザー編集（SubOpは一般会員のみ）
+- [x] パスワードリセット（ランダム生成）
+- [x] 権限変更（SysOpのみ）
+- [x] アカウント停止/復活
+- [x] ユーザー検索
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/admin/user.rs`
 
 ---
 
-### 8-4. 接続ユーザー管理
+### 8-4. 接続ユーザー管理 ✅
 
 **概要**: 接続中ユーザーの管理機能を実装する
 
 **完了条件**:
-- [ ] 接続中ユーザー一覧
-- [ ] 強制切断（SysOpのみ）
-- [ ] 単体テスト
+- [x] 接続中ユーザー一覧（SessionAdminService）
+- [x] セッション統計（SessionStatistics）
+- [x] 強制切断（SysOpのみ）
+- [x] 強制切断シグナリング機能（SessionManager拡張）
+- [x] ヘルパー関数（format_session_state, format_duration）
+- [x] 単体テスト
 
 **関連ファイル**:
 - `src/admin/session.rs`
+- `src/server/session.rs`（拡張）
 
 ---
 
