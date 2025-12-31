@@ -11,8 +11,9 @@ pub mod server;
 pub mod terminal;
 
 pub use auth::{
-    hash_password, validate_password, verify_password, AuthSession, LimitResult, LoginLimiter,
-    PasswordError, SessionError, SessionManager,
+    hash_password, register, register_with_role, validate_password, verify_password, AuthSession,
+    LimitResult, LoginLimiter, PasswordError, RegistrationError, RegistrationRequest, SessionError,
+    SessionManager, ValidationError,
 };
 pub use config::Config;
 pub use db::{Database, NewUser, Role, User, UserRepository, UserUpdate};
