@@ -4,5 +4,7 @@
 //! Telnet server.
 
 mod listener;
+mod session;
 
 pub use listener::{ConnectionPermit, TelnetServer};
+pub use session::{SessionInfo, SessionManager, SessionState, TelnetSession};
