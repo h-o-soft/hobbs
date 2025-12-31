@@ -8,10 +8,12 @@
 
 mod folder;
 mod metadata;
+mod service;
 mod storage;
 
 pub use folder::{Folder, FolderRepository, FolderUpdate, NewFolder};
 pub use metadata::{FileMetadata, FileRepository, FileUpdate, NewFile};
+pub use service::{DownloadResult, FileService, UploadRequest};
 pub use storage::FileStorage;
 
 /// Maximum length for filename (in characters).
