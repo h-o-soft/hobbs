@@ -386,19 +386,28 @@ Select language / Gengo sentaku:
                     // Login successful
                     self.login_limiter.clear(&peer_addr);
                     session.set_user(user.id, user.username.clone());
+
+                    // Apply user's encoding preference
                     session.set_encoding(user.encoding);
                     self.line_buffer.set_encoding(user.encoding);
+
+                    // Save user settings for later application
+                    let user_language = user.language.clone();
+                    let user_name = user.username.clone();
 
                     // Update last login
                     if let Err(e) = user_repo.update_last_login(user.id) {
                         warn!("Failed to update last login: {}", e);
                     }
 
+                    // Now apply language preference (after user_repo borrow ends)
+                    self.set_language(&user_language);
+
                     self.send_line(
                         session,
                         &self
                             .i18n
-                            .t_with("login.success", &[("username", &user.username)]),
+                            .t_with("login.success", &[("username", &user_name)]),
                     )
                     .await?;
 

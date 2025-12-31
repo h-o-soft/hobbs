@@ -548,6 +548,26 @@ pub fn create_test_user(
     Ok(id)
 }
 
+/// Create a test user with specific language and encoding settings.
+pub fn create_test_user_with_settings(
+    db: &Database,
+    username: &str,
+    password: &str,
+    role: &str,
+    language: &str,
+    encoding: &str,
+) -> Result<i64, Box<dyn std::error::Error>> {
+    let password_hash = hobbs::hash_password(password)?;
+
+    db.conn().execute(
+        "INSERT INTO users (username, password, nickname, role, language, encoding) VALUES (?, ?, ?, ?, ?, ?)",
+        rusqlite::params![username, password_hash, username, role, language, encoding],
+    )?;
+
+    let id = db.conn().last_insert_rowid();
+    Ok(id)
+}
+
 /// Create a test board in the database.
 pub fn create_test_board(
     db: &Database,
