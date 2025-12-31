@@ -31,7 +31,12 @@ cargo watch -x test
 |------|------|------|
 | 単体テスト | 各モジュール内 `#[cfg(test)]` | 個々の関数・構造体のテスト |
 | 統合テスト | `tests/` ディレクトリ | モジュール間連携のテスト |
-| E2Eテスト | `tests/e2e/` | Telnet接続を含む全体テスト |
+| E2Eテスト | `tests/e2e_*.rs` | Telnet接続を含む全体テスト |
+
+```bash
+# E2Eテスト実行
+cargo test --test e2e_connection --test e2e_auth --test e2e_board --test e2e_mail --test e2e_admin
+```
 
 ## アーキテクチャ
 
@@ -255,3 +260,4 @@ type:
 - `05_protocol.md` - プロトコル仕様
 - `06_screens.md` - 画面設計
 - `07_security.md` - セキュリティ仕様
+- `operation_guide.md` - 運用ガイド
