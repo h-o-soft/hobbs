@@ -17,6 +17,8 @@ pub enum MenuAction {
     File,
     /// Go to user profile.
     Profile,
+    /// Go to member list.
+    MemberList,
     /// Go to admin menu.
     Admin,
     /// Show help.
@@ -54,6 +56,7 @@ impl MenuAction {
             "M" | "3" if is_logged_in => MenuAction::Mail,
             "F" | "4" => MenuAction::File,
             "P" | "5" if is_logged_in => MenuAction::Profile,
+            "W" | "7" => MenuAction::MemberList,
             "A" | "6" if is_admin => MenuAction::Admin,
             "H" | "?" => MenuAction::Help,
             "L" if is_logged_in => MenuAction::Logout,
@@ -96,6 +99,7 @@ impl MenuAction {
             MenuAction::Mail => "M",
             MenuAction::File => "F",
             MenuAction::Profile => "P",
+            MenuAction::MemberList => "W",
             MenuAction::Admin => "A",
             MenuAction::Help => "H",
             MenuAction::Logout => "L",
@@ -136,6 +140,8 @@ pub struct MenuItems {
     pub file: bool,
     /// Whether profile menu is available.
     pub profile: bool,
+    /// Whether member list is available.
+    pub member_list: bool,
     /// Whether admin menu is available.
     pub admin: bool,
     /// Whether help is available.
@@ -159,6 +165,7 @@ impl MenuItems {
             mail: true,
             file: true,
             profile: true,
+            member_list: true,
             admin: is_admin,
             help: true,
             logout: true,
@@ -176,6 +183,7 @@ impl MenuItems {
             mail: false,
             file: true,
             profile: false,
+            member_list: true,
             admin: false,
             help: true,
             logout: false,

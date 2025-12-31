@@ -165,11 +165,19 @@ impl SessionHandler {
                     }
                 }
                 SessionState::Chat => {
-                    // Chat requires ChatRoomManager which is not available in session_handler
-                    // For now, show not implemented
-                    self.send_line(session, self.i18n.t("feature.not_implemented"))
-                        .await?;
-                    session.set_state(SessionState::MainMenu);
+                    let mut screen_ctx = self.create_screen_context();
+                    match super::screens::ChatScreen::run_list(&mut screen_ctx, session).await? {
+                        super::screens::ScreenResult::Logout => {
+                            session.clear_user();
+                            session.set_state(SessionState::Welcome);
+                        }
+                        super::screens::ScreenResult::Quit => {
+                            break;
+                        }
+                        _ => {
+                            session.set_state(SessionState::MainMenu);
+                        }
+                    }
                 }
                 SessionState::Mail => {
                     let mut screen_ctx = self.create_screen_context();
@@ -507,7 +515,16 @@ Select language / Gengo sentaku:
         let request = RegistrationRequest::new(username.clone(), password, nickname);
         let user_repo = UserRepository::new(&self.db);
 
-        match crate::auth::register(&user_repo, request) {
+        // Check if this is the first user - make them SysOp
+        let is_first_user = user_repo.count().unwrap_or(0) == 0;
+
+        let result = if is_first_user {
+            crate::auth::register_with_role(&user_repo, request, Role::SysOp)
+        } else {
+            crate::auth::register(&user_repo, request)
+        };
+
+        match result {
             Ok(user) => {
                 session.set_user(user.id, user.username.clone());
                 self.send_line(
@@ -584,6 +601,18 @@ Select language / Gengo sentaku:
                         .await?;
                 }
             }
+            MenuAction::MemberList => {
+                let mut screen_ctx = self.create_screen_context();
+                match super::screens::MemberScreen::run(&mut screen_ctx, session).await? {
+                    super::screens::ScreenResult::Logout => {
+                        return Ok(MenuResult::Logout);
+                    }
+                    super::screens::ScreenResult::Quit => {
+                        return Ok(MenuResult::Quit);
+                    }
+                    _ => {}
+                }
+            }
             MenuAction::Admin => {
                 if is_admin {
                     session.set_state(SessionState::Admin);
@@ -650,6 +679,7 @@ Select language / Gengo sentaku:
         context.set("menu.mail", Value::bool(menu_items.mail));
         context.set("menu.file", Value::bool(menu_items.file));
         context.set("menu.profile", Value::bool(menu_items.profile));
+        context.set("menu.member_list", Value::bool(menu_items.member_list));
         context.set("menu.admin", Value::bool(menu_items.admin));
         context.set("menu.help", Value::bool(menu_items.help));
         context.set("menu.logout", Value::bool(menu_items.logout));

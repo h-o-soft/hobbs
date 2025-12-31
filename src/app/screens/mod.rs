@@ -9,6 +9,7 @@ mod common;
 mod file;
 mod help;
 mod mail;
+mod member;
 mod profile;
 
 pub use admin::AdminScreen;
@@ -18,6 +19,7 @@ pub use common::ScreenContext;
 pub use file::FileScreen;
 pub use help::HelpScreen;
 pub use mail::MailScreen;
+pub use member::MemberScreen;
 pub use profile::ProfileScreen;
 
 use crate::server::CharacterEncoding;
