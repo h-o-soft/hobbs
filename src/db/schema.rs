@@ -100,6 +100,23 @@ CREATE TABLE read_positions (
 CREATE INDEX idx_read_positions_user_id ON read_positions(user_id);
 CREATE INDEX idx_read_positions_board_id ON read_positions(board_id);
 "#,
+    // v7: Chat logs table for chat message history
+    r#"
+-- Chat logs table for storing chat message history
+CREATE TABLE chat_logs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id         TEXT NOT NULL,
+    user_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,  -- NULL for system messages
+    sender_name     TEXT NOT NULL,                                     -- Display name at send time
+    message_type    TEXT NOT NULL,                                     -- 'chat', 'action', 'system', 'join', 'leave'
+    content         TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_chat_logs_room_id ON chat_logs(room_id);
+CREATE INDEX idx_chat_logs_created_at ON chat_logs(created_at);
+CREATE INDEX idx_chat_logs_room_created ON chat_logs(room_id, created_at);
+"#,
 ];
 
 #[cfg(test)]
@@ -174,5 +191,17 @@ mod tests {
         assert!(read_positions_migration.contains("last_read_post_id"));
         assert!(read_positions_migration.contains("last_read_at"));
         assert!(read_positions_migration.contains("UNIQUE(user_id, board_id)"));
+    }
+
+    #[test]
+    fn test_chat_logs_migration_contains_chat_logs_table() {
+        let chat_logs_migration = MIGRATIONS[6];
+        assert!(chat_logs_migration.contains("CREATE TABLE chat_logs"));
+        assert!(chat_logs_migration.contains("room_id"));
+        assert!(chat_logs_migration.contains("user_id"));
+        assert!(chat_logs_migration.contains("sender_name"));
+        assert!(chat_logs_migration.contains("message_type"));
+        assert!(chat_logs_migration.contains("content"));
+        assert!(chat_logs_migration.contains("created_at"));
     }
 }

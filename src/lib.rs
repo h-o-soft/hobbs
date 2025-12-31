@@ -26,8 +26,9 @@ pub use board::{
     Thread, ThreadRepository, ThreadUpdate, UnreadRepository,
 };
 pub use chat::{
-    format_help, format_who, get_command_help, parse_input, ChatCommand, ChatInput, ChatMessage,
-    ChatParticipant, ChatRoom, CommandInfo, MessageType,
+    format_help, format_who, get_command_help, parse_input, ChatCommand, ChatInput, ChatLog,
+    ChatLogRepository, ChatMessage, ChatParticipant, ChatRoom, CommandInfo, MessageType,
+    NewChatLog, DEFAULT_RECENT_LOG_COUNT,
 };
 pub use config::Config;
 pub use db::{Database, NewUser, Role, User, UserRepository, UserUpdate};
