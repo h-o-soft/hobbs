@@ -119,9 +119,14 @@ pub async fn xmodem_send(stream: &mut TcpStream, data: &[u8]) -> TransferResult<
 pub async fn xmodem_receive(stream: &mut TcpStream) -> TransferResult<Vec<u8>> {
     let mut data = Vec::new();
     let mut expected_block: u8 = 1;
+    let mut total_blocks: u32 = 0;
+    let mut retry_count: u32 = 0;
+
+    tracing::info!("XMODEM: Starting receive, waiting for sender...");
 
     // Wait for first block with retry loop (send 'C' repeatedly until sender responds)
     let first_header = wait_for_sender_start(stream).await?;
+    tracing::info!("XMODEM: Sender started, first header: 0x{:02X}", first_header);
 
     // Process first header
     let mut header = first_header;
@@ -130,44 +135,90 @@ pub async fn xmodem_receive(stream: &mut TcpStream) -> TransferResult<Vec<u8>> {
         match header {
             SOH => {
                 // Receive block
-                let (block_num, block_data) = receive_block(stream, true).await?;
+                match receive_block(stream, true).await {
+                    Ok((block_num, block_data)) => {
+                        tracing::debug!(
+                            "XMODEM: Received block {} (expected {}), data len: {}",
+                            block_num,
+                            expected_block,
+                            block_data.len()
+                        );
 
-                if block_num == expected_block {
-                    data.extend_from_slice(&block_data);
-                    expected_block = expected_block.wrapping_add(1);
-                    stream.write_all(&[ACK]).await?;
-                    stream.flush().await?;
-                } else if block_num == expected_block.wrapping_sub(1) {
-                    // Duplicate block, ACK but don't add data
-                    stream.write_all(&[ACK]).await?;
-                    stream.flush().await?;
-                } else {
-                    // Unexpected block number
-                    stream.write_all(&[NAK]).await?;
-                    stream.flush().await?;
+                        if block_num == expected_block {
+                            data.extend_from_slice(&block_data);
+                            expected_block = expected_block.wrapping_add(1);
+                            total_blocks += 1;
+                            retry_count = 0;
+
+                            tracing::debug!("XMODEM: Block {} OK, sending ACK, total bytes: {}", block_num, data.len());
+                            stream.write_all(&[ACK]).await?;
+                            stream.flush().await?;
+                        } else if block_num == expected_block.wrapping_sub(1) {
+                            // Duplicate block, ACK but don't add data
+                            tracing::debug!("XMODEM: Duplicate block {}, sending ACK", block_num);
+                            stream.write_all(&[ACK]).await?;
+                            stream.flush().await?;
+                        } else {
+                            // Unexpected block number
+                            tracing::warn!(
+                                "XMODEM: Unexpected block {} (expected {}), sending NAK",
+                                block_num,
+                                expected_block
+                            );
+                            retry_count += 1;
+                            stream.write_all(&[NAK]).await?;
+                            stream.flush().await?;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("XMODEM: Block receive error: {}, sending NAK", e);
+                        retry_count += 1;
+                        if retry_count > MAX_RETRIES as u32 {
+                            tracing::error!("XMODEM: Too many retries, aborting");
+                            return Err(TransferError::MaxRetries);
+                        }
+                        stream.write_all(&[NAK]).await?;
+                        stream.flush().await?;
+                    }
                 }
             }
             EOT => {
                 // End of transmission
+                tracing::info!(
+                    "XMODEM: EOT received, transfer complete. {} blocks, {} bytes",
+                    total_blocks,
+                    data.len()
+                );
                 stream.write_all(&[ACK]).await?;
                 stream.flush().await?;
                 break;
             }
             CAN => {
+                tracing::warn!("XMODEM: CAN received, transfer cancelled by sender");
                 return Err(TransferError::Cancelled);
             }
             _ => {
-                // Unknown header, send NAK
-                stream.write_all(&[NAK]).await?;
-                stream.flush().await?;
+                // Unknown header - might be Telnet IAC or other noise
+                tracing::debug!("XMODEM: Unknown header 0x{:02X}, skipping", header);
+                // Don't NAK for unknown bytes, just try to read next header
             }
         }
 
-        // Read next header
-        header = match timeout(RESPONSE_TIMEOUT, read_byte(stream)).await {
-            Ok(Ok(b)) => b,
-            Ok(Err(e)) => return Err(e.into()),
-            Err(_) => return Err(TransferError::Timeout),
+        // Read next header with timeout
+        tracing::debug!("XMODEM: Waiting for next header...");
+        header = match timeout(RESPONSE_TIMEOUT, read_next_header(stream)).await {
+            Ok(Ok(b)) => {
+                tracing::debug!("XMODEM: Got next header: 0x{:02X}", b);
+                b
+            }
+            Ok(Err(e)) => {
+                tracing::error!("XMODEM: Read error: {}", e);
+                return Err(e.into());
+            }
+            Err(_) => {
+                tracing::error!("XMODEM: Timeout waiting for next header after {} blocks", total_blocks);
+                return Err(TransferError::Timeout);
+            }
         };
     }
 
@@ -176,7 +227,33 @@ pub async fn xmodem_receive(stream: &mut TcpStream) -> TransferResult<Vec<u8>> {
         data.pop();
     }
 
+    tracing::info!("XMODEM: Receive complete, {} bytes after padding removal", data.len());
     Ok(data)
+}
+
+/// Read next header byte, skipping Telnet IAC sequences.
+async fn read_next_header(stream: &mut TcpStream) -> std::io::Result<u8> {
+    const IAC: u8 = 0xFF;
+
+    loop {
+        let byte = read_byte(stream).await?;
+        if byte == IAC {
+            // Telnet IAC - read command byte
+            let cmd = read_byte(stream).await?;
+            if cmd == IAC {
+                // Escaped 0xFF - this is actual data, but shouldn't appear as header
+                tracing::debug!("XMODEM: Escaped IAC (0xFF 0xFF)");
+                continue;
+            }
+            // Skip WILL/WONT/DO/DONT option byte
+            if (0xFB..=0xFE).contains(&cmd) {
+                let _ = read_byte(stream).await?;
+            }
+            tracing::debug!("XMODEM: Skipped Telnet IAC sequence");
+            continue;
+        }
+        return Ok(byte);
+    }
 }
 
 /// Wait for sender to start by sending 'C' repeatedly.
@@ -291,44 +368,123 @@ async fn send_block(
     Err(TransferError::MaxRetries)
 }
 
-/// Receive a single block.
+/// Receive a single block, handling Telnet IAC escaping.
 async fn receive_block(
     stream: &mut TcpStream,
     use_crc: bool,
 ) -> TransferResult<(u8, [u8; BLOCK_SIZE])> {
+    const IAC: u8 = 0xFF;
+
     // Read block number and complement
-    let block_num = read_byte(stream).await?;
-    let block_num_complement = read_byte(stream).await?;
+    let block_num = read_byte_skip_iac(stream).await?;
+    let block_num_complement = read_byte_skip_iac(stream).await?;
+
+    tracing::debug!(
+        "XMODEM: Block header: num=0x{:02X}, complement=0x{:02X}",
+        block_num,
+        block_num_complement
+    );
 
     // Verify complement
     if block_num != !block_num_complement {
+        tracing::warn!(
+            "XMODEM: Block number complement mismatch: {} != !{}",
+            block_num,
+            block_num_complement
+        );
         return Err(TransferError::Protocol(
             "Block number complement mismatch".to_string(),
         ));
     }
 
-    // Read data
+    // Read data - need to handle IAC escaping
     let mut data = [0u8; BLOCK_SIZE];
-    stream.read_exact(&mut data).await?;
+    let mut i = 0;
+    while i < BLOCK_SIZE {
+        let byte = read_byte(stream).await?;
+        if byte == IAC {
+            // Read next byte to check if it's escaped IAC
+            let next = read_byte(stream).await?;
+            if next == IAC {
+                // Escaped 0xFF, store as single 0xFF
+                data[i] = IAC;
+                i += 1;
+            } else if (0xFB..=0xFE).contains(&next) {
+                // Telnet WILL/WONT/DO/DONT - skip option byte
+                let _ = read_byte(stream).await?;
+                tracing::debug!("XMODEM: Skipped Telnet command in data");
+                // Don't increment i, we didn't store any data byte
+            } else {
+                // Other Telnet command - skip
+                tracing::debug!("XMODEM: Skipped Telnet command 0x{:02X} in data", next);
+            }
+        } else {
+            data[i] = byte;
+            i += 1;
+        }
+    }
 
     // Read and verify checksum/CRC
     if use_crc {
-        let mut crc_bytes = [0u8; 2];
-        stream.read_exact(&mut crc_bytes).await?;
-        let received_crc = ((crc_bytes[0] as u16) << 8) | (crc_bytes[1] as u16);
+        let crc_high = read_byte_skip_iac(stream).await?;
+        let crc_low = read_byte_skip_iac(stream).await?;
+        let received_crc = ((crc_high as u16) << 8) | (crc_low as u16);
         let calculated_crc = calculate_crc16(&data);
+
+        tracing::debug!(
+            "XMODEM: CRC check: received=0x{:04X}, calculated=0x{:04X}",
+            received_crc,
+            calculated_crc
+        );
+
         if received_crc != calculated_crc {
+            tracing::warn!(
+                "XMODEM: CRC mismatch for block {}: received=0x{:04X}, calculated=0x{:04X}",
+                block_num,
+                received_crc,
+                calculated_crc
+            );
             return Err(TransferError::Protocol("CRC mismatch".to_string()));
         }
     } else {
-        let received_checksum = read_byte(stream).await?;
+        let received_checksum = read_byte_skip_iac(stream).await?;
         let calculated_checksum = calculate_checksum(&data);
         if received_checksum != calculated_checksum {
+            tracing::warn!(
+                "XMODEM: Checksum mismatch for block {}: received=0x{:02X}, calculated=0x{:02X}",
+                block_num,
+                received_checksum,
+                calculated_checksum
+            );
             return Err(TransferError::Protocol("Checksum mismatch".to_string()));
         }
     }
 
     Ok((block_num, data))
+}
+
+/// Read a single byte, handling Telnet IAC escaping.
+async fn read_byte_skip_iac(stream: &mut TcpStream) -> std::io::Result<u8> {
+    const IAC: u8 = 0xFF;
+
+    loop {
+        let byte = read_byte(stream).await?;
+        if byte == IAC {
+            let next = read_byte(stream).await?;
+            if next == IAC {
+                // Escaped 0xFF
+                return Ok(IAC);
+            } else if (0xFB..=0xFE).contains(&next) {
+                // WILL/WONT/DO/DONT - skip one more byte
+                let _ = read_byte(stream).await?;
+                continue;
+            } else {
+                // Other command, skip
+                continue;
+            }
+        }
+        return Ok(byte);
+    }
 }
 
 /// Send EOT and wait for ACK.
