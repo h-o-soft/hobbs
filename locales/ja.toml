@@ -170,6 +170,10 @@ unread_complete = "未読をすべて読みました"
 mark_all_read = "全て既読"
 mark_all_read_confirm = "全ての投稿を既読にしますか？ [Y/N]: "
 marked_all_read = "全ての投稿を既読にしました"
+read_all_unread = "全未読一気読み"
+no_unread_all = "全掲示板に未読がありません"
+unread_all_count = "全掲示板から未読{{count}}件を表示します"
+unread_all_complete = "全ての未読を読みました"
 
 [chat]
 room_list = "チャットルーム一覧"

@@ -170,6 +170,10 @@ unread_complete = "All unread posts have been read"
 mark_all_read = "Mark All Read"
 mark_all_read_confirm = "Mark all posts as read? [Y/N]: "
 marked_all_read = "All posts marked as read"
+read_all_unread = "Read All Unread"
+no_unread_all = "No unread posts in any board"
+unread_all_count = "Showing {{count}} unread posts from all boards"
+unread_all_complete = "All unread posts have been read"
 
 [chat]
 room_list = "Chat Rooms"
