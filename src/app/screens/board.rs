@@ -227,18 +227,33 @@ impl BoardScreen {
             )
             .await?;
 
-            // Prompt
-            ctx.send(
-                session,
-                &format!(
-                    "[N]={} [P]={} [W]={} [Q]={}: ",
-                    ctx.i18n.t("common.next"),
-                    ctx.i18n.t("common.previous"),
-                    ctx.i18n.t("board.new_thread"),
-                    ctx.i18n.t("common.back")
-                ),
-            )
-            .await?;
+            // Prompt - show [U] option only for logged-in users
+            if session.user_id().is_some() {
+                ctx.send(
+                    session,
+                    &format!(
+                        "[N]={} [P]={} [U]={} [W]={} [Q]={}: ",
+                        ctx.i18n.t("common.next"),
+                        ctx.i18n.t("common.previous"),
+                        ctx.i18n.t("board.read_unread"),
+                        ctx.i18n.t("board.new_thread"),
+                        ctx.i18n.t("common.back")
+                    ),
+                )
+                .await?;
+            } else {
+                ctx.send(
+                    session,
+                    &format!(
+                        "[N]={} [P]={} [W]={} [Q]={}: ",
+                        ctx.i18n.t("common.next"),
+                        ctx.i18n.t("common.previous"),
+                        ctx.i18n.t("board.new_thread"),
+                        ctx.i18n.t("common.back")
+                    ),
+                )
+                .await?;
+            }
 
             let input = ctx.read_line(session).await?;
             let input = input.trim();
@@ -247,6 +262,14 @@ impl BoardScreen {
                 "q" | "" => return Ok(ScreenResult::Back),
                 "n" => pagination.next(),
                 "p" => pagination.prev(),
+                "u" => {
+                    if session.user_id().is_some() {
+                        Self::run_unread_batch_read(ctx, session, board_id).await?;
+                    } else {
+                        ctx.send_line(session, ctx.i18n.t("menu.login_required"))
+                            .await?;
+                    }
+                }
                 "w" => {
                     if session.user_id().is_some() {
                         Self::create_thread(ctx, session, board_id).await?;
@@ -353,18 +376,33 @@ impl BoardScreen {
             )
             .await?;
 
-            // Prompt
-            ctx.send(
-                session,
-                &format!(
-                    "[N]={} [P]={} [W]={} [Q]={}: ",
-                    ctx.i18n.t("common.next"),
-                    ctx.i18n.t("common.previous"),
-                    ctx.i18n.t("board.new_post"),
-                    ctx.i18n.t("common.back")
-                ),
-            )
-            .await?;
+            // Prompt - show [U] option only for logged-in users
+            if session.user_id().is_some() {
+                ctx.send(
+                    session,
+                    &format!(
+                        "[N]={} [P]={} [U]={} [W]={} [Q]={}: ",
+                        ctx.i18n.t("common.next"),
+                        ctx.i18n.t("common.previous"),
+                        ctx.i18n.t("board.read_unread"),
+                        ctx.i18n.t("board.new_post"),
+                        ctx.i18n.t("common.back")
+                    ),
+                )
+                .await?;
+            } else {
+                ctx.send(
+                    session,
+                    &format!(
+                        "[N]={} [P]={} [W]={} [Q]={}: ",
+                        ctx.i18n.t("common.next"),
+                        ctx.i18n.t("common.previous"),
+                        ctx.i18n.t("board.new_post"),
+                        ctx.i18n.t("common.back")
+                    ),
+                )
+                .await?;
+            }
 
             let input = ctx.read_line(session).await?;
             let input = input.trim();
@@ -373,6 +411,14 @@ impl BoardScreen {
                 "q" | "" => return Ok(ScreenResult::Back),
                 "n" => pagination.next(),
                 "p" => pagination.prev(),
+                "u" => {
+                    if session.user_id().is_some() {
+                        Self::run_unread_batch_read(ctx, session, board_id).await?;
+                    } else {
+                        ctx.send_line(session, ctx.i18n.t("menu.login_required"))
+                            .await?;
+                    }
+                }
                 "w" => {
                     if session.user_id().is_some() {
                         Self::create_flat_post(ctx, session, board_id).await?;
@@ -684,6 +730,111 @@ impl BoardScreen {
         }
 
         Ok(())
+    }
+
+    /// Run unread batch read for a board.
+    ///
+    /// Displays unread posts one by one, marking each as read after display.
+    async fn run_unread_batch_read(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        board_id: i64,
+    ) -> Result<ScreenResult> {
+        let user_id = match session.user_id() {
+            Some(id) => id,
+            None => return Ok(ScreenResult::Back),
+        };
+
+        // Get unread posts (collect into Vec to release the borrow)
+        let unread_posts = {
+            let unread_repo = UnreadRepository::new(&ctx.db);
+            unread_repo.get_unread_posts(user_id, board_id)?
+        };
+
+        if unread_posts.is_empty() {
+            ctx.send_line(session, "").await?;
+            ctx.send_line(session, ctx.i18n.t("board.no_unread")).await?;
+            ctx.wait_for_enter(session).await?;
+            return Ok(ScreenResult::Back);
+        }
+
+        let total = unread_posts.len();
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &ctx.i18n.t_with("board.unread_count", &[("count", &total.to_string())]),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        for (index, post) in unread_posts.iter().enumerate() {
+            // Display post header (create repo in block to release borrow)
+            let author = {
+                let user_repo = UserRepository::new(&ctx.db);
+                user_repo
+                    .get_by_id(post.author_id)?
+                    .map(|u| u.nickname)
+                    .unwrap_or_else(|| "Unknown".to_string())
+            };
+
+            let title = post.title.as_deref().unwrap_or("(no title)");
+
+            ctx.send_line(session, &format!("=== [{}/{}] {} ===", index + 1, total, title))
+                .await?;
+            ctx.send_line(
+                session,
+                &format!(
+                    "{}: {} ({})",
+                    ctx.i18n.t("board.author"),
+                    author,
+                    post.created_at
+                ),
+            )
+            .await?;
+            ctx.send_line(session, &"-".repeat(40)).await?;
+            ctx.send_line(session, &post.body).await?;
+            ctx.send_line(session, &"-".repeat(40)).await?;
+
+            // Mark this post as read (create repo in block to release borrow)
+            {
+                let unread_repo = UnreadRepository::new(&ctx.db);
+                unread_repo.mark_as_read(user_id, board_id, post.id)?;
+            }
+
+            // Prompt for next action (unless this is the last post)
+            if index + 1 < total {
+                ctx.send(
+                    session,
+                    &format!(
+                        "[N]={} [Q]={}: ",
+                        ctx.i18n.t("common.next"),
+                        ctx.i18n.t("common.quit")
+                    ),
+                )
+                .await?;
+
+                let input = ctx.read_line(session).await?;
+                let input = input.trim();
+
+                match input.to_ascii_lowercase().as_str() {
+                    "q" => {
+                        return Ok(ScreenResult::Back);
+                    }
+                    _ => {
+                        // Continue to next post (default for Enter or 'n')
+                        ctx.send_line(session, "").await?;
+                    }
+                }
+            } else {
+                // Last post - show completion message
+                ctx.send_line(session, "").await?;
+                ctx.send_line(session, ctx.i18n.t("board.unread_complete"))
+                    .await?;
+                ctx.wait_for_enter(session).await?;
+            }
+        }
+
+        Ok(ScreenResult::Back)
     }
 
     /// Read multiline input (ends with a line containing only ".").

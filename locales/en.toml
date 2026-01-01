@@ -164,6 +164,10 @@ page_of = "Page {{current}} of {{total}}"
 unread = "Unread"
 mark_read = "Mark as read"
 mark_all_read = "Mark all as read"
+read_unread = "Read Unread"
+no_unread = "No unread posts"
+unread_count = "Showing {{count}} unread posts"
+unread_complete = "All unread posts have been read"
 
 [chat]
 room_list = "Chat Rooms"
