@@ -399,7 +399,8 @@ impl BoardScreen {
 
                 let user_repo = UserRepository::new(&ctx.db);
                 for (i, post) in result.items.iter().enumerate() {
-                    let num = pagination.offset() + i + 1;
+                    // Number in descending order: oldest post = 1, newest = total
+                    let num = result.total as usize - pagination.offset() - i;
                     let title = post.title.as_deref().unwrap_or("(no title)");
                     let title = if title.chars().count() > 28 {
                         let truncated: String = title.chars().take(25).collect();
@@ -503,8 +504,9 @@ impl BoardScreen {
                 }
                 _ => {
                     if let Some(num) = ctx.parse_number(input) {
-                        let offset = pagination.offset();
-                        let idx = num as i64 - 1 - offset as i64;
+                        // Convert descending number to index
+                        // num = total - offset - idx, so idx = total - offset - num
+                        let idx = result.total as i64 - pagination.offset() as i64 - num as i64;
                         if idx >= 0 && (idx as usize) < result.items.len() {
                             Self::run_post_view(ctx, session, result.items[idx as usize].id)
                                 .await?;

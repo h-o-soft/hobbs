@@ -65,13 +65,15 @@ impl<'a> UnreadRepository<'a> {
     ///
     /// This updates the read position for the user on the board.
     /// If no read position exists, one is created.
+    /// Only updates if the new post_id is greater than the current last_read_post_id.
     pub fn mark_as_read(&self, user_id: i64, board_id: i64, post_id: i64) -> Result<()> {
         self.db.conn().execute(
             "INSERT INTO read_positions (user_id, board_id, last_read_post_id, last_read_at)
              VALUES (?, ?, ?, datetime('now'))
              ON CONFLICT(user_id, board_id) DO UPDATE SET
                  last_read_post_id = excluded.last_read_post_id,
-                 last_read_at = datetime('now')",
+                 last_read_at = datetime('now')
+             WHERE excluded.last_read_post_id > last_read_post_id",
             params![user_id, board_id, post_id],
         )?;
         Ok(())
@@ -477,6 +479,11 @@ mod tests {
         repo.mark_as_read(user_id, board_id, post2_id).unwrap();
         let pos2 = repo.get_read_position(user_id, board_id).unwrap().unwrap();
         assert_eq!(pos2.last_read_post_id, post2_id);
+
+        // Re-reading an older post should NOT move the pointer back
+        repo.mark_as_read(user_id, board_id, post1_id).unwrap();
+        let pos3 = repo.get_read_position(user_id, board_id).unwrap().unwrap();
+        assert_eq!(pos3.last_read_post_id, post2_id); // Still at post2
     }
 
     #[test]
