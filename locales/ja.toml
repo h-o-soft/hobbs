@@ -216,6 +216,7 @@ mail_deleted = "メールを削除しました"
 confirm_delete = "このメールを削除しますか？"
 recipient_not_found = "宛先のユーザーが見つかりません"
 unread_count = "未読 {{count}} 件"
+total = "合計"
 
 [file]
 folder_list = "フォルダ一覧"

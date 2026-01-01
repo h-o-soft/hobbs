@@ -10,6 +10,7 @@ use tracing::{error, info, warn};
 use super::menu::{MenuAction, MenuItems};
 use crate::auth::{verify_password, LimitResult, LoginLimiter, RegistrationRequest};
 use crate::chat::ChatRoomManager;
+use crate::mail::MailRepository;
 use crate::config::Config;
 use crate::db::{Database, Role, UserRepository};
 use crate::error::{HobbsError, Result};
@@ -757,8 +758,10 @@ Select language / Gengo sentaku:
                 let last_login = user.last_login.as_deref().unwrap_or("-");
                 context.set("user.last_login", Value::string(last_login.to_string()));
 
-                // Set unread mail count (placeholder for now)
-                context.set("user.unread_mail", Value::number(0));
+                // Set unread mail count
+                let unread_count = MailRepository::count_unread(self.db.conn(), user_id)
+                    .unwrap_or(0);
+                context.set("user.unread_mail", Value::number(unread_count));
             } else {
                 // Fallback if user not found
                 context.set("user.name", Value::string(self.i18n.t("user.guest").to_string()));

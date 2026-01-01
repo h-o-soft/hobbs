@@ -212,6 +212,7 @@ mail_deleted = "Mail deleted"
 confirm_delete = "Delete this mail?"
 recipient_not_found = "Recipient not found"
 unread_count = "{{count}} unread"
+total = "Total"
 
 [file]
 folder_list = "Folders"
