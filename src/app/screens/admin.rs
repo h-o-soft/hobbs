@@ -32,8 +32,21 @@ impl AdminScreen {
                 &format!("=== {} ===", ctx.i18n.t("admin.board_management")),
             )
             .await?;
-            ctx.send_line(session, "  [1] Board List").await?;
-            ctx.send_line(session, "  [2] Create Board").await?;
+            ctx.send_line(
+                session,
+                &format!("  [1] {}", ctx.i18n.t("admin.board_list")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [2] {}", ctx.i18n.t("admin.create_board")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [3] {}", ctx.i18n.t("admin.delete_board")),
+            )
+            .await?;
             ctx.send_line(session, "").await?;
 
             ctx.send_line(
@@ -41,8 +54,16 @@ impl AdminScreen {
                 &format!("=== {} ===", ctx.i18n.t("admin.user_management")),
             )
             .await?;
-            ctx.send_line(session, "  [3] User List").await?;
-            ctx.send_line(session, "  [4] Active Sessions").await?;
+            ctx.send_line(
+                session,
+                &format!("  [4] {}", ctx.i18n.t("admin.user_list")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [5] {}", ctx.i18n.t("admin.session_list")),
+            )
+            .await?;
             ctx.send_line(session, "").await?;
 
             ctx.send_line(
@@ -50,9 +71,21 @@ impl AdminScreen {
                 &format!("=== {} ===", ctx.i18n.t("admin.chat_management")),
             )
             .await?;
-            ctx.send_line(session, "  [5] Chat Room List").await?;
-            ctx.send_line(session, "  [6] Create Chat Room").await?;
-            ctx.send_line(session, "  [7] Delete Chat Room").await?;
+            ctx.send_line(
+                session,
+                &format!("  [6] {}", ctx.i18n.t("admin.chat_room_list")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [7] {}", ctx.i18n.t("admin.create_chat_room")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [8] {}", ctx.i18n.t("admin.delete_chat_room")),
+            )
+            .await?;
             ctx.send_line(session, "").await?;
 
             ctx.send_line(
@@ -62,17 +95,17 @@ impl AdminScreen {
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [8] {}", ctx.i18n.t("admin.folder_list")),
+                &format!("  [9] {}", ctx.i18n.t("admin.folder_list")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [9] {}", ctx.i18n.t("admin.create_folder")),
+                &format!("  [10] {}", ctx.i18n.t("admin.create_folder")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [10] {}", ctx.i18n.t("admin.delete_folder")),
+                &format!("  [11] {}", ctx.i18n.t("admin.delete_folder")),
             )
             .await?;
             ctx.send_line(session, "").await?;
@@ -82,7 +115,7 @@ impl AdminScreen {
                 &format!("=== {} ===", ctx.i18n.t("admin.system_status")),
             )
             .await?;
-            ctx.send_line(session, "  [11] System Status").await?;
+            ctx.send_line(session, "  [12] System Status").await?;
             ctx.send_line(session, "").await?;
 
             ctx.send(
@@ -102,15 +135,16 @@ impl AdminScreen {
                 "q" | "" => return Ok(ScreenResult::Back),
                 "1" => Self::show_board_list(ctx, session).await?,
                 "2" => Self::create_board(ctx, session).await?,
-                "3" => Self::show_user_list(ctx, session).await?,
-                "4" => Self::show_sessions(ctx, session).await?,
-                "5" => Self::show_chat_rooms(ctx, session).await?,
-                "6" => Self::create_chat_room(ctx, session).await?,
-                "7" => Self::delete_chat_room(ctx, session).await?,
-                "8" => Self::show_folders(ctx, session).await?,
-                "9" => Self::create_folder(ctx, session).await?,
-                "10" => Self::delete_folder(ctx, session).await?,
-                "11" => Self::show_system_status(ctx, session).await?,
+                "3" => Self::delete_board(ctx, session).await?,
+                "4" => Self::show_user_list(ctx, session).await?,
+                "5" => Self::show_sessions(ctx, session).await?,
+                "6" => Self::show_chat_rooms(ctx, session).await?,
+                "7" => Self::create_chat_room(ctx, session).await?,
+                "8" => Self::delete_chat_room(ctx, session).await?,
+                "9" => Self::show_folders(ctx, session).await?,
+                "10" => Self::create_folder(ctx, session).await?,
+                "11" => Self::delete_folder(ctx, session).await?,
+                "12" => Self::show_system_status(ctx, session).await?,
                 _ => {}
             }
         }
@@ -217,6 +251,176 @@ impl AdminScreen {
             }
             Err(e) => {
                 ctx.send_line(session, &format!("Failed to create board: {}", e))
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Delete a board.
+    async fn delete_board(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
+        use crate::admin::BoardAdminService;
+        use crate::board::{BoardRepository, PostRepository, ThreadRepository};
+        use crate::db::{Role, UserRepository};
+
+        // Check SysOp permission
+        let user_id = match session.user_id() {
+            Some(id) => id,
+            None => {
+                ctx.send_line(session, ctx.i18n.t("menu.login_required"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        let user_repo = UserRepository::new(&ctx.db);
+        let user = match user_repo.get_by_id(user_id)? {
+            Some(u) => u,
+            None => return Ok(()),
+        };
+
+        if user.role != Role::SysOp {
+            ctx.send_line(session, ctx.i18n.t("admin.sysop_required"))
+                .await?;
+            return Ok(());
+        }
+
+        // Show board list
+        let board_repo = BoardRepository::new(&ctx.db);
+        let boards = board_repo.list_all()?;
+
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("admin.delete_board")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        if boards.is_empty() {
+            ctx.send_line(session, ctx.i18n.t("board.no_boards"))
+                .await?;
+            return Ok(());
+        }
+
+        // Get thread/post counts for all boards upfront
+        let board_counts: Vec<(i64, i64)> = {
+            let thread_repo = ThreadRepository::new(&ctx.db);
+            let post_repo = PostRepository::new(&ctx.db);
+            boards
+                .iter()
+                .map(|b| {
+                    let t = thread_repo.count_by_board(b.id).unwrap_or(0);
+                    let p = post_repo.count_by_board(b.id).unwrap_or(0);
+                    (t, p)
+                })
+                .collect()
+        };
+
+        // Display boards with thread/post counts
+        ctx.send_line(
+            session,
+            &format!(
+                "  {:<4} {:<20} {:<10} {:<10}",
+                ctx.i18n.t("common.number"),
+                ctx.i18n.t("board.title"),
+                ctx.i18n.t("board.replies"),
+                ctx.i18n.t("board.views")
+            ),
+        )
+        .await?;
+        ctx.send_line(session, &"-".repeat(50)).await?;
+
+        for (i, board) in boards.iter().enumerate() {
+            let (thread_count, post_count) = board_counts[i];
+            ctx.send_line(
+                session,
+                &format!(
+                    "  {:<4} {:<20} {:<10} {:<10}",
+                    i + 1,
+                    if board.name.chars().count() > 18 {
+                        format!("{}...", board.name.chars().take(15).collect::<String>())
+                    } else {
+                        board.name.clone()
+                    },
+                    thread_count,
+                    post_count
+                ),
+            )
+            .await?;
+        }
+
+        ctx.send_line(session, "").await?;
+
+        // Get board number to delete
+        ctx.send(
+            session,
+            &format!(
+                "{} [Q={}]: ",
+                ctx.i18n.t("admin.board_number_to_delete"),
+                ctx.i18n.t("common.cancel")
+            ),
+        )
+        .await?;
+
+        let input = ctx.read_line(session).await?;
+        let input = input.trim();
+
+        if input.is_empty() || input.eq_ignore_ascii_case("q") {
+            return Ok(());
+        }
+
+        let board_num: usize = match input.parse() {
+            Ok(n) if n > 0 && n <= boards.len() => n,
+            _ => {
+                ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        let board = &boards[board_num - 1];
+        let (thread_count, post_count) = board_counts[board_num - 1];
+
+        // Show confirmation
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &ctx.i18n.t_with(
+                "admin.board_delete_confirm",
+                &[
+                    ("name", &board.name),
+                    ("threads", &thread_count.to_string()),
+                    ("posts", &post_count.to_string()),
+                ],
+            ),
+        )
+        .await?;
+        ctx.send(session, "[Y/N]: ").await?;
+
+        let confirm = ctx.read_line(session).await?;
+        if !confirm.trim().eq_ignore_ascii_case("y") {
+            ctx.send_line(session, ctx.i18n.t("common.cancel")).await?;
+            return Ok(());
+        }
+
+        // Delete board
+        let admin_service = BoardAdminService::new(&ctx.db);
+        match admin_service.delete_board(board.id, &user) {
+            Ok(true) => {
+                ctx.send_line(
+                    session,
+                    &ctx.i18n.t_with("admin.board_deleted", &[("name", &board.name)]),
+                )
+                .await?;
+            }
+            Ok(false) => {
+                ctx.send_line(session, ctx.i18n.t("admin.board_not_found"))
+                    .await?;
+            }
+            Err(e) => {
+                ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("common.error"), e))
                     .await?;
             }
         }

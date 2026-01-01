@@ -323,6 +323,12 @@ folder_created = "Folder '{{name}}' created"
 folder_deleted = "Folder '{{name}}' deleted"
 folder_not_found = "Folder not found"
 folder_has_files = "This folder contains {{count}} files. Delete anyway?"
+board_list = "Board List"
+sysop_required = "SysOp permission is required for this operation"
+board_number_to_delete = "Board number to delete"
+board_delete_confirm = "Delete board '{{name}}'? This will delete {{threads}} threads and {{posts}} posts."
+board_deleted = "Board '{{name}}' deleted"
+board_not_found = "Board not found"
 
 [role]
 guest = "Guest"
