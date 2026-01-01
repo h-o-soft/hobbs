@@ -83,6 +83,8 @@ not_implemented = "This feature is not yet implemented."
 
 [error]
 database = "A database error occurred."
+not_logged_in = "Please login first"
+user_not_found = "User not found"
 
 [auth]
 login = "Login"
@@ -234,6 +236,17 @@ confirm_delete = "Delete this file?"
 file_too_large = "File too large (max {{max}})"
 upload_failed = "Upload failed"
 download_started = "Starting download..."
+# XMODEM transfer
+download_confirm = "Download with XMODEM?"
+upload_prompt = "Enter filename to upload"
+upload_description_prompt = "Enter file description (optional)"
+xmodem_start_download = "Starting XMODEM. Please start receiving on your terminal..."
+xmodem_start_upload = "Starting XMODEM. Please start sending on your terminal..."
+xmodem_waiting = "Sending 'C' every 3 seconds waiting for sender..."
+xmodem_complete = "Transfer complete"
+xmodem_failed = "Transfer failed"
+xmodem_cancelled = "Transfer cancelled"
+xmodem_timeout = "Transfer timed out"
 
 [profile]
 title = "Profile"
@@ -298,6 +311,17 @@ room_id_exists = "A room with this ID already exists"
 force_disconnect = "Force Disconnect"
 confirm_disconnect = "Disconnect this user?"
 user_disconnected = "User disconnected"
+file_management = "File Management"
+folder_list = "Folder List"
+create_folder = "Create Folder"
+delete_folder = "Delete Folder"
+folder_name = "Folder Name"
+permission = "View Perm"
+upload_perm = "Upload Perm"
+folder_created = "Folder '{{name}}' created"
+folder_deleted = "Folder '{{name}}' deleted"
+folder_not_found = "Folder not found"
+folder_has_files = "This folder contains {{count}} files. Delete anyway?"
 
 [role]
 guest = "Guest"

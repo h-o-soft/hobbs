@@ -210,6 +210,23 @@ impl TelnetSession {
     pub fn into_stream(self) -> TcpStream {
         self.stream
     }
+
+    /// Swap the TCP stream with another stream.
+    ///
+    /// This is useful for operations like XMODEM file transfer that need
+    /// temporary ownership of the stream. The original stream is returned
+    /// and can be restored later by swapping again.
+    ///
+    /// # Arguments
+    ///
+    /// * `new_stream` - The new stream to put in place
+    ///
+    /// # Returns
+    ///
+    /// The old stream that was in the session
+    pub fn swap_stream(&mut self, new_stream: TcpStream) -> TcpStream {
+        std::mem::replace(&mut self.stream, new_stream)
+    }
 }
 
 /// Information about a session for external queries.

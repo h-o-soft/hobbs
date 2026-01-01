@@ -87,6 +87,8 @@ not_implemented = "この機能は現在実装中です。"
 [error]
 # This can appear during login, so must be ASCII/English
 database = "A database error occurred."
+not_logged_in = "ログインが必要です"
+user_not_found = "ユーザーが見つかりません"
 
 [auth]
 login = "ログイン"
@@ -238,6 +240,17 @@ confirm_delete = "このファイルを削除しますか？"
 file_too_large = "ファイルサイズが大きすぎます（最大{{max}}）"
 upload_failed = "アップロードに失敗しました"
 download_started = "ダウンロードを開始します..."
+# XMODEM transfer
+download_confirm = "XMODEMでダウンロードしますか？"
+upload_prompt = "アップロードするファイル名を入力してください"
+upload_description_prompt = "ファイルの説明を入力してください（省略可）"
+xmodem_start_download = "XMODEMを開始します。ターミナルで受信を開始してください..."
+xmodem_start_upload = "XMODEMを開始します。ターミナルで送信を開始してください..."
+xmodem_waiting = "3秒ごとに'C'を送信して送信側を待機中..."
+xmodem_complete = "転送が完了しました"
+xmodem_failed = "転送に失敗しました"
+xmodem_cancelled = "転送がキャンセルされました"
+xmodem_timeout = "転送がタイムアウトしました"
 
 [profile]
 title = "プロフィール"
@@ -302,6 +315,17 @@ room_id_exists = "同じIDのルームが既に存在します"
 force_disconnect = "強制切断"
 confirm_disconnect = "このユーザーを強制切断しますか？"
 user_disconnected = "ユーザーを切断しました"
+file_management = "ファイル管理"
+folder_list = "フォルダ一覧"
+create_folder = "フォルダ作成"
+delete_folder = "フォルダ削除"
+folder_name = "フォルダ名"
+permission = "閲覧権限"
+upload_perm = "アップロード権限"
+folder_created = "フォルダ「{{name}}」を作成しました"
+folder_deleted = "フォルダ「{{name}}」を削除しました"
+folder_not_found = "フォルダが見つかりません"
+folder_has_files = "このフォルダには{{count}}件のファイルがあります。削除しますか？"
 
 [role]
 guest = "ゲスト"

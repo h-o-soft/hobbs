@@ -57,10 +57,32 @@ impl AdminScreen {
 
             ctx.send_line(
                 session,
+                &format!("=== {} ===", ctx.i18n.t("admin.file_management")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [8] {}", ctx.i18n.t("admin.folder_list")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [9] {}", ctx.i18n.t("admin.create_folder")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [10] {}", ctx.i18n.t("admin.delete_folder")),
+            )
+            .await?;
+            ctx.send_line(session, "").await?;
+
+            ctx.send_line(
+                session,
                 &format!("=== {} ===", ctx.i18n.t("admin.system_status")),
             )
             .await?;
-            ctx.send_line(session, "  [8] System Status").await?;
+            ctx.send_line(session, "  [11] System Status").await?;
             ctx.send_line(session, "").await?;
 
             ctx.send(
@@ -85,7 +107,10 @@ impl AdminScreen {
                 "5" => Self::show_chat_rooms(ctx, session).await?,
                 "6" => Self::create_chat_room(ctx, session).await?,
                 "7" => Self::delete_chat_room(ctx, session).await?,
-                "8" => Self::show_system_status(ctx, session).await?,
+                "8" => Self::show_folders(ctx, session).await?,
+                "9" => Self::create_folder(ctx, session).await?,
+                "10" => Self::delete_folder(ctx, session).await?,
+                "11" => Self::show_system_status(ctx, session).await?,
                 _ => {}
             }
         }
@@ -471,6 +496,245 @@ impl AdminScreen {
                     Err(DeleteRoomError::HasParticipants) => {
                         ctx.send_line(session, ctx.i18n.t("admin.room_has_users"))
                             .await?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Show folder list.
+    async fn show_folders(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
+        use crate::file::FolderRepository;
+
+        let folders = FolderRepository::list_root(ctx.db.conn())?;
+
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("admin.folder_list")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        if folders.is_empty() {
+            ctx.send_line(session, ctx.i18n.t("file.no_folders")).await?;
+        } else {
+            ctx.send_line(
+                session,
+                &format!(
+                    "{:<4} {:<20} {:<10} {:<10}",
+                    "ID",
+                    ctx.i18n.t("file.folder_list"),
+                    ctx.i18n.t("admin.permission"),
+                    ctx.i18n.t("admin.upload_perm")
+                ),
+            )
+            .await?;
+            ctx.send_line(session, &"-".repeat(50)).await?;
+
+            for folder in &folders {
+                let file_count = FolderRepository::count_files(ctx.db.conn(), folder.id)?;
+                ctx.send_line(
+                    session,
+                    &format!(
+                        "{:<4} {:<20} {:<10} {:<10} ({} files)",
+                        folder.id,
+                        folder.name,
+                        folder.permission.as_str(),
+                        folder.upload_perm.as_str(),
+                        file_count
+                    ),
+                )
+                .await?;
+            }
+        }
+
+        ctx.send_line(session, "").await?;
+        ctx.wait_for_enter(session).await?;
+        Ok(())
+    }
+
+    /// Create a new folder.
+    async fn create_folder(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
+        use crate::db::Role;
+        use crate::file::{FolderRepository, NewFolder};
+
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("admin.create_folder")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        // Get folder name
+        ctx.send(session, &format!("{}: ", ctx.i18n.t("admin.folder_name")))
+            .await?;
+        let name = ctx.read_line(session).await?;
+        let name = name.trim();
+
+        if name.is_empty() {
+            return Ok(());
+        }
+
+        // Get description
+        ctx.send(
+            session,
+            &format!("{}: ", ctx.i18n.t("file.description")),
+        )
+        .await?;
+        let description = ctx.read_line(session).await?;
+        let description = description.trim();
+
+        // Get view permission
+        ctx.send_line(session, "").await?;
+        ctx.send_line(session, "View permission:").await?;
+        ctx.send_line(session, "  [1] Guest").await?;
+        ctx.send_line(session, "  [2] Member").await?;
+        ctx.send_line(session, "  [3] SubOp").await?;
+        ctx.send_line(session, "  [4] SysOp").await?;
+        ctx.send(session, "Select [2]: ").await?;
+        let perm_input = ctx.read_line(session).await?;
+        let permission = match perm_input.trim() {
+            "1" => Role::Guest,
+            "3" => Role::SubOp,
+            "4" => Role::SysOp,
+            _ => Role::Member,
+        };
+
+        // Get upload permission
+        ctx.send_line(session, "").await?;
+        ctx.send_line(session, "Upload permission:").await?;
+        ctx.send_line(session, "  [1] Guest").await?;
+        ctx.send_line(session, "  [2] Member").await?;
+        ctx.send_line(session, "  [3] SubOp").await?;
+        ctx.send_line(session, "  [4] SysOp").await?;
+        ctx.send(session, "Select [2]: ").await?;
+        let upload_input = ctx.read_line(session).await?;
+        let upload_perm = match upload_input.trim() {
+            "1" => Role::Guest,
+            "3" => Role::SubOp,
+            "4" => Role::SysOp,
+            _ => Role::Member,
+        };
+
+        // Create folder
+        let mut new_folder = NewFolder::new(name)
+            .with_permission(permission)
+            .with_upload_perm(upload_perm);
+
+        if !description.is_empty() {
+            new_folder = new_folder.with_description(description);
+        }
+
+        match FolderRepository::create(ctx.db.conn(), &new_folder) {
+            Ok(folder) => {
+                let msg = ctx
+                    .i18n
+                    .t("admin.folder_created")
+                    .replace("{{name}}", &folder.name);
+                ctx.send_line(session, &msg).await?;
+            }
+            Err(e) => {
+                ctx.send_line(session, &format!("Error: {}", e)).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Delete a folder.
+    async fn delete_folder(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
+        use crate::file::FolderRepository;
+
+        let folders = FolderRepository::list_root(ctx.db.conn())?;
+
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("admin.delete_folder")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        if folders.is_empty() {
+            ctx.send_line(session, ctx.i18n.t("file.no_folders")).await?;
+            ctx.send_line(session, "").await?;
+            ctx.wait_for_enter(session).await?;
+            return Ok(());
+        }
+
+        // Show folder list
+        for (i, folder) in folders.iter().enumerate() {
+            let file_count = FolderRepository::count_files(ctx.db.conn(), folder.id)?;
+            ctx.send_line(
+                session,
+                &format!(
+                    "  [{}] {} ({} files)",
+                    i + 1,
+                    folder.name,
+                    file_count
+                ),
+            )
+            .await?;
+        }
+
+        ctx.send_line(session, "").await?;
+        ctx.send(
+            session,
+            &format!(
+                "{} [Q={}]: ",
+                ctx.i18n.t("menu.select_prompt"),
+                ctx.i18n.t("common.back")
+            ),
+        )
+        .await?;
+
+        let input = ctx.read_line(session).await?;
+        let input = input.trim();
+
+        if input.eq_ignore_ascii_case("q") || input.is_empty() {
+            return Ok(());
+        }
+
+        if let Some(num) = ctx.parse_number(input) {
+            let idx = (num - 1) as usize;
+            if idx < folders.len() {
+                let folder = &folders[idx];
+                let file_count = FolderRepository::count_files(ctx.db.conn(), folder.id)?;
+
+                if file_count > 0 {
+                    ctx.send_line(
+                        session,
+                        &ctx.i18n
+                            .t("admin.folder_has_files")
+                            .replace("{{count}}", &file_count.to_string()),
+                    )
+                    .await?;
+                    ctx.send(session, &format!("{} [Y/N]: ", ctx.i18n.t("common.confirm")))
+                        .await?;
+                    let confirm = ctx.read_line(session).await?;
+                    if !confirm.trim().eq_ignore_ascii_case("y") {
+                        return Ok(());
+                    }
+                }
+
+                match FolderRepository::delete(ctx.db.conn(), folder.id) {
+                    Ok(true) => {
+                        let msg = ctx
+                            .i18n
+                            .t("admin.folder_deleted")
+                            .replace("{{name}}", &folder.name);
+                        ctx.send_line(session, &msg).await?;
+                    }
+                    Ok(false) => {
+                        ctx.send_line(session, ctx.i18n.t("admin.folder_not_found"))
+                            .await?;
+                    }
+                    Err(e) => {
+                        ctx.send_line(session, &format!("Error: {}", e)).await?;
                     }
                 }
             }
