@@ -27,3 +27,7 @@ path = "templates"
 [logging]
 level = "info"
 file = "logs/hobbs.log"
+
+[terminal]
+# Default terminal profile: standard (80x24), c64 (40x25, no ANSI), c64_ansi (40x25)
+default_profile = "standard"

@@ -525,6 +525,7 @@ pub fn test_config() -> Config {
         },
         files: Default::default(),
         templates: Default::default(),
+        terminal: Default::default(),
     }
 }
 

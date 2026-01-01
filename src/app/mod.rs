@@ -88,8 +88,22 @@ impl Application {
     }
 
     /// Create a session handler for a new connection.
-    pub fn create_session_handler(&self, profile: TerminalProfile) -> SessionHandler {
+    ///
+    /// Uses the default terminal profile from config.
+    pub fn create_session_handler(&self) -> SessionHandler {
         SessionHandler::new(
+            Arc::clone(&self.db),
+            Arc::clone(&self.config),
+            Arc::clone(&self.i18n_manager),
+            Arc::clone(&self.template_loader),
+            Arc::clone(&self.session_manager),
+            Arc::clone(&self.chat_manager),
+        )
+    }
+
+    /// Create a session handler with a specific terminal profile.
+    pub fn create_session_handler_with_profile(&self, profile: TerminalProfile) -> SessionHandler {
+        SessionHandler::with_profile(
             Arc::clone(&self.db),
             Arc::clone(&self.config),
             Arc::clone(&self.i18n_manager),
@@ -103,9 +117,9 @@ impl Application {
     /// Run a session.
     ///
     /// This is the main entry point for handling a connected client.
+    /// Uses the default terminal profile from config.
     pub async fn run_session(&self, session: &mut TelnetSession) -> Result<()> {
-        let profile = TerminalProfile::standard(); // TODO: Allow profile selection
-        let mut handler = self.create_session_handler(profile);
+        let mut handler = self.create_session_handler();
         handler.run(session).await
     }
 }

@@ -54,7 +54,46 @@ pub struct SessionHandler {
 
 impl SessionHandler {
     /// Create a new session handler.
+    ///
+    /// Uses the default terminal profile from config if not specified.
     pub fn new(
+        db: Arc<Database>,
+        config: Arc<Config>,
+        i18n_manager: Arc<I18nManager>,
+        template_loader: Arc<TemplateLoader>,
+        session_manager: Arc<SessionManager>,
+        chat_manager: Arc<ChatRoomManager>,
+    ) -> Self {
+        // Use default profile from config
+        let profile = TerminalProfile::from_name(&config.terminal.default_profile);
+        let screen = create_screen_from_profile(&profile);
+        let lang = &config.locale.language;
+        let i18n = i18n_manager
+            .get(lang)
+            .cloned()
+            .map(Arc::new)
+            .unwrap_or_else(|| Arc::new(I18n::empty(lang)));
+        let line_buffer = LineBuffer::with_encoding(1024, CharacterEncoding::default());
+
+        Self {
+            db,
+            config,
+            i18n_manager,
+            template_loader,
+            session_manager,
+            chat_manager,
+            profile,
+            screen,
+            i18n,
+            line_buffer,
+            telnet_parser: TelnetParser::new(),
+            pending_bytes: Vec::new(),
+            login_limiter: LoginLimiter::new(),
+        }
+    }
+
+    /// Create a new session handler with a specific terminal profile.
+    pub fn with_profile(
         db: Arc<Database>,
         config: Arc<Config>,
         i18n_manager: Arc<I18nManager>,
@@ -325,6 +364,17 @@ Select language / Gengo sentaku:
             .unwrap_or_else(|| Arc::new(I18n::empty(lang)));
     }
 
+    /// Set the terminal profile.
+    ///
+    /// Updates the profile and recreates the screen renderer.
+    fn set_terminal_profile(&mut self, profile_name: &str) {
+        let new_profile = TerminalProfile::from_name(profile_name);
+        if new_profile != self.profile {
+            self.profile = new_profile.clone();
+            self.screen = create_screen_from_profile(&new_profile);
+        }
+    }
+
     /// Show the welcome screen.
     async fn show_welcome(&self, session: &mut TelnetSession) -> Result<()> {
         let context = self.create_context();
@@ -418,6 +468,7 @@ Select language / Gengo sentaku:
 
                     // Save user settings for later application
                     let user_language = user.language.clone();
+                    let user_terminal = user.terminal.clone();
                     let user_name = user.username.clone();
 
                     // Update last login
@@ -425,8 +476,9 @@ Select language / Gengo sentaku:
                         warn!("Failed to update last login: {}", e);
                     }
 
-                    // Now apply language preference (after user_repo borrow ends)
+                    // Now apply language and terminal preferences (after user_repo borrow ends)
                     self.set_language(&user_language);
+                    self.set_terminal_profile(&user_terminal);
 
                     self.send_line(
                         session,
@@ -605,11 +657,18 @@ Select language / Gengo sentaku:
                         super::screens::ScreenResult::Quit => {
                             return Ok(MenuResult::Quit);
                         }
-                        super::screens::ScreenResult::SettingsChanged { language, encoding } => {
+                        super::screens::ScreenResult::SettingsChanged {
+                            language,
+                            encoding,
+                            terminal_profile,
+                        } => {
                             // Apply new settings to session
                             session.set_encoding(encoding);
                             self.line_buffer.set_encoding(encoding);
                             self.set_language(&language);
+                            if let Some(profile) = terminal_profile {
+                                self.set_terminal_profile(&profile);
+                            }
                         }
                         _ => {}
                     }
@@ -1038,7 +1097,7 @@ main = "Main Menu""#,
         let profile = TerminalProfile::default();
 
         // Create handler
-        let mut handler = SessionHandler::new(
+        let mut handler = SessionHandler::with_profile(
             db,
             config,
             i18n_manager.clone(),
@@ -1111,7 +1170,7 @@ value = "English value""#,
         let profile = TerminalProfile::default();
 
         // Create handler
-        let mut handler = SessionHandler::new(
+        let mut handler = SessionHandler::with_profile(
             db,
             config,
             i18n_manager,
@@ -1176,7 +1235,7 @@ title = "Title""#,
         let profile = TerminalProfile::default();
 
         // Create handler
-        let mut handler = SessionHandler::new(
+        let mut handler = SessionHandler::with_profile(
             db,
             config,
             i18n_manager,

@@ -241,6 +241,7 @@ nickname = "Nickname"
 
 [settings]
 terminal = "Terminal"
+terminal_profile = "Terminal Profile"
 language = "Language"
 encoding = "Encoding"
 width = "Width"
@@ -249,6 +250,14 @@ ansi_color = "ANSI Color"
 enabled = "Enabled"
 disabled = "Disabled"
 settings_saved = "Settings saved"
+
+[terminal]
+select_profile = "Select terminal profile"
+profile_standard = "Standard (80x24)"
+profile_c64 = "C64 (40x25, no ANSI)"
+profile_c64_ansi = "C64 ANSI (40x25)"
+profile_changed = "Terminal profile changed to {{profile}}"
+current_profile = "Current: {{profile}}"
 
 [admin]
 user_management = "User Management"

@@ -241,6 +241,7 @@ nickname = "ニックネーム"
 
 [settings]
 terminal = "端末設定"
+terminal_profile = "端末プロファイル"
 language = "言語設定"
 encoding = "文字コード"
 width = "画面幅"
@@ -249,6 +250,14 @@ ansi_color = "ANSIカラー"
 enabled = "有効"
 disabled = "無効"
 settings_saved = "設定を保存しました"
+
+[terminal]
+select_profile = "端末プロファイルを選択してください"
+profile_standard = "Standard (80x24)"
+profile_c64 = "C64 (40x25, ANSI無効)"
+profile_c64_ansi = "C64 ANSI (40x25)"
+profile_changed = "端末プロファイルを{{profile}}に変更しました"
+current_profile = "現在: {{profile}}"
 
 [admin]
 user_management = "ユーザー管理"
