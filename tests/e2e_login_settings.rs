@@ -8,7 +8,7 @@ use common::{create_test_user_with_settings, TestClient, TestServer};
 use std::time::Duration;
 
 /// Test that user's language setting is applied on login.
-/// User has Japanese language setting, but selects English at welcome.
+/// User has Japanese language setting.
 /// After login, the success message should be in Japanese.
 #[tokio::test]
 async fn test_login_applies_user_language() {
@@ -27,10 +27,7 @@ async fn test_login_applies_user_language() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
-    // Select English at welcome (E = English UTF-8)
-    client.select_language("E").await.unwrap();
-
-    // Wait for welcome
+    // New flow: welcome screen (ASCII) appears first, no language selection before login
     client.recv_until("Select:").await.unwrap();
 
     // Login
@@ -73,7 +70,7 @@ async fn test_login_applies_user_language() {
 }
 
 /// Test that user's English language setting is applied on login.
-/// User has English language setting, but selects Japanese at welcome.
+/// User has English language setting.
 /// After login, the success message should be in English.
 #[tokio::test]
 async fn test_login_applies_user_english_language() {
@@ -92,17 +89,10 @@ async fn test_login_applies_user_english_language() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
-    // Select Japanese at welcome (U = Japanese UTF-8 for easier testing)
-    client.select_language("U").await.unwrap();
+    // New flow: welcome screen (ASCII) appears first, no language selection before login
+    client.recv_until("Select:").await.unwrap();
 
-    // Wait for welcome (now in Japanese - use timeout since prompt is in Japanese)
-    let welcome = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
-    assert!(
-        welcome.contains("選択") || welcome.contains("L") || welcome.contains("G"),
-        "Should receive welcome screen"
-    );
-
-    // Login - note: login prompts will be in Japanese until login completes
+    // Login
     client.send_line("L").await.unwrap();
     let _ = client.recv_timeout(Duration::from_secs(1)).await.unwrap();
     client.send_line("enuser").await.unwrap();
@@ -123,9 +113,9 @@ async fn test_login_applies_user_english_language() {
     );
 }
 
-/// Test that guest mode keeps welcome language selection.
-/// Guest selects Japanese at welcome.
-/// Guest menu should be in Japanese (not overwritten).
+/// Test that guest mode keeps selected language from language selection screen.
+/// Guest selects Japanese after choosing G.
+/// Guest menu should be in Japanese.
 #[tokio::test]
 async fn test_guest_keeps_welcome_language() {
     let server = TestServer::new().await.unwrap();
@@ -133,23 +123,22 @@ async fn test_guest_keeps_welcome_language() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
-    // Select Japanese at welcome (U = Japanese UTF-8)
-    client.select_language("U").await.unwrap();
-
-    // Wait for welcome (now in Japanese - use timeout since prompt is in Japanese)
-    let welcome = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
-    assert!(
-        welcome.contains("選択") || welcome.contains("L") || welcome.contains("G"),
-        "Should receive welcome screen"
-    );
+    // New flow: welcome screen (ASCII) appears first
+    client.recv_until("Select:").await.unwrap();
 
     // Enter guest mode
     client.send_line("G").await.unwrap();
 
+    // Language selection appears after choosing G
+    client.recv_until("Gengo").await.unwrap();
+
+    // Select Japanese UTF-8
+    client.send_line("U").await.unwrap();
+
     // Wait for menu
     let response = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
 
-    // Guest menu should be in Japanese (welcome selection is maintained)
+    // Guest menu should be in Japanese
     assert!(
         response.contains("掲示板")
             || response.contains("メニュー")
@@ -169,14 +158,17 @@ async fn test_guest_keeps_english_language() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
-    // Select English at welcome
-    client.select_language("E").await.unwrap();
-
-    // Wait for welcome
+    // New flow: welcome screen (ASCII) appears first
     client.recv_until("Select:").await.unwrap();
 
     // Enter guest mode
     client.send_line("G").await.unwrap();
+
+    // Language selection appears after choosing G
+    client.recv_until("Gengo").await.unwrap();
+
+    // Select English
+    client.send_line("E").await.unwrap();
 
     // Wait for menu
     let response = client.recv_timeout(Duration::from_secs(2)).await.unwrap();

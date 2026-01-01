@@ -391,17 +391,25 @@ async fn test_profile_access_both_encodings() {
 #[tokio::test]
 async fn test_english_utf8_interface() {
     let server = TestServer::new().await.unwrap();
+    // Create user with English/UTF-8 settings
     create_test_user(server.db(), "english_user", "password123", "member").unwrap();
+    // Set user's encoding/language to English/UTF-8
+    server
+        .db()
+        .conn()
+        .execute(
+            "UPDATE users SET language = 'en', encoding = 'utf8' WHERE username = 'english_user'",
+            [],
+        )
+        .unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
-    // Select English
-    client.select_language_with_encoding("E").await.unwrap();
-
-    // Wait for welcome and login
+    // New flow: welcome screen appears first, no language selection before login
+    // User's saved encoding will be applied after login
     client
-        .recv_until_timeout(":", Duration::from_secs(3))
+        .recv_until_timeout("Select:", Duration::from_secs(3))
         .await
         .unwrap();
     client.send_line("L").await.unwrap();
@@ -460,11 +468,10 @@ async fn test_both_utf8_variants() {
     create_test_user(server.db(), "utf8_test", "password123", "member").unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // English UTF-8
+    // English UTF-8 - new flow: welcome screen first, then login
     let mut client_e = TestClient::connect(server.addr()).await.unwrap();
-    client_e.select_language_with_encoding("E").await.unwrap();
     client_e
-        .recv_until_timeout(":", Duration::from_secs(3))
+        .recv_until_timeout("Select:", Duration::from_secs(3))
         .await
         .unwrap();
     client_e.send_line("L").await.unwrap();
@@ -485,7 +492,7 @@ async fn test_both_utf8_variants() {
         resp_e
     );
 
-    // Japanese UTF-8
+    // Japanese UTF-8 - same login flow (user's saved encoding applies)
     let mut client_j = TestClient::connect(server.addr()).await.unwrap();
     let result = client_j
         .login_with_encoding("utf8_test", "password123", "U")

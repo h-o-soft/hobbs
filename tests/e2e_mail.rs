@@ -15,12 +15,12 @@ async fn test_mail_requires_login() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
-    // Handle language selection first
-    client.select_language("E").await.unwrap();
-
-    // Wait for welcome, enter guest mode
+    // New flow: welcome screen first, then choose guest, then language selection
     client.recv_until("Select:").await.unwrap();
     client.send_line("G").await.unwrap();
+
+    // Language selection appears after choosing G
+    client.select_language("E").await.unwrap();
 
     // Wait for guest menu
     let _ = client.recv_timeout(Duration::from_secs(2)).await.unwrap();

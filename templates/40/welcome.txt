@@ -7,15 +7,11 @@
   Hobbyist Bulletin Board System
 ========================================
 
-  {{t "system.welcome"}}
+  Welcome to HOBBS!
 
-  {{t "common.connection_time"}}:
-  {{system.datetime}}
-
-  {{t "welcome.description_short"}}
+  Connected: {{system.datetime}}
 
 ========================================
-[L]{{t "auth.login"}} [N]{{t "auth.register"}}
-[G]{{t "auth.guest"}} [Q]{{t "common.quit"}}
+[G]Guest [R]Register [L]Login [Q]Quit
 ----------------------------------------
-{{t "menu.select_prompt"}}
+Select:

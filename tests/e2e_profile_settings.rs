@@ -26,10 +26,7 @@ async fn test_profile_settings_accessible() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
-    // Select English at welcome
-    client.select_language("E").await.unwrap();
-
-    // Wait for welcome
+    // New flow: welcome screen appears first, no language selection before login
     client.recv_until("Select:").await.unwrap();
 
     // Login
@@ -102,10 +99,7 @@ async fn test_change_language_en_to_ja() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
-    // Select English at welcome
-    client.select_language("E").await.unwrap();
-
-    // Wait for welcome and login
+    // New flow: welcome screen appears first, no language selection before login
     client.recv_until("Select:").await.unwrap();
     client.send_line("L").await.unwrap();
     client.recv_until("Username:").await.unwrap();
@@ -202,11 +196,8 @@ async fn test_change_encoding_utf8_to_shiftjis() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
-    // Select Japanese UTF-8 at welcome
-    client.select_language("U").await.unwrap();
-
-    // Wait for welcome (in Japanese)
-    let _ = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
+    // New flow: welcome screen appears first, no language selection before login
+    client.recv_until("Select:").await.unwrap();
 
     // Login
     client.send_line("L").await.unwrap();
@@ -292,10 +283,7 @@ async fn test_settings_persist_on_main_menu() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
-    // Select English at welcome
-    client.select_language("E").await.unwrap();
-
-    // Login
+    // New flow: welcome screen appears first, no language selection before login
     client.recv_until("Select:").await.unwrap();
     client.send_line("L").await.unwrap();
     client.recv_until("Username:").await.unwrap();

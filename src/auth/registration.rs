@@ -8,6 +8,7 @@ use tracing::info;
 use crate::auth::validation::{validate_registration, ValidationError};
 use crate::auth::{hash_password, PasswordError};
 use crate::db::{NewUser, Role, User, UserRepository};
+use crate::server::CharacterEncoding;
 
 /// Registration-specific errors.
 #[derive(Error, Debug)]
@@ -42,6 +43,10 @@ pub struct RegistrationRequest {
     pub email: Option<String>,
     /// Optional terminal profile.
     pub terminal: Option<String>,
+    /// Character encoding preference.
+    pub encoding: Option<CharacterEncoding>,
+    /// Language preference.
+    pub language: Option<String>,
 }
 
 impl RegistrationRequest {
@@ -57,6 +62,8 @@ impl RegistrationRequest {
             nickname: nickname.into(),
             email: None,
             terminal: None,
+            encoding: None,
+            language: None,
         }
     }
 
@@ -69,6 +76,18 @@ impl RegistrationRequest {
     /// Set the terminal profile.
     pub fn with_terminal(mut self, terminal: impl Into<String>) -> Self {
         self.terminal = Some(terminal.into());
+        self
+    }
+
+    /// Set the character encoding.
+    pub fn with_encoding(mut self, encoding: CharacterEncoding) -> Self {
+        self.encoding = Some(encoding);
+        self
+    }
+
+    /// Set the language preference.
+    pub fn with_language(mut self, language: impl Into<String>) -> Self {
+        self.language = Some(language.into());
         self
     }
 }
@@ -139,6 +158,14 @@ pub fn register(
         new_user = new_user.with_terminal(terminal);
     }
 
+    if let Some(encoding) = request.encoding {
+        new_user = new_user.with_encoding(encoding);
+    }
+
+    if let Some(ref language) = request.language {
+        new_user = new_user.with_language(language);
+    }
+
     let user = repo
         .create(&new_user)
         .map_err(|e| RegistrationError::Database(e.to_string()))?;
@@ -195,6 +222,14 @@ pub fn register_with_role(
 
     if let Some(ref terminal) = request.terminal {
         new_user = new_user.with_terminal(terminal);
+    }
+
+    if let Some(encoding) = request.encoding {
+        new_user = new_user.with_encoding(encoding);
+    }
+
+    if let Some(ref language) = request.language {
+        new_user = new_user.with_language(language);
     }
 
     let user = repo

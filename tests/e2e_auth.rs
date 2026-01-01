@@ -112,12 +112,15 @@ async fn test_registration_duplicate_username() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
-    // Handle language selection first
-    client.select_language("E").await.unwrap();
-
-    // Wait for welcome then try to register with existing username
+    // New flow: welcome screen appears first
+    // Wait for welcome then choose register
     client.recv_until("Select:").await.unwrap();
     client.send_line("R").await.unwrap();
+
+    // Language selection appears after choosing R
+    client.select_language("E").await.unwrap();
+
+    // Now try to register with existing username
     client.recv_until("Username:").await.unwrap();
     client.send_line("existing").await.unwrap();
 
@@ -141,9 +144,7 @@ async fn test_login_empty_username() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
-    // Handle language selection first
-    client.select_language("E").await.unwrap();
-
+    // New flow: welcome screen appears first, no language selection before login
     // Wait for welcome then try to login with empty username
     client.recv_until("Select:").await.unwrap();
     client.send_line("L").await.unwrap();
