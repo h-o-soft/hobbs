@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+use crate::chat::ChatRoomManager;
 use crate::config::Config;
 use crate::db::Database;
 use crate::error::Result;
@@ -28,6 +29,8 @@ pub struct ScreenContext {
     pub i18n: Arc<I18n>,
     /// Line buffer for input.
     pub line_buffer: LineBuffer,
+    /// Chat room manager.
+    pub chat_manager: Arc<ChatRoomManager>,
 }
 
 impl ScreenContext {
@@ -39,6 +42,7 @@ impl ScreenContext {
         profile: TerminalProfile,
         i18n: Arc<I18n>,
         encoding: CharacterEncoding,
+        chat_manager: Arc<ChatRoomManager>,
     ) -> Self {
         Self {
             db,
@@ -47,6 +51,7 @@ impl ScreenContext {
             profile,
             i18n,
             line_buffer: LineBuffer::with_encoding(1024, encoding),
+            chat_manager,
         }
     }
 

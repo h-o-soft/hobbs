@@ -12,6 +12,7 @@ pub use session_handler::SessionHandler;
 
 use std::sync::Arc;
 
+use crate::chat::ChatRoomManager;
 use crate::config::Config;
 use crate::db::Database;
 use crate::error::Result;
@@ -32,6 +33,8 @@ pub struct Application {
     template_loader: Arc<TemplateLoader>,
     /// Session manager for tracking connected users.
     session_manager: Arc<SessionManager>,
+    /// Chat room manager.
+    chat_manager: Arc<ChatRoomManager>,
 }
 
 impl Application {
@@ -42,6 +45,7 @@ impl Application {
         i18n_manager: Arc<I18nManager>,
         template_loader: Arc<TemplateLoader>,
         session_manager: Arc<SessionManager>,
+        chat_manager: Arc<ChatRoomManager>,
     ) -> Self {
         Self {
             db,
@@ -49,6 +53,7 @@ impl Application {
             i18n_manager,
             template_loader,
             session_manager,
+            chat_manager,
         }
     }
 
@@ -77,6 +82,11 @@ impl Application {
         &self.session_manager
     }
 
+    /// Get the chat room manager.
+    pub fn chat_manager(&self) -> &Arc<ChatRoomManager> {
+        &self.chat_manager
+    }
+
     /// Create a session handler for a new connection.
     pub fn create_session_handler(&self, profile: TerminalProfile) -> SessionHandler {
         SessionHandler::new(
@@ -85,6 +95,7 @@ impl Application {
             Arc::clone(&self.i18n_manager),
             Arc::clone(&self.template_loader),
             Arc::clone(&self.session_manager),
+            Arc::clone(&self.chat_manager),
             profile,
         )
     }
@@ -107,6 +118,7 @@ impl Clone for Application {
             i18n_manager: Arc::clone(&self.i18n_manager),
             template_loader: Arc::clone(&self.template_loader),
             session_manager: Arc::clone(&self.session_manager),
+            chat_manager: Arc::clone(&self.chat_manager),
         }
     }
 }

@@ -9,6 +9,7 @@ use tracing::{error, info, warn};
 
 use super::menu::{MenuAction, MenuItems};
 use crate::auth::{verify_password, LimitResult, LoginLimiter, RegistrationRequest};
+use crate::chat::ChatRoomManager;
 use crate::config::Config;
 use crate::db::{Database, Role, UserRepository};
 use crate::error::{HobbsError, Result};
@@ -33,6 +34,8 @@ pub struct SessionHandler {
     template_loader: Arc<TemplateLoader>,
     /// Session manager.
     session_manager: Arc<SessionManager>,
+    /// Chat room manager.
+    chat_manager: Arc<ChatRoomManager>,
     /// Terminal profile.
     profile: TerminalProfile,
     /// Screen renderer.
@@ -53,6 +56,7 @@ impl SessionHandler {
         i18n_manager: Arc<I18nManager>,
         template_loader: Arc<TemplateLoader>,
         session_manager: Arc<SessionManager>,
+        chat_manager: Arc<ChatRoomManager>,
         profile: TerminalProfile,
     ) -> Self {
         let screen = create_screen_from_profile(&profile);
@@ -70,6 +74,7 @@ impl SessionHandler {
             i18n_manager,
             template_loader,
             session_manager,
+            chat_manager,
             profile,
             screen,
             i18n,
@@ -827,6 +832,7 @@ Select language / Gengo sentaku:
             self.profile.clone(),
             Arc::clone(&self.i18n),
             self.line_buffer.encoding(),
+            Arc::clone(&self.chat_manager),
         )
     }
 
@@ -969,6 +975,7 @@ main = "Main Menu""#,
         let template_loader = Arc::new(TemplateLoader::new(&templates_dir));
 
         let session_manager = Arc::new(SessionManager::new(300));
+        let chat_manager = Arc::new(ChatRoomManager::new());
         let profile = TerminalProfile::default();
 
         // Create handler
@@ -978,6 +985,7 @@ main = "Main Menu""#,
             i18n_manager.clone(),
             template_loader,
             session_manager,
+            chat_manager,
             profile,
         );
 
@@ -1040,6 +1048,7 @@ value = "English value""#,
         let template_loader = Arc::new(TemplateLoader::new(&templates_dir));
 
         let session_manager = Arc::new(SessionManager::new(300));
+        let chat_manager = Arc::new(ChatRoomManager::new());
         let profile = TerminalProfile::default();
 
         // Create handler
@@ -1049,6 +1058,7 @@ value = "English value""#,
             i18n_manager,
             template_loader,
             session_manager,
+            chat_manager,
             profile,
         );
 
@@ -1103,6 +1113,7 @@ title = "Title""#,
         let template_loader = Arc::new(TemplateLoader::new(&templates_dir));
 
         let session_manager = Arc::new(SessionManager::new(300));
+        let chat_manager = Arc::new(ChatRoomManager::new());
         let profile = TerminalProfile::default();
 
         // Create handler
@@ -1112,6 +1123,7 @@ title = "Title""#,
             i18n_manager,
             template_loader,
             session_manager,
+            chat_manager,
             profile,
         );
 

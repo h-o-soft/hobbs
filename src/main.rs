@@ -4,7 +4,8 @@ use tracing::{error, info};
 
 use hobbs::server::SessionManager;
 use hobbs::{
-    Application, Config, Database, I18nManager, TelnetServer, TelnetSession, TemplateLoader,
+    chat::ChatRoomManager, Application, Config, Database, I18nManager, TelnetServer,
+    TelnetSession, TemplateLoader,
 };
 
 fn main() {
@@ -63,6 +64,10 @@ async fn run_server(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     // Create session manager
     let session_manager = Arc::new(SessionManager::new(config.server.idle_timeout_secs));
 
+    // Create chat room manager
+    let chat_manager = Arc::new(ChatRoomManager::with_defaults().await);
+    info!("Chat rooms initialized");
+
     // Create application
     let app = Application::new(
         db,
@@ -70,6 +75,7 @@ async fn run_server(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         i18n_manager,
         template_loader,
         session_manager,
+        chat_manager,
     );
 
     // Bind server
