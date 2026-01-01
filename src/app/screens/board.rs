@@ -227,15 +227,16 @@ impl BoardScreen {
             )
             .await?;
 
-            // Prompt - show [U] option only for logged-in users
+            // Prompt - show [U] and [A] options only for logged-in users
             if session.user_id().is_some() {
                 ctx.send(
                     session,
                     &format!(
-                        "[N]={} [P]={} [U]={} [W]={} [Q]={}: ",
+                        "[N]={} [P]={} [U]={} [A]={} [W]={} [Q]={}: ",
                         ctx.i18n.t("common.next"),
                         ctx.i18n.t("common.previous"),
                         ctx.i18n.t("board.read_unread"),
+                        ctx.i18n.t("board.mark_all_read"),
                         ctx.i18n.t("board.new_thread"),
                         ctx.i18n.t("common.back")
                     ),
@@ -265,6 +266,14 @@ impl BoardScreen {
                 "u" => {
                     if session.user_id().is_some() {
                         Self::run_unread_batch_read(ctx, session, board_id).await?;
+                    } else {
+                        ctx.send_line(session, ctx.i18n.t("menu.login_required"))
+                            .await?;
+                    }
+                }
+                "a" => {
+                    if session.user_id().is_some() {
+                        Self::mark_all_as_read_for_board(ctx, session, board_id).await?;
                     } else {
                         ctx.send_line(session, ctx.i18n.t("menu.login_required"))
                             .await?;
@@ -376,15 +385,16 @@ impl BoardScreen {
             )
             .await?;
 
-            // Prompt - show [U] option only for logged-in users
+            // Prompt - show [U] and [A] options only for logged-in users
             if session.user_id().is_some() {
                 ctx.send(
                     session,
                     &format!(
-                        "[N]={} [P]={} [U]={} [W]={} [Q]={}: ",
+                        "[N]={} [P]={} [U]={} [A]={} [W]={} [Q]={}: ",
                         ctx.i18n.t("common.next"),
                         ctx.i18n.t("common.previous"),
                         ctx.i18n.t("board.read_unread"),
+                        ctx.i18n.t("board.mark_all_read"),
                         ctx.i18n.t("board.new_post"),
                         ctx.i18n.t("common.back")
                     ),
@@ -414,6 +424,14 @@ impl BoardScreen {
                 "u" => {
                     if session.user_id().is_some() {
                         Self::run_unread_batch_read(ctx, session, board_id).await?;
+                    } else {
+                        ctx.send_line(session, ctx.i18n.t("menu.login_required"))
+                            .await?;
+                    }
+                }
+                "a" => {
+                    if session.user_id().is_some() {
+                        Self::mark_all_as_read_for_board(ctx, session, board_id).await?;
                     } else {
                         ctx.send_line(session, ctx.i18n.t("menu.login_required"))
                             .await?;
@@ -849,6 +867,49 @@ impl BoardScreen {
         }
 
         Ok(ScreenResult::Back)
+    }
+
+    /// Mark all posts in a board as read.
+    ///
+    /// Shows a confirmation prompt before marking all posts as read.
+    async fn mark_all_as_read_for_board(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        board_id: i64,
+    ) -> Result<()> {
+        let user_id = match session.user_id() {
+            Some(id) => id,
+            None => return Ok(()),
+        };
+
+        // Show confirmation prompt
+        ctx.send_line(session, "").await?;
+        ctx.send(session, ctx.i18n.t("board.mark_all_read_confirm")).await?;
+
+        let input = ctx.read_line(session).await?;
+        let input = input.trim().to_ascii_lowercase();
+
+        if input == "y" || input == "yes" {
+            // Mark all posts as read
+            let unread_repo = UnreadRepository::new(&ctx.db);
+            match unread_repo.mark_all_as_read(user_id, board_id) {
+                Ok(true) => {
+                    ctx.send_line(session, ctx.i18n.t("board.marked_all_read"))
+                        .await?;
+                }
+                Ok(false) => {
+                    // No posts in board
+                    ctx.send_line(session, ctx.i18n.t("board.no_posts")).await?;
+                }
+                Err(e) => {
+                    error!("Failed to mark all as read: {}", e);
+                    ctx.send_line(session, ctx.i18n.t("common.operation_failed"))
+                        .await?;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Read multiline input (ends with a line containing only ".").
