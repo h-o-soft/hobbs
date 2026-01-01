@@ -228,6 +228,57 @@ impl<'a> UnreadRepository<'a> {
         Ok(affected as i64)
     }
 
+    /// Get thread IDs that have unread posts.
+    ///
+    /// Returns a set of thread IDs that have at least one post newer than
+    /// the user's last read position.
+    pub fn get_unread_thread_ids(
+        &self,
+        user_id: i64,
+        board_id: i64,
+        thread_ids: &[i64],
+    ) -> Result<std::collections::HashSet<i64>> {
+        if thread_ids.is_empty() {
+            return Ok(std::collections::HashSet::new());
+        }
+
+        let read_position = self.get_read_position(user_id, board_id)?;
+        let last_read_id = read_position.map(|p| p.last_read_post_id).unwrap_or(0);
+
+        // Build query with placeholders for thread IDs
+        let placeholders: Vec<String> = thread_ids.iter().map(|_| "?".to_string()).collect();
+        let query = format!(
+            "SELECT DISTINCT thread_id FROM posts
+             WHERE thread_id IN ({}) AND id > ?",
+            placeholders.join(",")
+        );
+
+        let mut stmt = self.db.conn().prepare(&query)?;
+
+        // Build params: thread_ids + last_read_id
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = thread_ids
+            .iter()
+            .map(|id| Box::new(*id) as Box<dyn rusqlite::ToSql>)
+            .collect();
+        params.push(Box::new(last_read_id));
+
+        let unread_ids = stmt
+            .query_map(rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())), |row| {
+                row.get::<_, i64>(0)
+            })?
+            .collect::<rusqlite::Result<std::collections::HashSet<_>>>()?;
+
+        Ok(unread_ids)
+    }
+
+    /// Get the last read post ID for a user on a board.
+    ///
+    /// Returns 0 if no read position exists (meaning all posts are unread).
+    pub fn get_last_read_post_id(&self, user_id: i64, board_id: i64) -> Result<i64> {
+        let read_position = self.get_read_position(user_id, board_id)?;
+        Ok(read_position.map(|p| p.last_read_post_id).unwrap_or(0))
+    }
+
     /// Convert a database row to a ReadPosition struct.
     fn row_to_read_position(row: &Row<'_>) -> rusqlite::Result<ReadPosition> {
         Ok(ReadPosition {
@@ -256,7 +307,7 @@ impl<'a> UnreadRepository<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::board::{BoardRepository, NewBoard, NewFlatPost, PostRepository};
+    use crate::board::{BoardRepository, NewBoard, NewFlatPost, NewThread, NewThreadPost, PostRepository, ThreadRepository};
     use crate::db::{NewUser, UserRepository};
 
     fn setup_db() -> Database {
@@ -580,5 +631,157 @@ mod tests {
             .get_read_position(user_id, board2.id)
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn test_get_last_read_post_id_no_position() {
+        let db = setup_db();
+        let user_id = create_test_user(&db);
+        let board_id = create_test_board(&db);
+
+        let repo = UnreadRepository::new(&db);
+        let last_read = repo.get_last_read_post_id(user_id, board_id).unwrap();
+
+        // Should return 0 when no position exists
+        assert_eq!(last_read, 0);
+    }
+
+    #[test]
+    fn test_get_last_read_post_id_with_position() {
+        let db = setup_db();
+        let user_id = create_test_user(&db);
+        let board_id = create_test_board(&db);
+        let post_id = create_test_post(&db, board_id, user_id);
+
+        let repo = UnreadRepository::new(&db);
+        repo.mark_as_read(user_id, board_id, post_id).unwrap();
+
+        let last_read = repo.get_last_read_post_id(user_id, board_id).unwrap();
+        assert_eq!(last_read, post_id);
+    }
+
+    fn create_test_thread(db: &Database, board_id: i64, author_id: i64) -> i64 {
+        let thread_repo = ThreadRepository::new(db);
+        let thread = thread_repo
+            .create(&NewThread::new(board_id, "Test Thread", author_id))
+            .unwrap();
+        thread.id
+    }
+
+    fn create_test_thread_post(db: &Database, board_id: i64, thread_id: i64, author_id: i64) -> i64 {
+        let post_repo = PostRepository::new(db);
+        let post = post_repo
+            .create_thread_post(&NewThreadPost::new(board_id, thread_id, author_id, "Body"))
+            .unwrap();
+        post.id
+    }
+
+    #[test]
+    fn test_get_unread_thread_ids_empty() {
+        let db = setup_db();
+        let user_id = create_test_user(&db);
+        let board_id = create_test_board(&db);
+
+        let repo = UnreadRepository::new(&db);
+        let unread_ids = repo.get_unread_thread_ids(user_id, board_id, &[]).unwrap();
+
+        assert!(unread_ids.is_empty());
+    }
+
+    #[test]
+    fn test_get_unread_thread_ids_no_position() {
+        let db = setup_db();
+        let user_id = create_test_user(&db);
+        let board_id = create_test_board(&db);
+
+        // Create threads with posts
+        let thread1_id = create_test_thread(&db, board_id, user_id);
+        let thread2_id = create_test_thread(&db, board_id, user_id);
+        create_test_thread_post(&db, board_id, thread1_id, user_id);
+        create_test_thread_post(&db, board_id, thread2_id, user_id);
+
+        let repo = UnreadRepository::new(&db);
+        let unread_ids = repo
+            .get_unread_thread_ids(user_id, board_id, &[thread1_id, thread2_id])
+            .unwrap();
+
+        // All threads should have unread posts (no read position)
+        assert_eq!(unread_ids.len(), 2);
+        assert!(unread_ids.contains(&thread1_id));
+        assert!(unread_ids.contains(&thread2_id));
+    }
+
+    #[test]
+    fn test_get_unread_thread_ids_with_position() {
+        let db = setup_db();
+        let user_id = create_test_user(&db);
+        let board_id = create_test_board(&db);
+
+        // Create threads with posts
+        let thread1_id = create_test_thread(&db, board_id, user_id);
+        let thread2_id = create_test_thread(&db, board_id, user_id);
+        let post1_id = create_test_thread_post(&db, board_id, thread1_id, user_id);
+        let _post2_id = create_test_thread_post(&db, board_id, thread2_id, user_id);
+
+        // Mark post1 as read (should mark thread1 as read)
+        let repo = UnreadRepository::new(&db);
+        repo.mark_as_read(user_id, board_id, post1_id).unwrap();
+
+        let unread_ids = repo
+            .get_unread_thread_ids(user_id, board_id, &[thread1_id, thread2_id])
+            .unwrap();
+
+        // Only thread2 should have unread posts (post2 > post1)
+        assert_eq!(unread_ids.len(), 1);
+        assert!(unread_ids.contains(&thread2_id));
+        assert!(!unread_ids.contains(&thread1_id));
+    }
+
+    #[test]
+    fn test_get_unread_thread_ids_all_read() {
+        let db = setup_db();
+        let user_id = create_test_user(&db);
+        let board_id = create_test_board(&db);
+
+        // Create threads with posts
+        let thread1_id = create_test_thread(&db, board_id, user_id);
+        let thread2_id = create_test_thread(&db, board_id, user_id);
+        create_test_thread_post(&db, board_id, thread1_id, user_id);
+        let post2_id = create_test_thread_post(&db, board_id, thread2_id, user_id);
+
+        // Mark last post as read (should mark all as read)
+        let repo = UnreadRepository::new(&db);
+        repo.mark_as_read(user_id, board_id, post2_id).unwrap();
+
+        let unread_ids = repo
+            .get_unread_thread_ids(user_id, board_id, &[thread1_id, thread2_id])
+            .unwrap();
+
+        // No threads should have unread posts
+        assert!(unread_ids.is_empty());
+    }
+
+    #[test]
+    fn test_get_unread_thread_ids_new_post_in_read_thread() {
+        let db = setup_db();
+        let user_id = create_test_user(&db);
+        let board_id = create_test_board(&db);
+
+        // Create thread with post
+        let thread_id = create_test_thread(&db, board_id, user_id);
+        let post1_id = create_test_thread_post(&db, board_id, thread_id, user_id);
+
+        // Mark as read
+        let repo = UnreadRepository::new(&db);
+        repo.mark_as_read(user_id, board_id, post1_id).unwrap();
+
+        // Add new post to thread
+        create_test_thread_post(&db, board_id, thread_id, user_id);
+
+        let unread_ids = repo.get_unread_thread_ids(user_id, board_id, &[thread_id]).unwrap();
+
+        // Thread should now have unread posts
+        assert_eq!(unread_ids.len(), 1);
+        assert!(unread_ids.contains(&thread_id));
     }
 }

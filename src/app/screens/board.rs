@@ -185,6 +185,15 @@ impl BoardScreen {
                 ctx.send_line(session, ctx.i18n.t("board.no_threads"))
                     .await?;
             } else {
+                // Get unread thread IDs for logged-in users
+                let unread_thread_ids = if let Some(user_id) = session.user_id() {
+                    let thread_ids: Vec<i64> = result.items.iter().map(|t| t.id).collect();
+                    let unread_repo = UnreadRepository::new(&ctx.db);
+                    unread_repo.get_unread_thread_ids(user_id, board_id, &thread_ids)?
+                } else {
+                    std::collections::HashSet::new()
+                };
+
                 ctx.send_line(
                     session,
                     &format!(
@@ -205,9 +214,17 @@ impl BoardScreen {
                     } else {
                         thread.title.clone()
                     };
+
+                    // Show * mark for unread threads
+                    let unread_mark = if unread_thread_ids.contains(&thread.id) {
+                        "*"
+                    } else {
+                        " "
+                    };
+
                     ctx.send_line(
                         session,
-                        &format!("  {:<4} {:<30} {:>6}", num, title, thread.post_count),
+                        &format!("{} {:<4} {:<30} {:>6}", unread_mark, num, title, thread.post_count),
                     )
                     .await?;
                 }
@@ -336,6 +353,14 @@ impl BoardScreen {
             if result.items.is_empty() {
                 ctx.send_line(session, ctx.i18n.t("board.no_posts")).await?;
             } else {
+                // Get last read post ID for logged-in users
+                let last_read_post_id = if let Some(user_id) = session.user_id() {
+                    let unread_repo = UnreadRepository::new(&ctx.db);
+                    unread_repo.get_last_read_post_id(user_id, board_id)?
+                } else {
+                    i64::MAX // For guests, mark nothing as unread
+                };
+
                 ctx.send_line(
                     session,
                     &format!(
@@ -363,9 +388,16 @@ impl BoardScreen {
                         .map(|u| u.nickname)
                         .unwrap_or_else(|| "Unknown".to_string());
 
+                    // Show * mark for unread posts
+                    let unread_mark = if post.id > last_read_post_id {
+                        "*"
+                    } else {
+                        " "
+                    };
+
                     ctx.send_line(
                         session,
-                        &format!("  {:<4} {:<30} {:<10}", num, title, author),
+                        &format!("{} {:<4} {:<30} {:<10}", unread_mark, num, title, author),
                     )
                     .await?;
                 }
