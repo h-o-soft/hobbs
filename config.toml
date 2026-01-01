@@ -5,6 +5,8 @@ host = "0.0.0.0"
 port = 2323
 max_connections = 20
 idle_timeout_secs = 300
+# Timezone for displaying dates (e.g., "Asia/Tokyo", "America/New_York", "UTC")
+timezone = "Asia/Tokyo"
 
 [database]
 path = "data/hobbs.db"

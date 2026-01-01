@@ -120,6 +120,7 @@ mod tests {
             port,
             max_connections,
             idle_timeout_secs: 300,
+            timezone: "Asia/Tokyo".to_string(),
         }
     }
 

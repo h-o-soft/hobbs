@@ -10,6 +10,7 @@ use tracing::{error, info, warn};
 use super::menu::{MenuAction, MenuItems};
 use crate::auth::{verify_password, LimitResult, LoginLimiter, RegistrationRequest};
 use crate::chat::ChatRoomManager;
+use crate::datetime::format_datetime_default;
 use crate::mail::MailRepository;
 use crate::config::Config;
 use crate::db::{Database, Role, UserRepository};
@@ -754,9 +755,12 @@ Select language / Gengo sentaku:
                 };
                 context.set("user.role_name", Value::string(role_name.to_string()));
 
-                // Set last login
-                let last_login = user.last_login.as_deref().unwrap_or("-");
-                context.set("user.last_login", Value::string(last_login.to_string()));
+                // Set last login (formatted with configured timezone)
+                let last_login = match user.last_login.as_deref() {
+                    Some(dt) => format_datetime_default(dt, &self.config.server.timezone),
+                    None => "-".to_string(),
+                };
+                context.set("user.last_login", Value::string(last_login));
 
                 // Set unread mail count
                 let unread_count = MailRepository::count_unread(self.db.conn(), user_id)

@@ -8,6 +8,7 @@ pub mod auth;
 pub mod board;
 pub mod chat;
 pub mod config;
+pub mod datetime;
 pub mod db;
 pub mod error;
 pub mod file;
@@ -45,6 +46,7 @@ pub use chat::{
     NewChatLog, DEFAULT_RECENT_LOG_COUNT,
 };
 pub use config::Config;
+pub use datetime::{format_datetime, format_datetime_default};
 pub use db::{Database, NewUser, Role, User, UserRepository, UserUpdate};
 pub use error::{HobbsError, Result};
 pub use file::{
