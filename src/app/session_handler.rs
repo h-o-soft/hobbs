@@ -391,9 +391,7 @@ Select language / Gengo sentaku:
     /// Loops until a valid choice (L/R/G/Q) is explicitly selected.
     async fn welcome_prompt(&mut self, session: &mut TelnetSession) -> Result<WelcomeChoice> {
         loop {
-            self.send_line(session, self.i18n.t("welcome.prompt"))
-                .await?;
-            self.send(session, "> ").await?;
+            self.send(session, self.i18n.t("welcome.prompt")).await?;
 
             let input = self.read_line(session).await?;
             let input = input.trim().to_uppercase();
@@ -404,11 +402,9 @@ Select language / Gengo sentaku:
                 "G" | "3" => return Ok(WelcomeChoice::Guest),
                 "Q" | "4" => return Ok(WelcomeChoice::Quit),
                 _ => {
-                    // Invalid input: show error and loop back to prompt again
                     self.send_line(session, self.i18n.t("welcome.invalid_choice"))
                         .await?;
                     self.send_line(session, "").await?;
-                    // Continue loop to show prompt again
                 }
             }
         }
