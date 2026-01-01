@@ -327,6 +327,12 @@ folder_created = "フォルダ「{{name}}」を作成しました"
 folder_deleted = "フォルダ「{{name}}」を削除しました"
 folder_not_found = "フォルダが見つかりません"
 folder_has_files = "このフォルダには{{count}}件のファイルがあります。削除しますか？"
+board_list = "掲示板一覧"
+sysop_required = "この操作にはシステム管理者権限が必要です"
+board_number_to_delete = "削除する掲示板番号"
+board_delete_confirm = "掲示板「{{name}}」を削除します。スレッド{{threads}}件、投稿{{posts}}件が削除されます。本当に削除しますか？"
+board_deleted = "掲示板「{{name}}」を削除しました"
+board_not_found = "掲示板が見つかりません"
 
 [role]
 guest = "ゲスト"

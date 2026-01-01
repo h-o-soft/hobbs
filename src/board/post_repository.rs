@@ -219,6 +219,16 @@ impl<'a> PostRepository<'a> {
         Ok(count)
     }
 
+    /// Count all posts in a board (both flat and thread posts).
+    pub fn count_by_board(&self, board_id: i64) -> Result<i64> {
+        let count: i64 = self.db.conn().query_row(
+            "SELECT COUNT(*) FROM posts WHERE board_id = ?",
+            [board_id],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
+
     /// Get the latest post in a thread.
     pub fn get_latest_in_thread(&self, thread_id: i64) -> Result<Option<Post>> {
         let result = self.db.conn().query_row(
