@@ -94,7 +94,7 @@ async fn test_quit() {
     .unwrap();
 }
 
-/// Test connection with invalid input.
+/// Test connection with invalid input stays at welcome screen.
 #[tokio::test]
 async fn test_invalid_input_at_welcome() {
     with_test_server(|mut client| async move {
@@ -105,11 +105,37 @@ async fn test_invalid_input_at_welcome() {
         // Send invalid input
         client.send_line("INVALID").await?;
 
-        // Should still be connected and receive response (error message or re-prompt)
+        // Should receive error message and prompt again (not proceed to guest)
         let response = client.recv().await?;
         assert!(
             !response.is_empty(),
             "Should receive response for invalid input"
+        );
+
+        // The response should contain the prompt again, not main menu
+        // After fix: stays at welcome screen with re-prompt
+        assert!(
+            response.contains("[L]")
+                || response.contains("[1]")
+                || response.contains("Login")
+                || response.contains(">"),
+            "Should show welcome prompt again after invalid input: {:?}",
+            response
+        );
+
+        // Now send valid input (G for guest) to proceed
+        client.send_line("G").await?;
+        let menu = client.recv().await?;
+
+        // Now should be at main menu
+        assert!(
+            menu.contains("[B]")
+                || menu.contains("[C]")
+                || menu.contains("Menu")
+                || menu.contains("Board")
+                || menu.contains("Chat"),
+            "Should now be at main menu: {:?}",
+            menu
         );
 
         Ok(())
@@ -118,7 +144,7 @@ async fn test_invalid_input_at_welcome() {
     .unwrap();
 }
 
-/// Test server handles empty input.
+/// Test server handles empty input - stays at welcome screen.
 #[tokio::test]
 async fn test_empty_input() {
     with_test_server(|mut client| async move {
@@ -129,9 +155,19 @@ async fn test_empty_input() {
         // Send empty line (just CR)
         client.send_line("").await?;
 
-        // Should still be connected and receive response
+        // Should receive error message and prompt again (not proceed to guest)
         let response = client.recv().await?;
         assert!(!response.is_empty(), "Should handle empty input");
+
+        // The response should contain the prompt again, not main menu
+        assert!(
+            response.contains("[L]")
+                || response.contains("[1]")
+                || response.contains("Login")
+                || response.contains(">"),
+            "Should show welcome prompt again after empty input: {:?}",
+            response
+        );
 
         Ok(())
     })

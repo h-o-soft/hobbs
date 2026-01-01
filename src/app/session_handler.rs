@@ -329,23 +329,29 @@ Select language / Gengo sentaku:
     }
 
     /// Handle welcome prompt.
+    ///
+    /// Loops until a valid choice (L/R/G/Q) is explicitly selected.
     async fn welcome_prompt(&mut self, session: &mut TelnetSession) -> Result<WelcomeChoice> {
-        self.send_line(session, self.i18n.t("welcome.prompt"))
-            .await?;
-        self.send(session, "> ").await?;
+        loop {
+            self.send_line(session, self.i18n.t("welcome.prompt"))
+                .await?;
+            self.send(session, "> ").await?;
 
-        let input = self.read_line(session).await?;
-        let input = input.trim().to_uppercase();
+            let input = self.read_line(session).await?;
+            let input = input.trim().to_uppercase();
 
-        match input.as_str() {
-            "L" | "1" => Ok(WelcomeChoice::Login),
-            "R" | "2" => Ok(WelcomeChoice::Register),
-            "G" | "3" => Ok(WelcomeChoice::Guest),
-            "Q" | "4" => Ok(WelcomeChoice::Quit),
-            _ => {
-                self.send_line(session, self.i18n.t("welcome.invalid_choice"))
-                    .await?;
-                Ok(WelcomeChoice::Guest) // Default to guest for invalid input
+            match input.as_str() {
+                "L" | "1" => return Ok(WelcomeChoice::Login),
+                "R" | "2" => return Ok(WelcomeChoice::Register),
+                "G" | "3" => return Ok(WelcomeChoice::Guest),
+                "Q" | "4" => return Ok(WelcomeChoice::Quit),
+                _ => {
+                    // Invalid input: show error and loop back to prompt again
+                    self.send_line(session, self.i18n.t("welcome.invalid_choice"))
+                        .await?;
+                    self.send_line(session, "").await?;
+                    // Continue loop to show prompt again
+                }
             }
         }
     }
