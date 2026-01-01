@@ -246,6 +246,7 @@ upload_prompt = "アップロードするファイル名を入力してくださ
 upload_description_prompt = "ファイルの説明を入力してください（省略可）"
 xmodem_start_download = "XMODEMを開始します。ターミナルで受信を開始してください..."
 xmodem_start_upload = "XMODEMを開始します。ターミナルで送信を開始してください..."
+xmodem_waiting = "3秒ごとに'C'を送信して送信側を待機中..."
 xmodem_complete = "転送が完了しました"
 xmodem_failed = "転送に失敗しました"
 xmodem_cancelled = "転送がキャンセルされました"

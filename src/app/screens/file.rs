@@ -432,6 +432,14 @@ impl FileScreen {
         ctx.send_line(session, "").await?;
         ctx.send_line(session, ctx.i18n.t("file.xmodem_start_upload"))
             .await?;
+        ctx.send_line(
+            session,
+            &format!("({})", ctx.i18n.t("file.xmodem_waiting")),
+        )
+        .await?;
+
+        // Small delay to let user start their XMODEM sender
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
         // Perform XMODEM receive
         match xmodem_receive(session.stream_mut()).await {

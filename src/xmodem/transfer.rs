@@ -54,7 +54,13 @@ const MAX_RETRIES: usize = 10;
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Timeout for initial NAK from receiver
-const INITIAL_TIMEOUT: Duration = Duration::from_secs(60);
+const INITIAL_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Timeout for waiting for first byte from sender (short, for retry loop)
+const START_BYTE_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Number of times to send 'C' waiting for sender to start
+const START_RETRIES: usize = 40; // 40 * 3 seconds = 120 seconds total
 
 /// Send data using XMODEM protocol.
 ///
@@ -114,18 +120,13 @@ pub async fn xmodem_receive(stream: &mut TcpStream) -> TransferResult<Vec<u8>> {
     let mut data = Vec::new();
     let mut expected_block: u8 = 1;
 
-    // Send initial NAK to start transfer (use 'C' for CRC mode)
-    stream.write_all(&[b'C']).await?;
-    stream.flush().await?;
+    // Wait for first block with retry loop (send 'C' repeatedly until sender responds)
+    let first_header = wait_for_sender_start(stream).await?;
+
+    // Process first header
+    let mut header = first_header;
 
     loop {
-        // Read first byte (SOH or EOT)
-        let header = match timeout(RESPONSE_TIMEOUT, read_byte(stream)).await {
-            Ok(Ok(b)) => b,
-            Ok(Err(e)) => return Err(e.into()),
-            Err(_) => return Err(TransferError::Timeout),
-        };
-
         match header {
             SOH => {
                 // Receive block
@@ -161,6 +162,13 @@ pub async fn xmodem_receive(stream: &mut TcpStream) -> TransferResult<Vec<u8>> {
                 stream.flush().await?;
             }
         }
+
+        // Read next header
+        header = match timeout(RESPONSE_TIMEOUT, read_byte(stream)).await {
+            Ok(Ok(b)) => b,
+            Ok(Err(e)) => return Err(e.into()),
+            Err(_) => return Err(TransferError::Timeout),
+        };
     }
 
     // Remove padding (SUB characters at the end)
@@ -169,6 +177,56 @@ pub async fn xmodem_receive(stream: &mut TcpStream) -> TransferResult<Vec<u8>> {
     }
 
     Ok(data)
+}
+
+/// Wait for sender to start by sending 'C' repeatedly.
+/// Returns the first valid header byte (SOH or EOT).
+async fn wait_for_sender_start(stream: &mut TcpStream) -> TransferResult<u8> {
+    // Telnet IAC (Interpret As Command) byte
+    const IAC: u8 = 0xFF;
+
+    for retry in 0..START_RETRIES {
+        // Send 'C' for CRC mode
+        stream.write_all(&[b'C']).await?;
+        stream.flush().await?;
+
+        // Try to read bytes within the timeout, skipping Telnet IAC sequences
+        let start = std::time::Instant::now();
+        while start.elapsed() < START_BYTE_TIMEOUT {
+            let remaining = START_BYTE_TIMEOUT - start.elapsed();
+            match timeout(remaining, read_byte(stream)).await {
+                Ok(Ok(SOH)) => return Ok(SOH),
+                Ok(Ok(EOT)) => return Ok(EOT),
+                Ok(Ok(CAN)) => return Err(TransferError::Cancelled),
+                Ok(Ok(IAC)) => {
+                    // Telnet IAC sequence - read and skip the next 1-2 bytes
+                    if let Ok(Ok(cmd)) = timeout(Duration::from_millis(100), read_byte(stream)).await
+                    {
+                        // If it's WILL/WONT/DO/DONT (0xFB-0xFE), read one more byte
+                        if (0xFB..=0xFE).contains(&cmd) {
+                            let _ = timeout(Duration::from_millis(100), read_byte(stream)).await;
+                        }
+                        // For SB (0xFA), we'd need to read until SE, but skip for now
+                    }
+                    continue;
+                }
+                Ok(Ok(b)) if b < 32 && b != SOH && b != EOT && b != CAN => {
+                    // Other control characters - ignore
+                    continue;
+                }
+                Ok(Ok(_)) => {
+                    // Other printable bytes - might be echo, ignore
+                    continue;
+                }
+                Ok(Err(e)) => return Err(e.into()),
+                Err(_) => break, // Timeout on this read, send 'C' again
+            }
+        }
+
+        tracing::debug!("XMODEM: Retry {} - sending 'C' again", retry + 1);
+    }
+
+    Err(TransferError::Timeout)
 }
 
 /// Wait for the initial start byte from receiver (NAK or 'C').
