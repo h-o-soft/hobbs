@@ -4,8 +4,10 @@ use super::common::{Pagination, ScreenContext};
 use super::ScreenResult;
 use crate::db::UserRepository;
 use crate::error::Result;
-use crate::file::{FileRepository, FolderRepository};
+use crate::file::{FileRepository, FileService, FileStorage, FolderRepository};
 use crate::server::TelnetSession;
+use crate::file::UploadRequest;
+use crate::xmodem::{xmodem_receive, xmodem_send, TransferError};
 
 /// File screen handler.
 pub struct FileScreen;
@@ -132,6 +134,7 @@ impl FileScreen {
                 ctx.i18n.t("common.previous")
             );
             if current_folder.is_some() {
+                prompt.push_str(&format!(" [U]={}", ctx.i18n.t("file.upload")));
                 prompt.push_str(&format!(" [B]={}", ctx.i18n.t("common.back")));
             }
             prompt.push_str(&format!(" [Q]={}: ", ctx.i18n.t("common.quit")));
@@ -155,6 +158,12 @@ impl FileScreen {
                         let folder = FolderRepository::get_by_id(ctx.db.conn(), fid)?;
                         current_folder = folder.and_then(|f| f.parent_id);
                         pagination = Pagination::new(1, 10, 0);
+                    }
+                }
+                "u" => {
+                    // Upload file
+                    if let Some(fid) = current_folder {
+                        Self::upload_file(ctx, session, fid).await?;
                     }
                 }
                 _ => {
@@ -244,8 +253,242 @@ impl FileScreen {
         }
 
         ctx.send_line(session, &"-".repeat(40)).await?;
-        ctx.send_line(session, ctx.i18n.t("feature.not_implemented"))
+
+        // Ask if user wants to download
+        ctx.send(
+            session,
+            &format!(
+                "{} [Y/N]: ",
+                ctx.i18n.t("file.download_confirm")
+            ),
+        )
+        .await?;
+
+        let input = ctx.read_line(session).await?;
+        if input.trim().eq_ignore_ascii_case("y") {
+            // Perform download
+            Self::download_file(ctx, session, file_id).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Download a file using XMODEM protocol.
+    async fn download_file(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        file_id: i64,
+    ) -> Result<()> {
+        // Get current user
+        let user_id = match session.user_id() {
+            Some(id) => id,
+            None => {
+                ctx.send_line(session, ctx.i18n.t("error.not_logged_in"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        let user_repo = UserRepository::new(&ctx.db);
+        let user = match user_repo.get_by_id(user_id)? {
+            Some(u) => u,
+            None => {
+                ctx.send_line(session, ctx.i18n.t("error.user_not_found"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        // Get file storage path from config
+        let storage = match FileStorage::new(&ctx.config.files.storage_path) {
+            Ok(s) => s,
+            Err(e) => {
+                ctx.send_line(
+                    session,
+                    &format!("{}: {}", ctx.i18n.t("file.xmodem_failed"), e),
+                )
+                .await?;
+                return Ok(());
+            }
+        };
+        let file_service = FileService::new(&ctx.db, &storage);
+
+        // Download file (this checks permissions and increments counter)
+        let download_result = match file_service.download(file_id, &user) {
+            Ok(result) => result,
+            Err(e) => {
+                ctx.send_line(
+                    session,
+                    &format!("{}: {}", ctx.i18n.t("file.xmodem_failed"), e),
+                )
+                .await?;
+                return Ok(());
+            }
+        };
+
+        // Notify user to start XMODEM receive
+        ctx.send_line(session, "").await?;
+        ctx.send_line(session, ctx.i18n.t("file.xmodem_start_download"))
             .await?;
+        ctx.send_line(
+            session,
+            &format!(
+                "{}: {} ({})",
+                ctx.i18n.t("file.filename"),
+                download_result.metadata.filename,
+                Self::format_size(download_result.metadata.size)
+            ),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        // Small delay to let user start their XMODEM receiver
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        // Perform XMODEM transfer
+        match xmodem_send(session.stream_mut(), &download_result.content).await {
+            Ok(bytes_sent) => {
+                ctx.send_line(session, "").await?;
+                ctx.send_line(
+                    session,
+                    &format!(
+                        "{} ({} bytes)",
+                        ctx.i18n.t("file.xmodem_complete"),
+                        bytes_sent
+                    ),
+                )
+                .await?;
+            }
+            Err(e) => {
+                ctx.send_line(session, "").await?;
+                let error_msg = match e {
+                    TransferError::Cancelled => ctx.i18n.t("file.xmodem_cancelled").to_string(),
+                    TransferError::Timeout => ctx.i18n.t("file.xmodem_timeout").to_string(),
+                    _ => format!("{}: {}", ctx.i18n.t("file.xmodem_failed"), e),
+                };
+                ctx.send_line(session, &error_msg).await?;
+            }
+        }
+
+        ctx.wait_for_enter(session).await?;
+        Ok(())
+    }
+
+    /// Upload a file using XMODEM protocol.
+    async fn upload_file(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        folder_id: i64,
+    ) -> Result<()> {
+        // Get current user
+        let user_id = match session.user_id() {
+            Some(id) => id,
+            None => {
+                ctx.send_line(session, ctx.i18n.t("error.not_logged_in"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        let user_repo = UserRepository::new(&ctx.db);
+        let user = match user_repo.get_by_id(user_id)? {
+            Some(u) => u,
+            None => {
+                ctx.send_line(session, ctx.i18n.t("error.user_not_found"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        // Get filename from user
+        ctx.send_line(session, "").await?;
+        ctx.send(
+            session,
+            &format!("{}: ", ctx.i18n.t("file.upload_prompt")),
+        )
+        .await?;
+        let filename = ctx.read_line(session).await?;
+        let filename = filename.trim();
+
+        if filename.is_empty() {
+            return Ok(());
+        }
+
+        // Get optional description
+        ctx.send(
+            session,
+            &format!("{}: ", ctx.i18n.t("file.upload_description_prompt")),
+        )
+        .await?;
+        let description = ctx.read_line(session).await?;
+        let description = description.trim();
+        let description = if description.is_empty() {
+            None
+        } else {
+            Some(description.to_string())
+        };
+
+        // Notify user to start XMODEM send
+        ctx.send_line(session, "").await?;
+        ctx.send_line(session, ctx.i18n.t("file.xmodem_start_upload"))
+            .await?;
+
+        // Perform XMODEM receive
+        match xmodem_receive(session.stream_mut()).await {
+            Ok(data) => {
+                // Save the file
+                let storage = match FileStorage::new(&ctx.config.files.storage_path) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        ctx.send_line(
+                            session,
+                            &format!("{}: {}", ctx.i18n.t("file.upload_failed"), e),
+                        )
+                        .await?;
+                        ctx.wait_for_enter(session).await?;
+                        return Ok(());
+                    }
+                };
+                let file_service = FileService::new(&ctx.db, &storage);
+
+                let mut request = UploadRequest::new(folder_id, filename.to_string(), data);
+                if let Some(desc) = description {
+                    request = request.with_description(desc);
+                }
+
+                match file_service.upload(&request, &user) {
+                    Ok(metadata) => {
+                        ctx.send_line(session, "").await?;
+                        ctx.send_line(
+                            session,
+                            &format!(
+                                "{} ({} bytes)",
+                                ctx.i18n.t("file.file_uploaded"),
+                                metadata.size
+                            ),
+                        )
+                        .await?;
+                    }
+                    Err(e) => {
+                        ctx.send_line(session, "").await?;
+                        ctx.send_line(
+                            session,
+                            &format!("{}: {}", ctx.i18n.t("file.upload_failed"), e),
+                        )
+                        .await?;
+                    }
+                }
+            }
+            Err(e) => {
+                ctx.send_line(session, "").await?;
+                let error_msg = match e {
+                    TransferError::Cancelled => ctx.i18n.t("file.xmodem_cancelled").to_string(),
+                    TransferError::Timeout => ctx.i18n.t("file.xmodem_timeout").to_string(),
+                    _ => format!("{}: {}", ctx.i18n.t("file.xmodem_failed"), e),
+                };
+                ctx.send_line(session, &error_msg).await?;
+            }
+        }
 
         ctx.wait_for_enter(session).await?;
         Ok(())

@@ -87,6 +87,8 @@ not_implemented = "この機能は現在実装中です。"
 [error]
 # This can appear during login, so must be ASCII/English
 database = "A database error occurred."
+not_logged_in = "ログインが必要です"
+user_not_found = "ユーザーが見つかりません"
 
 [auth]
 login = "ログイン"
@@ -238,6 +240,16 @@ confirm_delete = "このファイルを削除しますか？"
 file_too_large = "ファイルサイズが大きすぎます（最大{{max}}）"
 upload_failed = "アップロードに失敗しました"
 download_started = "ダウンロードを開始します..."
+# XMODEM transfer
+download_confirm = "XMODEMでダウンロードしますか？"
+upload_prompt = "アップロードするファイル名を入力してください"
+upload_description_prompt = "ファイルの説明を入力してください（省略可）"
+xmodem_start_download = "XMODEMを開始します。ターミナルで受信を開始してください..."
+xmodem_start_upload = "XMODEMを開始します。ターミナルで送信を開始してください..."
+xmodem_complete = "転送が完了しました"
+xmodem_failed = "転送に失敗しました"
+xmodem_cancelled = "転送がキャンセルされました"
+xmodem_timeout = "転送がタイムアウトしました"
 
 [profile]
 title = "プロフィール"

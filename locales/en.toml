@@ -83,6 +83,8 @@ not_implemented = "This feature is not yet implemented."
 
 [error]
 database = "A database error occurred."
+not_logged_in = "Please login first"
+user_not_found = "User not found"
 
 [auth]
 login = "Login"
@@ -234,6 +236,16 @@ confirm_delete = "Delete this file?"
 file_too_large = "File too large (max {{max}})"
 upload_failed = "Upload failed"
 download_started = "Starting download..."
+# XMODEM transfer
+download_confirm = "Download with XMODEM?"
+upload_prompt = "Enter filename to upload"
+upload_description_prompt = "Enter file description (optional)"
+xmodem_start_download = "Starting XMODEM. Please start receiving on your terminal..."
+xmodem_start_upload = "Starting XMODEM. Please start sending on your terminal..."
+xmodem_complete = "Transfer complete"
+xmodem_failed = "Transfer failed"
+xmodem_cancelled = "Transfer cancelled"
+xmodem_timeout = "Transfer timed out"
 
 [profile]
 title = "Profile"

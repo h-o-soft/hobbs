@@ -19,6 +19,7 @@ pub mod screen;
 pub mod server;
 pub mod template;
 pub mod terminal;
+pub mod xmodem;
 
 pub use admin::{
     can_change_role, can_edit_user, format_duration, format_session_state, generate_password,
@@ -78,3 +79,4 @@ pub use template::{
 };
 
 pub use app::{Application, MenuAction, MenuError, SessionHandler};
+pub use xmodem::{xmodem_receive, xmodem_send, TransferError, TransferResult};
