@@ -298,20 +298,20 @@ impl ProfileScreen {
         Ok(())
     }
 
-    /// Change language and encoding settings.
+    /// Change language, encoding, and terminal settings.
     async fn change_settings(
         ctx: &mut ScreenContext,
         session: &mut TelnetSession,
         user_id: i64,
     ) -> Result<Option<ScreenResult>> {
         // Get current settings
-        let (current_language, current_encoding) = {
+        let (current_language, current_encoding, current_terminal) = {
             let user_repo = UserRepository::new(&ctx.db);
             let user = match user_repo.get_by_id(user_id)? {
                 Some(u) => u,
                 None => return Ok(None),
             };
-            (user.language.clone(), user.encoding)
+            (user.language.clone(), user.encoding, user.terminal.clone())
         };
 
         ctx.send_line(session, "").await?;
@@ -342,6 +342,15 @@ impl ProfileScreen {
                 "{}: {}",
                 ctx.i18n.t("settings.encoding"),
                 current_encoding.as_str().to_uppercase()
+            ),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!(
+                "{}: {}",
+                ctx.i18n.t("settings.terminal_profile"),
+                Self::profile_display_name(ctx, &current_terminal)
             ),
         )
         .await?;
@@ -402,17 +411,72 @@ impl ProfileScreen {
             _ => current_encoding,
         };
 
+        // Terminal profile selection
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("{}:", ctx.i18n.t("settings.terminal_profile")),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!("  [1] {}", ctx.i18n.t("terminal.profile_standard")),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!("  [2] {}", ctx.i18n.t("terminal.profile_c64")),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!("  [3] {}", ctx.i18n.t("terminal.profile_c64_ansi")),
+        )
+        .await?;
+        let current_profile_num = match current_terminal.as_str() {
+            "c64" => "2",
+            "c64_ansi" => "3",
+            _ => "1",
+        };
+        ctx.send(
+            session,
+            &format!("{} [{}]: ", ctx.i18n.t("common.number"), current_profile_num),
+        )
+        .await?;
+
+        let term_input = ctx.read_line(session).await?;
+        let term_input = term_input.trim();
+
+        let new_terminal = match term_input {
+            "1" => Some("standard".to_string()),
+            "2" => Some("c64".to_string()),
+            "3" => Some("c64_ansi".to_string()),
+            "" => None, // No change
+            _ => None,
+        };
+
+        // Determine actual new terminal value
+        let actual_new_terminal = new_terminal.clone().unwrap_or_else(|| current_terminal.clone());
+
         // Check if anything changed
-        if new_language == current_language && new_encoding == current_encoding {
+        let terminal_changed = new_terminal.is_some() && actual_new_terminal != current_terminal;
+        if new_language == current_language
+            && new_encoding == current_encoding
+            && !terminal_changed
+        {
             ctx.send_line(session, "").await?;
             return Ok(None);
         }
 
         // Save to database
         let user_repo = UserRepository::new(&ctx.db);
-        let update = UserUpdate::new()
+        let mut update = UserUpdate::new()
             .language(new_language.clone())
             .encoding(new_encoding);
+
+        if terminal_changed {
+            update = update.terminal(actual_new_terminal.clone());
+        }
 
         match user_repo.update(user_id, &update) {
             Ok(_) => {
@@ -424,6 +488,11 @@ impl ProfileScreen {
                 Ok(Some(ScreenResult::SettingsChanged {
                     language: new_language,
                     encoding: new_encoding,
+                    terminal_profile: if terminal_changed {
+                        Some(actual_new_terminal)
+                    } else {
+                        None
+                    },
                 }))
             }
             Err(e) => {
@@ -432,6 +501,15 @@ impl ProfileScreen {
                     .await?;
                 Ok(None)
             }
+        }
+    }
+
+    /// Get display name for a terminal profile.
+    fn profile_display_name(ctx: &ScreenContext, profile: &str) -> String {
+        match profile {
+            "c64" => ctx.i18n.t("terminal.profile_c64").to_string(),
+            "c64_ansi" => ctx.i18n.t("terminal.profile_c64_ansi").to_string(),
+            _ => ctx.i18n.t("terminal.profile_standard").to_string(),
         }
     }
 

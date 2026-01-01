@@ -201,6 +201,26 @@ impl Default for LoggingConfig {
     }
 }
 
+/// Terminal configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TerminalConfig {
+    /// Default terminal profile (standard, c64, c64_ansi).
+    #[serde(default = "default_terminal_profile")]
+    pub default_profile: String,
+}
+
+fn default_terminal_profile() -> String {
+    "standard".to_string()
+}
+
+impl Default for TerminalConfig {
+    fn default() -> Self {
+        Self {
+            default_profile: default_terminal_profile(),
+        }
+    }
+}
+
 /// Main configuration structure.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct Config {
@@ -225,6 +245,9 @@ pub struct Config {
     /// Logging configuration.
     #[serde(default)]
     pub logging: LoggingConfig,
+    /// Terminal configuration.
+    #[serde(default)]
+    pub terminal: TerminalConfig,
 }
 
 impl Config {
@@ -267,6 +290,8 @@ mod tests {
 
         assert_eq!(config.logging.level, "info");
         assert_eq!(config.logging.file, "logs/hobbs.log");
+
+        assert_eq!(config.terminal.default_profile, "standard");
     }
 
     #[test]
@@ -299,6 +324,9 @@ path = "custom/templates"
 [logging]
 level = "debug"
 file = "custom/logs/app.log"
+
+[terminal]
+default_profile = "c64"
 "#;
 
         let config = Config::parse(toml).unwrap();
@@ -323,6 +351,8 @@ file = "custom/logs/app.log"
 
         assert_eq!(config.logging.level, "debug");
         assert_eq!(config.logging.file, "custom/logs/app.log");
+
+        assert_eq!(config.terminal.default_profile, "c64");
     }
 
     #[test]

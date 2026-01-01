@@ -225,6 +225,37 @@ impl Default for TerminalProfile {
     }
 }
 
+impl TerminalProfile {
+    /// Create a terminal profile from a profile name string.
+    ///
+    /// Returns the matching preset profile, or the standard profile for unknown names.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Profile name ("standard", "c64", "c64_ansi")
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use hobbs::terminal::TerminalProfile;
+    ///
+    /// let profile = TerminalProfile::from_name("c64");
+    /// assert_eq!(profile.width, 40);
+    /// ```
+    pub fn from_name(name: &str) -> Self {
+        match name.to_lowercase().as_str() {
+            "c64" => Self::c64(),
+            "c64_ansi" => Self::c64_ansi(),
+            _ => Self::standard(),
+        }
+    }
+
+    /// Get all available profile names.
+    pub fn available_profiles() -> &'static [&'static str] {
+        &["standard", "c64", "c64_ansi"]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,6 +424,45 @@ mod tests {
         let p1 = TerminalProfile::standard();
         let p2 = p1.clone();
         assert_eq!(p1, p2);
+    }
+
+    #[test]
+    fn test_from_name_standard() {
+        let profile = TerminalProfile::from_name("standard");
+        assert_eq!(profile, TerminalProfile::standard());
+    }
+
+    #[test]
+    fn test_from_name_c64() {
+        let profile = TerminalProfile::from_name("c64");
+        assert_eq!(profile, TerminalProfile::c64());
+    }
+
+    #[test]
+    fn test_from_name_c64_ansi() {
+        let profile = TerminalProfile::from_name("c64_ansi");
+        assert_eq!(profile, TerminalProfile::c64_ansi());
+    }
+
+    #[test]
+    fn test_from_name_case_insensitive() {
+        assert_eq!(TerminalProfile::from_name("C64"), TerminalProfile::c64());
+        assert_eq!(TerminalProfile::from_name("C64_ANSI"), TerminalProfile::c64_ansi());
+        assert_eq!(TerminalProfile::from_name("STANDARD"), TerminalProfile::standard());
+    }
+
+    #[test]
+    fn test_from_name_unknown() {
+        let profile = TerminalProfile::from_name("unknown");
+        assert_eq!(profile, TerminalProfile::standard());
+    }
+
+    #[test]
+    fn test_available_profiles() {
+        let profiles = TerminalProfile::available_profiles();
+        assert!(profiles.contains(&"standard"));
+        assert!(profiles.contains(&"c64"));
+        assert!(profiles.contains(&"c64_ansi"));
     }
 
     #[test]

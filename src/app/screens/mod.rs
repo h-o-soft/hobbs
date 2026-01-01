@@ -35,12 +35,14 @@ pub enum ScreenResult {
     Logout,
     /// User wants to quit.
     Quit,
-    /// User changed language/encoding settings.
+    /// User changed language/encoding/terminal settings.
     SettingsChanged {
         /// New language setting (e.g., "en", "ja").
         language: String,
         /// New character encoding setting.
         encoding: CharacterEncoding,
+        /// New terminal profile (if changed).
+        terminal_profile: Option<String>,
     },
 }
 

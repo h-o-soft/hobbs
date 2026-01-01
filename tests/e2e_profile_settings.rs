@@ -156,6 +156,12 @@ async fn test_change_language_en_to_ja() {
     // Select encoding (keep default UTF-8)
     client.send_line("").await.unwrap();
 
+    // Wait for terminal profile prompt
+    let _ = client.recv_timeout(Duration::from_secs(1)).await.unwrap_or_default();
+
+    // Keep terminal profile as default
+    client.send_line("").await.unwrap();
+
     // Wait for settings saved message and return to main menu
     // After SettingsChanged, we go back to main menu (not profile)
     let mut response = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
@@ -240,8 +246,19 @@ async fn test_change_encoding_utf8_to_shiftjis() {
     // Select ShiftJIS encoding (option 2)
     client.send_line("2").await.unwrap();
 
+    // Wait for terminal profile prompt
+    let _ = client.recv_timeout(Duration::from_secs(2)).await.unwrap_or_default();
+
+    // Keep terminal profile as default
+    client.send_line("").await.unwrap();
+
     // Wait for settings saved message
-    let response = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
+    let mut response = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
+
+    // Get more data if needed
+    if let Ok(more) = client.recv_timeout(Duration::from_secs(1)).await {
+        response.push_str(&more);
+    }
 
     // Settings should be saved
     assert!(
@@ -250,7 +267,8 @@ async fn test_change_encoding_utf8_to_shiftjis() {
             || response.contains("saved")
             || response.contains("[E]")
             || response.contains("[P]")
-            || response.contains("[S]"),
+            || response.contains("[S]")
+            || response.contains("メニュー"),
         "Settings should be saved: {:?}",
         response
     );
@@ -316,6 +334,12 @@ async fn test_settings_persist_on_main_menu() {
     }
 
     // Keep encoding default
+    client.send_line("").await.unwrap();
+
+    // Wait for terminal profile prompt
+    let _ = client.recv_timeout(Duration::from_secs(1)).await.unwrap_or_default();
+
+    // Keep terminal profile as default
     client.send_line("").await.unwrap();
 
     // After SettingsChanged, we go back to main menu (not profile)

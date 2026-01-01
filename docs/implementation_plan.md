@@ -29,7 +29,8 @@
 | 10.5 | 言語・エンコーディング動的選択 | 接続時の言語選択、ユーザー設定適用 | Phase 10 | ✅ |
 | 10.6 | チャット画面統合 | ChatScreenからルーム入室・発言 | Phase 5, 10 | 未着手 |
 | 10.7 | エンコーディング変換修正 | ScreenContextのエンコーディング引き継ぎ | Phase 10.5 | 未着手 |
-| 11+ | 将来拡張 | SSH対応, WebSocket等 | Phase 10.7 |
+| 10.8 | 端末プロファイル選択 | 40/80カラム切り替え、ログイン時適用 | Phase 10 | 進行中 |
+| 11+ | 将来拡張 | SSH対応, WebSocket等 | Phase 10.8 |
 
 ---
 
@@ -986,6 +987,67 @@ Select language / 言語選択:
 
 **関連ファイル**:
 - `tests/e2e_encoding.rs`
+
+---
+
+## Phase 10.8: 端末プロファイル選択
+
+### 10.8-1. config.tomlにデフォルト端末プロファイル設定を追加
+
+**概要**: システム全体のデフォルト端末プロファイルをconfig.tomlで設定可能にする
+
+**完了条件**:
+- [ ] `TerminalConfig` 構造体を追加（default_profile: "standard" | "c64" | "c64_ansi"）
+- [ ] `Config` 構造体に `terminal` フィールドを追加
+- [ ] デフォルト値（"standard"）を設定
+- [ ] 単体テスト
+
+**関連ファイル**:
+- `src/config.rs`
+- `config.toml`
+
+---
+
+### 10.8-2. SessionHandlerでの端末プロファイル適用
+
+**概要**: SessionHandlerで端末プロファイルを管理し、画面表示に反映する
+
+**完了条件**:
+- [ ] SessionHandlerに`terminal_profile`フィールドを追加
+- [ ] ログイン時にユーザーのterminal設定を読み込みプロファイル適用
+- [ ] ScreenContextへのプロファイル引き継ぎ
+- [ ] ゲストユーザーはconfig.tomlのデフォルトを使用
+- [ ] 統合テスト
+
+**関連ファイル**:
+- `src/app/session_handler.rs`
+- `src/app/screens/common.rs`
+
+---
+
+### 10.8-3. 設定画面での端末プロファイル変更
+
+**概要**: ユーザー設定画面で端末プロファイルを選択・保存できるようにする
+
+**画面イメージ**:
+```
+端末プロファイル:
+[S] Standard (80x24)
+[C] C64 (40x25, ANSI無効)
+[A] C64 ANSI (40x25)
+```
+
+**完了条件**:
+- [ ] プロフィール編集画面または設定画面に端末選択項目を追加
+- [ ] DBへの保存処理
+- [ ] 即時反映（セッション更新）
+- [ ] ローカライズメッセージ追加
+- [ ] 統合テスト
+
+**関連ファイル**:
+- `src/app/screens/profile.rs`
+- `locales/en.toml`
+- `locales/ja.toml`
 
 ---
 
