@@ -6,6 +6,7 @@ use super::common::{Pagination, ScreenContext};
 use super::ScreenResult;
 use crate::board::{
     BoardService, BoardType, Pagination as BoardPagination, PostRepository, ThreadRepository,
+    UnreadRepository,
 };
 use crate::db::{Role, UserRepository};
 use crate::error::Result;
@@ -26,6 +27,18 @@ impl BoardScreen {
             let board_service = BoardService::new(&ctx.db);
             let boards = board_service.list_boards(user_role)?;
 
+            // Get unread counts for logged-in users
+            let unread_counts: std::collections::HashMap<i64, i64> =
+                if let Some(user_id) = session.user_id() {
+                    let unread_repo = UnreadRepository::new(&ctx.db);
+                    unread_repo
+                        .get_all_unread_counts(user_id)?
+                        .into_iter()
+                        .collect()
+                } else {
+                    std::collections::HashMap::new()
+                };
+
             // Display board list
             ctx.send_line(session, "").await?;
             ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("board.list")))
@@ -36,17 +49,33 @@ impl BoardScreen {
                 ctx.send_line(session, ctx.i18n.t("board.no_boards"))
                     .await?;
             } else {
-                ctx.send_line(
-                    session,
-                    &format!(
-                        "  {:<4} {:<20} {:>8}",
-                        ctx.i18n.t("common.number"),
-                        ctx.i18n.t("board.title"),
-                        ctx.i18n.t("board.replies")
-                    ),
-                )
-                .await?;
-                ctx.send_line(session, &"-".repeat(40)).await?;
+                // Show header with unread column for logged-in users
+                if session.user_id().is_some() {
+                    ctx.send_line(
+                        session,
+                        &format!(
+                            "  {:<4} {:<20} {:>6} {:>8}",
+                            ctx.i18n.t("common.number"),
+                            ctx.i18n.t("board.title"),
+                            ctx.i18n.t("board.replies"),
+                            ctx.i18n.t("board.unread")
+                        ),
+                    )
+                    .await?;
+                    ctx.send_line(session, &"-".repeat(48)).await?;
+                } else {
+                    ctx.send_line(
+                        session,
+                        &format!(
+                            "  {:<4} {:<20} {:>8}",
+                            ctx.i18n.t("common.number"),
+                            ctx.i18n.t("board.title"),
+                            ctx.i18n.t("board.replies")
+                        ),
+                    )
+                    .await?;
+                    ctx.send_line(session, &"-".repeat(40)).await?;
+                }
 
                 for (i, board) in boards.iter().enumerate() {
                     let count = if board.board_type == BoardType::Thread {
@@ -57,11 +86,32 @@ impl BoardScreen {
                         post_repo.count_by_flat_board(board.id)?
                     };
 
-                    ctx.send_line(
-                        session,
-                        &format!("  {:<4} {:<20} {:>8}", i + 1, board.name, count),
-                    )
-                    .await?;
+                    // Show unread count for logged-in users
+                    if session.user_id().is_some() {
+                        let unread = unread_counts.get(&board.id).copied().unwrap_or(0);
+                        let unread_display = if unread > 0 {
+                            format!("[{}]", unread)
+                        } else {
+                            String::new()
+                        };
+                        ctx.send_line(
+                            session,
+                            &format!(
+                                "  {:<4} {:<20} {:>6} {:>8}",
+                                i + 1,
+                                board.name,
+                                count,
+                                unread_display
+                            ),
+                        )
+                        .await?;
+                    } else {
+                        ctx.send_line(
+                            session,
+                            &format!("  {:<4} {:<20} {:>8}", i + 1, board.name, count),
+                        )
+                        .await?;
+                    }
                 }
             }
 
