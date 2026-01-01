@@ -76,6 +76,9 @@ const START_RETRIES: usize = 40; // 40 * 3 seconds = 120 seconds total
 ///
 /// The number of bytes sent on success.
 pub async fn xmodem_send(stream: &mut TcpStream, data: &[u8]) -> TransferResult<usize> {
+    // Enable Telnet binary mode to prevent CR+NUL conversion
+    enable_binary_mode(stream).await?;
+
     // Wait for initial NAK from receiver (indicating they're ready)
     let start_byte = wait_for_start(stream).await?;
     let use_crc = start_byte == b'C';
@@ -104,6 +107,32 @@ pub async fn xmodem_send(stream: &mut TcpStream, data: &[u8]) -> TransferResult<
     Ok(data.len())
 }
 
+/// Telnet command bytes
+const IAC: u8 = 255;  // Interpret As Command
+const WILL: u8 = 251; // Will perform option
+const DO: u8 = 253;   // Request to perform option
+const TRANSMIT_BINARY: u8 = 0; // Binary Transmission option
+
+/// Enable Telnet binary mode to prevent CR+NUL expansion.
+async fn enable_binary_mode(stream: &mut TcpStream) -> std::io::Result<()> {
+    // Request binary mode in both directions
+    // IAC WILL TRANSMIT-BINARY - we will send binary
+    // IAC DO TRANSMIT-BINARY - please send us binary
+    let binary_request = [
+        IAC, WILL, TRANSMIT_BINARY,
+        IAC, DO, TRANSMIT_BINARY,
+    ];
+    stream.write_all(&binary_request).await?;
+    stream.flush().await?;
+
+    tracing::debug!("XMODEM: Sent Telnet BINARY mode request");
+
+    // Give the terminal a moment to process
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    Ok(())
+}
+
 /// Receive data using XMODEM protocol.
 ///
 /// This function receives data from the remote end using XMODEM protocol.
@@ -117,6 +146,10 @@ pub async fn xmodem_send(stream: &mut TcpStream, data: &[u8]) -> TransferResult<
 ///
 /// The received data on success.
 pub async fn xmodem_receive(stream: &mut TcpStream) -> TransferResult<Vec<u8>> {
+    // Enable Telnet binary mode to prevent CR+NUL conversion
+    // This is critical for binary file transfer
+    enable_binary_mode(stream).await?;
+
     let mut data = Vec::new();
     let mut expected_block: u8 = 1;
     let mut total_blocks: u32 = 0;
@@ -233,8 +266,6 @@ pub async fn xmodem_receive(stream: &mut TcpStream) -> TransferResult<Vec<u8>> {
 
 /// Read next header byte, skipping Telnet IAC sequences.
 async fn read_next_header(stream: &mut TcpStream) -> std::io::Result<u8> {
-    const IAC: u8 = 0xFF;
-
     loop {
         let byte = read_byte(stream).await?;
         if byte == IAC {
@@ -259,8 +290,6 @@ async fn read_next_header(stream: &mut TcpStream) -> std::io::Result<u8> {
 /// Wait for sender to start by sending 'C' repeatedly.
 /// Returns the first valid header byte (SOH or EOT).
 async fn wait_for_sender_start(stream: &mut TcpStream) -> TransferResult<u8> {
-    // Telnet IAC (Interpret As Command) byte
-    const IAC: u8 = 0xFF;
 
     for retry in 0..START_RETRIES {
         // Send 'C' for CRC mode
@@ -368,16 +397,18 @@ async fn send_block(
     Err(TransferError::MaxRetries)
 }
 
-/// Receive a single block, handling Telnet IAC escaping.
+/// Receive a single block.
+///
+/// Note: We read raw bytes without Telnet IAC handling because:
+/// 1. XMODEM senders (sx, terminal emulators) send raw binary data without Telnet escaping
+/// 2. Doing IAC handling here would corrupt the data stream by skipping valid data bytes
 async fn receive_block(
     stream: &mut TcpStream,
     use_crc: bool,
 ) -> TransferResult<(u8, [u8; BLOCK_SIZE])> {
-    const IAC: u8 = 0xFF;
-
-    // Read block number and complement
-    let block_num = read_byte_skip_iac(stream).await?;
-    let block_num_complement = read_byte_skip_iac(stream).await?;
+    // Read block number and complement (raw bytes, no IAC handling)
+    let block_num = read_byte(stream).await?;
+    let block_num_complement = read_byte(stream).await?;
 
     tracing::debug!(
         "XMODEM: Block header: num=0x{:02X}, complement=0x{:02X}",
@@ -397,42 +428,30 @@ async fn receive_block(
         ));
     }
 
-    // Read data - need to handle IAC escaping
+    // Read data - raw bytes, no Telnet IAC handling
+    // XMODEM senders transmit raw binary without Telnet escaping
     let mut data = [0u8; BLOCK_SIZE];
-    let mut i = 0;
-    while i < BLOCK_SIZE {
-        let byte = read_byte(stream).await?;
-        if byte == IAC {
-            // Read next byte to check if it's escaped IAC
-            let next = read_byte(stream).await?;
-            if next == IAC {
-                // Escaped 0xFF, store as single 0xFF
-                data[i] = IAC;
-                i += 1;
-            } else if (0xFB..=0xFE).contains(&next) {
-                // Telnet WILL/WONT/DO/DONT - skip option byte
-                let _ = read_byte(stream).await?;
-                tracing::debug!("XMODEM: Skipped Telnet command in data");
-                // Don't increment i, we didn't store any data byte
-            } else {
-                // Other Telnet command - skip
-                tracing::debug!("XMODEM: Skipped Telnet command 0x{:02X} in data", next);
-            }
-        } else {
-            data[i] = byte;
-            i += 1;
-        }
-    }
+    stream.read_exact(&mut data).await?;
 
-    // Read and verify checksum/CRC
+    // Log first and last bytes to detect misalignment
+    tracing::debug!(
+        "XMODEM: Block {} data: first 4 bytes=[{:02X} {:02X} {:02X} {:02X}], last 4 bytes=[{:02X} {:02X} {:02X} {:02X}]",
+        block_num,
+        data[0], data[1], data[2], data[3],
+        data[124], data[125], data[126], data[127]
+    );
+
+    // Read and verify checksum/CRC (raw bytes)
     if use_crc {
-        let crc_high = read_byte_skip_iac(stream).await?;
-        let crc_low = read_byte_skip_iac(stream).await?;
+        let crc_high = read_byte(stream).await?;
+        let crc_low = read_byte(stream).await?;
         let received_crc = ((crc_high as u16) << 8) | (crc_low as u16);
         let calculated_crc = calculate_crc16(&data);
 
         tracing::debug!(
-            "XMODEM: CRC check: received=0x{:04X}, calculated=0x{:04X}",
+            "XMODEM: CRC bytes: high=0x{:02X}, low=0x{:02X}, received=0x{:04X}, calculated=0x{:04X}",
+            crc_high,
+            crc_low,
             received_crc,
             calculated_crc
         );
@@ -447,7 +466,7 @@ async fn receive_block(
             return Err(TransferError::Protocol("CRC mismatch".to_string()));
         }
     } else {
-        let received_checksum = read_byte_skip_iac(stream).await?;
+        let received_checksum = read_byte(stream).await?;
         let calculated_checksum = calculate_checksum(&data);
         if received_checksum != calculated_checksum {
             tracing::warn!(
@@ -461,30 +480,6 @@ async fn receive_block(
     }
 
     Ok((block_num, data))
-}
-
-/// Read a single byte, handling Telnet IAC escaping.
-async fn read_byte_skip_iac(stream: &mut TcpStream) -> std::io::Result<u8> {
-    const IAC: u8 = 0xFF;
-
-    loop {
-        let byte = read_byte(stream).await?;
-        if byte == IAC {
-            let next = read_byte(stream).await?;
-            if next == IAC {
-                // Escaped 0xFF
-                return Ok(IAC);
-            } else if (0xFB..=0xFE).contains(&next) {
-                // WILL/WONT/DO/DONT - skip one more byte
-                let _ = read_byte(stream).await?;
-                continue;
-            } else {
-                // Other command, skip
-                continue;
-            }
-        }
-        return Ok(byte);
-    }
 }
 
 /// Send EOT and wait for ACK.
