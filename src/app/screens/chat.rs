@@ -1,7 +1,15 @@
 //! Chat screen handler.
 
+use std::sync::Arc;
+
+use tokio::sync::broadcast;
+
 use super::common::ScreenContext;
 use super::ScreenResult;
+use crate::chat::{
+    format_help, format_who, parse_input, ChatCommand, ChatInput, ChatLogRepository, ChatMessage,
+    ChatParticipant, ChatRoom, NewChatLog,
+};
 use crate::error::Result;
 use crate::server::TelnetSession;
 
@@ -24,23 +32,37 @@ impl ChatScreen {
             .await?;
             ctx.send_line(session, "").await?;
 
-            // Static room list for now (will be managed dynamically later)
-            let rooms = ["Lobby", "Tech", "Random"];
+            // Get rooms from manager
+            let rooms = ctx.chat_manager.list_rooms().await;
 
             ctx.send_line(
                 session,
                 &format!(
-                    "  {:<4} {:<20}",
+                    "  {:<4} {:<20} {}",
                     ctx.i18n.t("common.number"),
-                    ctx.i18n.t("chat.room_name")
+                    ctx.i18n.t("chat.room_name"),
+                    ctx.i18n.t("chat.users_in_room")
                 ),
             )
             .await?;
-            ctx.send_line(session, &"-".repeat(30)).await?;
+            ctx.send_line(session, &"-".repeat(40)).await?;
 
-            for (i, room) in rooms.iter().enumerate() {
-                ctx.send_line(session, &format!("  {:<4} {:<20}", i + 1, room))
+            if rooms.is_empty() {
+                ctx.send_line(session, ctx.i18n.t("chat.no_rooms")).await?;
+            } else {
+                for (i, room) in rooms.iter().enumerate() {
+                    ctx.send_line(
+                        session,
+                        &format!(
+                            "  {:<4} {:<20} ({} {})",
+                            i + 1,
+                            room.name,
+                            room.participant_count,
+                            ctx.i18n.t("common.people")
+                        ),
+                    )
                     .await?;
+                }
             }
 
             ctx.send_line(session, "").await?;
@@ -64,17 +86,263 @@ impl ChatScreen {
             if let Some(num) = ctx.parse_number(input) {
                 let idx = (num - 1) as usize;
                 if idx < rooms.len() {
-                    // For now, show "not implemented" message
-                    ctx.send_line(session, "").await?;
-                    ctx.send_line(session, ctx.i18n.t("feature.not_implemented"))
-                        .await?;
-                    ctx.send_line(
-                        session,
-                        "Chat functionality requires ChatRoomManager integration.",
-                    )
-                    .await?;
-                    ctx.wait_for_enter(session).await?;
+                    let room_id = &rooms[idx].id;
+                    // Enter the selected room
+                    let result = Self::run_room(ctx, session, room_id).await?;
+                    if result != ScreenResult::Back {
+                        return Ok(result);
+                    }
                 }
+            }
+        }
+    }
+
+    /// Run a chat room session.
+    async fn run_room(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        room_id: &str,
+    ) -> Result<ScreenResult> {
+        // Get the room
+        let room = match ctx.chat_manager.get_room(room_id).await {
+            Some(r) => r,
+            None => {
+                ctx.send_line(session, "Room not found.").await?;
+                return Ok(ScreenResult::Back);
+            }
+        };
+
+        // Get participant info
+        let session_id = session.id().to_string();
+        let user_id = session.user_id();
+        let nickname = session
+            .username()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| ctx.i18n.t("auth.guest").to_string());
+
+        // Join the room
+        let participant = ChatParticipant::new(&session_id, user_id, &nickname);
+        room.join(participant).await;
+
+        // Subscribe to messages
+        let mut receiver = room.subscribe();
+
+        // Show room header
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", room.name()),
+        )
+        .await?;
+        ctx.send_line(session, ctx.i18n.t("chat.command_help")).await?;
+        ctx.send_line(session, "").await?;
+
+        // Show recent logs
+        Self::show_recent_logs(ctx, session, room_id).await?;
+
+        // Main chat loop
+        let result = Self::chat_loop(ctx, session, &room, &mut receiver, &session_id, user_id, &nickname).await;
+
+        // Leave the room
+        room.leave(&session_id).await;
+
+        // Leave all rooms when disconnecting
+        ctx.chat_manager.leave_all_rooms(&session_id).await;
+
+        result
+    }
+
+    /// Show recent chat logs.
+    async fn show_recent_logs(
+        ctx: &ScreenContext,
+        session: &mut TelnetSession,
+        room_id: &str,
+    ) -> Result<()> {
+        let logs = ChatLogRepository::get_recent(ctx.db.conn(), room_id, 10)?;
+
+        if !logs.is_empty() {
+            ctx.send_line(session, "--- Recent messages ---").await?;
+            for log in logs {
+                ctx.send_line(session, &log.format()).await?;
+            }
+            ctx.send_line(session, "---").await?;
+            ctx.send_line(session, "").await?;
+        }
+
+        Ok(())
+    }
+
+    /// Main chat loop.
+    async fn chat_loop(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        room: &Arc<ChatRoom>,
+        receiver: &mut broadcast::Receiver<ChatMessage>,
+        session_id: &str,
+        user_id: Option<i64>,
+        nickname: &str,
+    ) -> Result<ScreenResult> {
+        loop {
+            // Use select to handle both input and incoming messages
+            tokio::select! {
+                // Check for incoming messages
+                msg_result = receiver.recv() => {
+                    match msg_result {
+                        Ok(msg) => {
+                            // Don't echo our own messages
+                            if msg.sender_id.as_deref() != Some(session_id) {
+                                ctx.send_line(session, &msg.format()).await?;
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            ctx.send_line(session, &format!("*** Missed {} messages", n)).await?;
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            ctx.send_line(session, "*** Chat room closed").await?;
+                            return Ok(ScreenResult::Back);
+                        }
+                    }
+                }
+
+                // Read user input (with a small timeout to check messages)
+                input_result = Self::read_input_with_timeout(ctx, session) => {
+                    match input_result {
+                        Some(Ok(line)) => {
+                            let parsed = parse_input(&line);
+                            match parsed {
+                                ChatInput::Command(cmd) => {
+                                    match cmd {
+                                        ChatCommand::Quit => {
+                                            return Ok(ScreenResult::Back);
+                                        }
+                                        ChatCommand::Who => {
+                                            let names = room.participant_names().await;
+                                            let who_text = format_who(&names, room.name());
+                                            for line in who_text.lines() {
+                                                ctx.send_line(session, line).await?;
+                                            }
+                                        }
+                                        ChatCommand::Me(action) => {
+                                            if !action.is_empty() {
+                                                room.send_action(session_id, &action).await;
+                                                // Echo to sender
+                                                ctx.send_line(session, &format!("* {} {}", nickname, action)).await?;
+                                                // Save to log
+                                                let log = NewChatLog::action(room.id(), user_id.unwrap_or(0), nickname, &action);
+                                                let _ = ChatLogRepository::save(ctx.db.conn(), &log);
+                                            }
+                                        }
+                                        ChatCommand::Help => {
+                                            let help_text = format_help();
+                                            for line in help_text.lines() {
+                                                ctx.send_line(session, line).await?;
+                                            }
+                                        }
+                                        ChatCommand::Unknown(cmd_name) => {
+                                            ctx.send_line(session, &format!("*** Unknown command: /{}", cmd_name)).await?;
+                                        }
+                                    }
+                                }
+                                ChatInput::Message(content) => {
+                                    if !content.is_empty() {
+                                        // Send the message
+                                        room.send_message(session_id, &content).await;
+                                        // Echo to sender
+                                        ctx.send_line(session, &format!("<{}> {}", nickname, content)).await?;
+                                        // Save to log
+                                        let log = NewChatLog::chat(room.id(), user_id.unwrap_or(0), nickname, &content);
+                                        let _ = ChatLogRepository::save(ctx.db.conn(), &log);
+                                    }
+                                }
+                            }
+                        }
+                        Some(Err(_)) => {
+                            // Connection error
+                            return Ok(ScreenResult::Quit);
+                        }
+                        None => {
+                            // Timeout, just continue to check messages
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Read input with a timeout.
+    async fn read_input_with_timeout(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+    ) -> Option<Result<String>> {
+        use tokio::io::AsyncReadExt;
+        use tokio::time::{timeout, Duration};
+
+        let mut buf = [0u8; 1];
+        ctx.line_buffer.clear();
+
+        // Try to read with a short timeout
+        match timeout(Duration::from_millis(100), session.stream_mut().read(&mut buf)).await {
+            Ok(Ok(0)) => {
+                // Connection closed
+                Some(Ok(String::new()))
+            }
+            Ok(Ok(_)) => {
+                // Got a byte, process it
+                let (result, echo) = ctx.line_buffer.process_byte(buf[0]);
+
+                // Echo the character
+                if !echo.is_empty() {
+                    let _ = session.stream_mut().write_all(&echo).await;
+                    let _ = session.stream_mut().flush().await;
+                }
+
+                use tokio::io::AsyncWriteExt;
+
+                match result {
+                    crate::server::InputResult::Line(line) => Some(Ok(line)),
+                    crate::server::InputResult::Buffering => {
+                        // Continue reading until we get a complete line
+                        Self::finish_reading_line(ctx, session).await
+                    }
+                    crate::server::InputResult::Cancel | crate::server::InputResult::Eof => {
+                        Some(Ok(String::new()))
+                    }
+                }
+            }
+            Ok(Err(e)) => Some(Err(e.into())),
+            Err(_) => None, // Timeout
+        }
+    }
+
+    /// Continue reading until we get a complete line.
+    async fn finish_reading_line(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+    ) -> Option<Result<String>> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let mut buf = [0u8; 1];
+
+        loop {
+            match session.stream_mut().read(&mut buf).await {
+                Ok(0) => return Some(Ok(String::new())),
+                Ok(_) => {
+                    let (result, echo) = ctx.line_buffer.process_byte(buf[0]);
+
+                    if !echo.is_empty() {
+                        let _ = session.stream_mut().write_all(&echo).await;
+                        let _ = session.stream_mut().flush().await;
+                    }
+
+                    match result {
+                        crate::server::InputResult::Line(line) => return Some(Ok(line)),
+                        crate::server::InputResult::Buffering => continue,
+                        crate::server::InputResult::Cancel | crate::server::InputResult::Eof => {
+                            return Some(Ok(String::new()))
+                        }
+                    }
+                }
+                Err(e) => return Some(Err(e.into())),
             }
         }
     }

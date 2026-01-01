@@ -14,6 +14,7 @@ use tokio::sync::oneshot;
 use tokio::task::LocalSet;
 use tokio::time::timeout;
 
+use hobbs::chat::ChatRoomManager;
 use hobbs::config::{BbsConfig, Config, DatabaseConfig, LocaleConfig, LoggingConfig, ServerConfig};
 use hobbs::server::{encode_for_client, CharacterEncoding, SessionManager};
 use hobbs::{Application, Database, I18nManager, TelnetServer, TelnetSession, TemplateLoader};
@@ -360,6 +361,9 @@ impl TestServer {
                     // Create session manager
                     let session_manager = Arc::new(SessionManager::new(300));
 
+                    // Create chat room manager
+                    let chat_manager = Arc::new(ChatRoomManager::with_defaults().await);
+
                     // Create application
                     let app = Application::new(
                         server_db,
@@ -367,6 +371,7 @@ impl TestServer {
                         i18n_manager,
                         template_loader,
                         session_manager,
+                        chat_manager,
                     );
 
                     // Create LocalSet for non-Send futures
