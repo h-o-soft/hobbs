@@ -51,14 +51,15 @@ async fn test_guest_mode() {
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
-    // Wait for language selection screen
-    client.recv_until("Gengo").await.unwrap();
-    // Select English
-    client.send_line("E").await.unwrap();
-
+    // New flow: welcome screen (ASCII) appears first
     // Wait for welcome screen prompt
     client.recv_until("Select:").await.unwrap();
     client.send_line("G").await.unwrap();
+
+    // Language selection appears after choosing G
+    client.recv_until("Gengo").await.unwrap();
+    // Select English
+    client.send_line("E").await.unwrap();
 
     // Should see main menu
     let response = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
@@ -125,6 +126,17 @@ async fn test_invalid_input_at_welcome() {
 
         // Now send valid input (G for guest) to proceed
         client.send_line("G").await?;
+
+        // New flow: language selection appears after choosing G
+        let lang_response = client.recv().await?;
+        assert!(
+            lang_response.contains("Gengo") || lang_response.contains("English"),
+            "Should see language selection: {:?}",
+            lang_response
+        );
+
+        // Select English
+        client.send_line("E").await?;
         let menu = client.recv().await?;
 
         // Now should be at main menu

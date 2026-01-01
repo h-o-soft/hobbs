@@ -238,17 +238,16 @@ impl TestClient {
     }
 
     /// Perform login with specific encoding.
+    /// Note: The new flow doesn't require language selection before login.
+    /// The user's saved encoding/language will be applied after successful login.
     pub async fn login_with_encoding(
         &mut self,
         username: &str,
         password: &str,
-        language_choice: &str,
+        _language_choice: &str,
     ) -> Result<bool, std::io::Error> {
-        // Handle language selection with encoding
-        self.select_language_with_encoding(language_choice).await?;
-
-        // Choose login - wait for the welcome menu prompt
-        self.recv_until_timeout(":", Duration::from_secs(3)).await?;
+        // Wait for welcome screen (ASCII) - choose login
+        self.recv_until_timeout("Select:", Duration::from_secs(3)).await?;
         self.send_line("L").await?;
 
         // Wait for username prompt
@@ -267,12 +266,10 @@ impl TestClient {
     }
 
     /// Perform login sequence.
-    /// Assumes client is at the language selection screen or ready to receive it.
+    /// New flow: welcome screen (ASCII) -> choose L -> login.
+    /// User's encoding/language will be applied after successful login.
     pub async fn login(&mut self, username: &str, password: &str) -> Result<bool, std::io::Error> {
-        // Handle language selection first
-        self.select_language("E").await?;
-
-        // Choose login - wait for the welcome menu prompt
+        // Wait for welcome screen (ASCII) - choose login
         self.recv_until("Select:").await?;
         self.send_line("L").await?;
 
@@ -292,19 +289,19 @@ impl TestClient {
     }
 
     /// Perform registration sequence.
-    /// Assumes client is at the language selection screen or ready to receive it.
+    /// New flow: welcome screen (ASCII) -> choose R -> language selection -> register.
     pub async fn register(
         &mut self,
         username: &str,
         password: &str,
         nickname: &str,
     ) -> Result<bool, std::io::Error> {
-        // Handle language selection first
-        self.select_language("E").await?;
-
-        // Wait for welcome menu prompt
+        // Wait for welcome screen (ASCII) - choose register
         self.recv_until("Select:").await?;
         self.send_line("R").await?;
+
+        // Handle language selection (appears after choosing R)
+        self.select_language("E").await?;
 
         // Wait for username prompt
         self.recv_until("Username:").await?;
@@ -333,10 +330,15 @@ impl TestClient {
     }
 
     /// Enter guest mode.
+    /// New flow: welcome screen (ASCII) -> choose G -> language selection -> menu.
     pub async fn enter_guest(&mut self) -> Result<(), std::io::Error> {
+        // Wait for welcome screen
+        self.recv_until("Select:").await?;
         self.send_line("G").await?;
+        // Handle language selection (appears after choosing G)
+        self.select_language("E").await?;
         // Wait for menu to appear
-        let _ = self.recv().await?;
+        let _ = self.recv_timeout(Duration::from_secs(2)).await;
         Ok(())
     }
 

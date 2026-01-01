@@ -138,10 +138,7 @@ impl SessionHandler {
             warn!("Telnet negotiation failed: {}", e);
         }
 
-        // Show language/encoding selection screen
-        self.show_language_selection(session).await?;
-
-        // Show welcome screen
+        // Show welcome screen (ASCII-only, works with any encoding)
         self.show_welcome(session).await?;
 
         // Main session loop
@@ -162,12 +159,17 @@ impl SessionHandler {
                     // Prompt for login/guest choice
                     match self.welcome_prompt(session).await? {
                         WelcomeChoice::Login => {
+                            // Login: user's saved encoding will be applied after login
                             session.set_state(SessionState::Login);
                         }
                         WelcomeChoice::Register => {
+                            // Register: select encoding first, then register
+                            self.show_language_selection(session).await?;
                             session.set_state(SessionState::Registration);
                         }
                         WelcomeChoice::Guest => {
+                            // Guest: select encoding first, then proceed to menu
+                            self.show_language_selection(session).await?;
                             session.set_state(SessionState::MainMenu);
                         }
                         WelcomeChoice::Quit => {
@@ -581,7 +583,10 @@ Select language / Gengo sentaku:
         };
 
         // Create user (new scope for UserRepository)
-        let request = RegistrationRequest::new(username.clone(), password, nickname);
+        // Save the encoding and language from the language selection screen
+        let request = RegistrationRequest::new(username.clone(), password, nickname)
+            .with_encoding(session.encoding())
+            .with_language(self.i18n.locale());
         let user_repo = UserRepository::new(&self.db);
 
         // Check if this is the first user - make them SysOp
