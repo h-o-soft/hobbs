@@ -225,6 +225,8 @@ impl ChatScreen {
                                         ChatCommand::Me(action) => {
                                             if !action.is_empty() {
                                                 room.send_action(session_id, &action).await;
+                                                // Echo to sender
+                                                ctx.send_line(session, &format!("* {} {}", nickname, action)).await?;
                                                 // Save to log
                                                 let log = NewChatLog::action(room.id(), user_id.unwrap_or(0), nickname, &action);
                                                 let _ = ChatLogRepository::save(ctx.db.conn(), &log);
