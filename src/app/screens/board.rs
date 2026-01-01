@@ -6,7 +6,7 @@ use super::common::{Pagination, ScreenContext};
 use super::ScreenResult;
 use crate::board::{
     BoardService, BoardType, Pagination as BoardPagination, PostRepository, ThreadRepository,
-    UnreadRepository,
+    UnreadPostWithBoard, UnreadRepository,
 };
 use crate::db::{Role, UserRepository};
 use crate::error::Result;
@@ -116,33 +116,57 @@ impl BoardScreen {
             }
 
             ctx.send_line(session, "").await?;
-            ctx.send(
-                session,
-                &format!(
-                    "{} [Q={}]: ",
-                    ctx.i18n.t("menu.select_prompt"),
-                    ctx.i18n.t("common.back")
-                ),
-            )
-            .await?;
+
+            // Prompt - show [U] option only for logged-in users
+            if session.user_id().is_some() {
+                ctx.send(
+                    session,
+                    &format!(
+                        "{} [U]={} [Q={}]: ",
+                        ctx.i18n.t("menu.select_prompt"),
+                        ctx.i18n.t("board.read_all_unread"),
+                        ctx.i18n.t("common.back")
+                    ),
+                )
+                .await?;
+            } else {
+                ctx.send(
+                    session,
+                    &format!(
+                        "{} [Q={}]: ",
+                        ctx.i18n.t("menu.select_prompt"),
+                        ctx.i18n.t("common.back")
+                    ),
+                )
+                .await?;
+            }
 
             let input = ctx.read_line(session).await?;
             let input = input.trim();
 
-            if input.eq_ignore_ascii_case("q") || input.is_empty() {
-                return Ok(ScreenResult::Back);
-            }
-
-            if let Some(num) = ctx.parse_number(input) {
-                let idx = (num - 1) as usize;
-                if idx < boards.len() {
-                    let board = &boards[idx];
-                    match board.board_type {
-                        BoardType::Thread => {
-                            Self::run_thread_list(ctx, session, board.id).await?;
-                        }
-                        BoardType::Flat => {
-                            Self::run_flat_list(ctx, session, board.id).await?;
+            match input.to_ascii_lowercase().as_str() {
+                "q" | "" => return Ok(ScreenResult::Back),
+                "u" => {
+                    if session.user_id().is_some() {
+                        Self::run_all_unread_batch_read(ctx, session).await?;
+                    } else {
+                        ctx.send_line(session, ctx.i18n.t("menu.login_required"))
+                            .await?;
+                    }
+                }
+                _ => {
+                    if let Some(num) = ctx.parse_number(input) {
+                        let idx = (num - 1) as usize;
+                        if idx < boards.len() {
+                            let board = &boards[idx];
+                            match board.board_type {
+                                BoardType::Thread => {
+                                    Self::run_thread_list(ctx, session, board.id).await?;
+                                }
+                                BoardType::Flat => {
+                                    Self::run_flat_list(ctx, session, board.id).await?;
+                                }
+                            }
                         }
                     }
                 }
@@ -942,6 +966,126 @@ impl BoardScreen {
         }
 
         Ok(())
+    }
+
+    /// Run all unread batch read across all boards.
+    ///
+    /// Displays unread posts from all boards one by one, marking each as read after display.
+    /// Shows the board name for each post.
+    async fn run_all_unread_batch_read(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+    ) -> Result<ScreenResult> {
+        let user_id = match session.user_id() {
+            Some(id) => id,
+            None => return Ok(ScreenResult::Back),
+        };
+
+        let user_role = Self::get_user_role(ctx, session);
+
+        // Get all unread posts across all boards (collect into Vec to release the borrow)
+        let unread_posts: Vec<UnreadPostWithBoard> = {
+            let unread_repo = UnreadRepository::new(&ctx.db);
+            unread_repo.get_all_unread_posts(user_id, user_role)?
+        };
+
+        if unread_posts.is_empty() {
+            ctx.send_line(session, "").await?;
+            ctx.send_line(session, ctx.i18n.t("board.no_unread_all"))
+                .await?;
+            ctx.wait_for_enter(session).await?;
+            return Ok(ScreenResult::Back);
+        }
+
+        let total = unread_posts.len();
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &ctx.i18n.t_with("board.unread_all_count", &[("count", &total.to_string())]),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        for (index, unread_post) in unread_posts.iter().enumerate() {
+            let post = &unread_post.post;
+
+            // Display post header (create repo in block to release borrow)
+            let author = {
+                let user_repo = UserRepository::new(&ctx.db);
+                user_repo
+                    .get_by_id(post.author_id)?
+                    .map(|u| u.nickname)
+                    .unwrap_or_else(|| "Unknown".to_string())
+            };
+
+            let title = post.title.as_deref().unwrap_or("(no title)");
+
+            // Show board name and post info
+            ctx.send_line(
+                session,
+                &format!(
+                    "=== [{}/{}] [{}] {} ===",
+                    index + 1,
+                    total,
+                    unread_post.board_name,
+                    title
+                ),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!(
+                    "{}: {} ({})",
+                    ctx.i18n.t("board.author"),
+                    author,
+                    post.created_at
+                ),
+            )
+            .await?;
+            ctx.send_line(session, &"-".repeat(40)).await?;
+            ctx.send_line(session, &post.body).await?;
+            ctx.send_line(session, &"-".repeat(40)).await?;
+
+            // Mark this post as read (create repo in block to release borrow)
+            {
+                let unread_repo = UnreadRepository::new(&ctx.db);
+                unread_repo.mark_as_read(user_id, post.board_id, post.id)?;
+            }
+
+            // Prompt for next action (unless this is the last post)
+            if index + 1 < total {
+                ctx.send(
+                    session,
+                    &format!(
+                        "[N]={} [Q]={}: ",
+                        ctx.i18n.t("common.next"),
+                        ctx.i18n.t("common.quit")
+                    ),
+                )
+                .await?;
+
+                let input = ctx.read_line(session).await?;
+                let input = input.trim();
+
+                match input.to_ascii_lowercase().as_str() {
+                    "q" => {
+                        return Ok(ScreenResult::Back);
+                    }
+                    _ => {
+                        // Continue to next post (default for Enter or 'n')
+                        ctx.send_line(session, "").await?;
+                    }
+                }
+            } else {
+                // Last post - show completion message
+                ctx.send_line(session, "").await?;
+                ctx.send_line(session, ctx.i18n.t("board.unread_all_complete"))
+                    .await?;
+                ctx.wait_for_enter(session).await?;
+            }
+        }
+
+        Ok(ScreenResult::Back)
     }
 
     /// Read multiline input (ends with a line containing only ".").

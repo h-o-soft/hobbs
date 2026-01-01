@@ -24,4 +24,4 @@ pub use service::{BoardService, PaginatedResult, Pagination};
 pub use thread::{NewThread, Thread, ThreadUpdate};
 pub use thread_repository::ThreadRepository;
 pub use types::{Board, BoardType, BoardUpdate, NewBoard};
-pub use unread::{ReadPosition, UnreadRepository};
+pub use unread::{ReadPosition, UnreadPostWithBoard, UnreadRepository};

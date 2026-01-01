@@ -5,10 +5,19 @@
 
 use rusqlite::{params, Row};
 
-use crate::db::Database;
+use crate::db::{Database, Role};
 use crate::Result;
 
 use super::Post;
+
+/// Unread post with board information for cross-board reading.
+#[derive(Debug, Clone)]
+pub struct UnreadPostWithBoard {
+    /// The post.
+    pub post: Post,
+    /// The board name.
+    pub board_name: String,
+}
 
 /// Read position tracking for a user on a board.
 #[derive(Debug, Clone)]
@@ -277,6 +286,103 @@ impl<'a> UnreadRepository<'a> {
     pub fn get_last_read_post_id(&self, user_id: i64, board_id: i64) -> Result<i64> {
         let read_position = self.get_read_position(user_id, board_id)?;
         Ok(read_position.map(|p| p.last_read_post_id).unwrap_or(0))
+    }
+
+    /// Get all unread posts across all boards for a user.
+    ///
+    /// Returns posts from all accessible boards that the user hasn't read,
+    /// ordered by board sort order, then by post ID.
+    /// Each post includes the board name for display purposes.
+    pub fn get_all_unread_posts(&self, user_id: i64, user_role: Role) -> Result<Vec<UnreadPostWithBoard>> {
+        // Get all active boards with their read positions
+        let mut stmt = self.db.conn().prepare(
+            "SELECT b.id, b.name, b.min_read_role,
+                    COALESCE(
+                        (SELECT last_read_post_id FROM read_positions
+                         WHERE user_id = ? AND board_id = b.id),
+                        0
+                    ) as last_read
+             FROM boards b
+             WHERE b.is_active = 1
+             ORDER BY b.sort_order, b.id",
+        )?;
+
+        let boards: Vec<(i64, String, String, i64)> = stmt
+            .query_map(params![user_id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        let mut all_unread = Vec::new();
+
+        // Get unread posts for each accessible board
+        for (board_id, board_name, min_read_role_str, last_read_post_id) in boards {
+            // Check if user can access this board
+            let min_read_role: Role = min_read_role_str.parse().unwrap_or(Role::Guest);
+            if !user_role.can_access(min_read_role) {
+                continue;
+            }
+
+            let mut post_stmt = self.db.conn().prepare(
+                "SELECT id, board_id, thread_id, author_id, title, body, created_at
+                 FROM posts WHERE board_id = ? AND id > ?
+                 ORDER BY id ASC",
+            )?;
+
+            let posts = post_stmt
+                .query_map(params![board_id, last_read_post_id], Self::row_to_post)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+
+            for post in posts {
+                all_unread.push(UnreadPostWithBoard {
+                    post,
+                    board_name: board_name.clone(),
+                });
+            }
+        }
+
+        Ok(all_unread)
+    }
+
+    /// Get total unread count across all boards for a user.
+    pub fn get_total_unread_count(&self, user_id: i64, user_role: Role) -> Result<i64> {
+        // Get all active boards with their read positions
+        let mut stmt = self.db.conn().prepare(
+            "SELECT b.id, b.min_read_role,
+                    COALESCE(
+                        (SELECT last_read_post_id FROM read_positions
+                         WHERE user_id = ? AND board_id = b.id),
+                        0
+                    ) as last_read
+             FROM boards b
+             WHERE b.is_active = 1",
+        )?;
+
+        let boards: Vec<(i64, String, i64)> = stmt
+            .query_map(params![user_id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        let mut total_count: i64 = 0;
+
+        for (board_id, min_read_role_str, last_read_post_id) in boards {
+            // Check if user can access this board
+            let min_read_role: Role = min_read_role_str.parse().unwrap_or(Role::Guest);
+            if !user_role.can_access(min_read_role) {
+                continue;
+            }
+
+            let count: i64 = self.db.conn().query_row(
+                "SELECT COUNT(*) FROM posts WHERE board_id = ? AND id > ?",
+                params![board_id, last_read_post_id],
+                |row| row.get(0),
+            )?;
+
+            total_count += count;
+        }
+
+        Ok(total_count)
     }
 
     /// Convert a database row to a ReadPosition struct.
@@ -783,5 +889,131 @@ mod tests {
         // Thread should now have unread posts
         assert_eq!(unread_ids.len(), 1);
         assert!(unread_ids.contains(&thread_id));
+    }
+
+    #[test]
+    fn test_get_all_unread_posts_empty() {
+        let db = setup_db();
+        let user_id = create_test_user(&db);
+
+        let repo = UnreadRepository::new(&db);
+        let unread_posts = repo.get_all_unread_posts(user_id, Role::Member).unwrap();
+
+        assert!(unread_posts.is_empty());
+    }
+
+    #[test]
+    fn test_get_all_unread_posts_no_position() {
+        let db = setup_db();
+        let user_id = create_test_user(&db);
+
+        // Create two boards with posts
+        let board_repo = BoardRepository::new(&db);
+        let board1 = board_repo.create(&NewBoard::new("board1")).unwrap();
+        let board2 = board_repo.create(&NewBoard::new("board2")).unwrap();
+
+        create_test_post(&db, board1.id, user_id);
+        create_test_post(&db, board1.id, user_id);
+        create_test_post(&db, board2.id, user_id);
+
+        let repo = UnreadRepository::new(&db);
+        let unread_posts = repo.get_all_unread_posts(user_id, Role::Member).unwrap();
+
+        // All posts should be unread
+        assert_eq!(unread_posts.len(), 3);
+    }
+
+    #[test]
+    fn test_get_all_unread_posts_with_position() {
+        let db = setup_db();
+        let user_id = create_test_user(&db);
+
+        // Create boards with posts
+        let board_repo = BoardRepository::new(&db);
+        let board1 = board_repo.create(&NewBoard::new("board1")).unwrap();
+        let board2 = board_repo.create(&NewBoard::new("board2")).unwrap();
+
+        let post1_id = create_test_post(&db, board1.id, user_id);
+        create_test_post(&db, board1.id, user_id); // post 2
+        create_test_post(&db, board2.id, user_id); // post 3
+
+        let repo = UnreadRepository::new(&db);
+        // Mark post1 as read in board1
+        repo.mark_as_read(user_id, board1.id, post1_id).unwrap();
+
+        let unread_posts = repo.get_all_unread_posts(user_id, Role::Member).unwrap();
+
+        // Should have 2 unread posts (post2 from board1, post3 from board2)
+        assert_eq!(unread_posts.len(), 2);
+    }
+
+    #[test]
+    fn test_get_all_unread_posts_includes_board_name() {
+        let db = setup_db();
+        let user_id = create_test_user(&db);
+
+        let board_repo = BoardRepository::new(&db);
+        let board = board_repo.create(&NewBoard::new("TestBoard")).unwrap();
+        create_test_post(&db, board.id, user_id);
+
+        let repo = UnreadRepository::new(&db);
+        let unread_posts = repo.get_all_unread_posts(user_id, Role::Member).unwrap();
+
+        assert_eq!(unread_posts.len(), 1);
+        assert_eq!(unread_posts[0].board_name, "TestBoard");
+    }
+
+    #[test]
+    fn test_get_total_unread_count_empty() {
+        let db = setup_db();
+        let user_id = create_test_user(&db);
+
+        let repo = UnreadRepository::new(&db);
+        let count = repo.get_total_unread_count(user_id, Role::Member).unwrap();
+
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_get_total_unread_count_multiple_boards() {
+        let db = setup_db();
+        let user_id = create_test_user(&db);
+
+        let board_repo = BoardRepository::new(&db);
+        let board1 = board_repo.create(&NewBoard::new("board1")).unwrap();
+        let board2 = board_repo.create(&NewBoard::new("board2")).unwrap();
+
+        create_test_post(&db, board1.id, user_id);
+        create_test_post(&db, board1.id, user_id);
+        create_test_post(&db, board2.id, user_id);
+        create_test_post(&db, board2.id, user_id);
+        create_test_post(&db, board2.id, user_id);
+
+        let repo = UnreadRepository::new(&db);
+        let count = repo.get_total_unread_count(user_id, Role::Member).unwrap();
+
+        assert_eq!(count, 5);
+    }
+
+    #[test]
+    fn test_get_total_unread_count_with_position() {
+        let db = setup_db();
+        let user_id = create_test_user(&db);
+
+        let board_repo = BoardRepository::new(&db);
+        let board1 = board_repo.create(&NewBoard::new("board1")).unwrap();
+        let board2 = board_repo.create(&NewBoard::new("board2")).unwrap();
+
+        let post1_id = create_test_post(&db, board1.id, user_id);
+        create_test_post(&db, board1.id, user_id);
+        create_test_post(&db, board2.id, user_id);
+
+        let repo = UnreadRepository::new(&db);
+        repo.mark_as_read(user_id, board1.id, post1_id).unwrap();
+
+        let count = repo.get_total_unread_count(user_id, Role::Member).unwrap();
+
+        // 1 unread in board1 (post2) + 1 unread in board2 (post3)
+        assert_eq!(count, 2);
     }
 }
