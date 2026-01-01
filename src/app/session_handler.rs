@@ -792,8 +792,9 @@ Select language / Gengo sentaku:
             context.set("user.unread_mail", Value::number(0));
         }
 
-        // Set chat online count (placeholder for now)
-        context.set("chat.online_count", Value::number(0));
+        // Set chat online count
+        let online_count = self.chat_manager.total_participants().await;
+        context.set("chat.online_count", Value::number(online_count as i64));
 
         // Set menu availability
         let menu_items = if is_logged_in {
