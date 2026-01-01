@@ -2,6 +2,7 @@
 
 use super::common::ScreenContext;
 use super::ScreenResult;
+use crate::chat::DeleteRoomError;
 use crate::error::Result;
 use crate::server::TelnetSession;
 
@@ -46,10 +47,20 @@ impl AdminScreen {
 
             ctx.send_line(
                 session,
+                &format!("=== {} ===", ctx.i18n.t("admin.chat_management")),
+            )
+            .await?;
+            ctx.send_line(session, "  [5] Chat Room List").await?;
+            ctx.send_line(session, "  [6] Create Chat Room").await?;
+            ctx.send_line(session, "  [7] Delete Chat Room").await?;
+            ctx.send_line(session, "").await?;
+
+            ctx.send_line(
+                session,
                 &format!("=== {} ===", ctx.i18n.t("admin.system_status")),
             )
             .await?;
-            ctx.send_line(session, "  [5] System Status").await?;
+            ctx.send_line(session, "  [8] System Status").await?;
             ctx.send_line(session, "").await?;
 
             ctx.send(
@@ -71,7 +82,10 @@ impl AdminScreen {
                 "2" => Self::create_board(ctx, session).await?,
                 "3" => Self::show_user_list(ctx, session).await?,
                 "4" => Self::show_sessions(ctx, session).await?,
-                "5" => Self::show_system_status(ctx, session).await?,
+                "5" => Self::show_chat_rooms(ctx, session).await?,
+                "6" => Self::create_chat_room(ctx, session).await?,
+                "7" => Self::delete_chat_room(ctx, session).await?,
+                "8" => Self::show_system_status(ctx, session).await?,
                 _ => {}
             }
         }
@@ -294,6 +308,174 @@ impl AdminScreen {
         ctx.send_line(session, "").await?;
 
         ctx.wait_for_enter(session).await?;
+        Ok(())
+    }
+
+    /// Show chat room list.
+    async fn show_chat_rooms(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
+        let rooms = ctx.chat_manager.list_rooms().await;
+
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("admin.chat_room_list")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        if rooms.is_empty() {
+            ctx.send_line(session, ctx.i18n.t("chat.no_rooms")).await?;
+        } else {
+            ctx.send_line(
+                session,
+                &format!("{:<12} {:<20} {}", "ID", "Name", "Users"),
+            )
+            .await?;
+            ctx.send_line(session, &"-".repeat(40)).await?;
+
+            for room in &rooms {
+                ctx.send_line(
+                    session,
+                    &format!("{:<12} {:<20} {}", room.id, room.name, room.participant_count),
+                )
+                .await?;
+            }
+        }
+
+        ctx.send_line(session, "").await?;
+        ctx.wait_for_enter(session).await?;
+        Ok(())
+    }
+
+    /// Create a new chat room.
+    async fn create_chat_room(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+    ) -> Result<()> {
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("admin.create_chat_room")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        // Get room ID
+        ctx.send(session, "Room ID: ").await?;
+        let id = ctx.read_line(session).await?;
+        let id = id.trim();
+
+        if id.is_empty() {
+            return Ok(());
+        }
+
+        // Get room name
+        ctx.send(session, "Room Name: ").await?;
+        let name = ctx.read_line(session).await?;
+        let name = name.trim();
+
+        if name.is_empty() {
+            return Ok(());
+        }
+
+        // Create the room
+        match ctx.chat_manager.create_room(id, name).await {
+            Some(_) => {
+                let msg = ctx
+                    .i18n
+                    .t("admin.room_created")
+                    .replace("{{name}}", name);
+                ctx.send_line(session, &msg).await?;
+            }
+            None => {
+                ctx.send_line(session, ctx.i18n.t("admin.room_id_exists"))
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Delete a chat room.
+    async fn delete_chat_room(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+    ) -> Result<()> {
+        // Show current rooms
+        let rooms = ctx.chat_manager.list_rooms().await;
+
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("admin.delete_chat_room")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        if rooms.is_empty() {
+            ctx.send_line(session, ctx.i18n.t("chat.no_rooms")).await?;
+            ctx.send_line(session, "").await?;
+            ctx.wait_for_enter(session).await?;
+            return Ok(());
+        }
+
+        // Show room list
+        for (i, room) in rooms.iter().enumerate() {
+            ctx.send_line(
+                session,
+                &format!(
+                    "  [{}] {} ({}) - {} users",
+                    i + 1,
+                    room.name,
+                    room.id,
+                    room.participant_count
+                ),
+            )
+            .await?;
+        }
+
+        ctx.send_line(session, "").await?;
+        ctx.send(
+            session,
+            &format!(
+                "{} [Q={}]: ",
+                ctx.i18n.t("menu.select_prompt"),
+                ctx.i18n.t("common.back")
+            ),
+        )
+        .await?;
+
+        let input = ctx.read_line(session).await?;
+        let input = input.trim();
+
+        if input.eq_ignore_ascii_case("q") || input.is_empty() {
+            return Ok(());
+        }
+
+        if let Some(num) = ctx.parse_number(input) {
+            let idx = (num - 1) as usize;
+            if idx < rooms.len() {
+                let room = &rooms[idx];
+                match ctx.chat_manager.delete_room(&room.id).await {
+                    Ok(name) => {
+                        let msg = ctx
+                            .i18n
+                            .t("admin.room_deleted")
+                            .replace("{{name}}", &name);
+                        ctx.send_line(session, &msg).await?;
+                    }
+                    Err(DeleteRoomError::NotFound) => {
+                        ctx.send_line(session, ctx.i18n.t("admin.room_not_found"))
+                            .await?;
+                    }
+                    Err(DeleteRoomError::HasParticipants) => {
+                        ctx.send_line(session, ctx.i18n.t("admin.room_has_users"))
+                            .await?;
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 

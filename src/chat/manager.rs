@@ -128,6 +128,27 @@ impl ChatRoomManager {
             false
         }
     }
+
+    /// Delete a room.
+    ///
+    /// Returns Ok(room_name) if deleted successfully, or an error if:
+    /// - The room doesn't exist
+    /// - The room has active participants
+    pub async fn delete_room(&self, room_id: &str) -> Result<String, DeleteRoomError> {
+        let mut rooms = self.rooms.write().await;
+
+        // Check if room exists
+        let room = rooms.get(room_id).ok_or(DeleteRoomError::NotFound)?;
+
+        // Check if room has participants
+        if room.participant_count().await > 0 {
+            return Err(DeleteRoomError::HasParticipants);
+        }
+
+        // Remove the room
+        let room = rooms.remove(room_id).unwrap();
+        Ok(room.name().to_string())
+    }
 }
 
 impl Default for ChatRoomManager {
@@ -145,6 +166,15 @@ pub struct RoomInfo {
     pub name: String,
     /// Number of participants.
     pub participant_count: usize,
+}
+
+/// Error when deleting a room.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeleteRoomError {
+    /// Room not found.
+    NotFound,
+    /// Room has active participants.
+    HasParticipants,
 }
 
 #[cfg(test)]
@@ -270,5 +300,58 @@ mod tests {
         manager.join_room("room2", ChatParticipant::new("s3", Some(3), "Charlie")).await;
 
         assert_eq!(manager.total_participants().await, 3);
+    }
+
+    #[tokio::test]
+    async fn test_delete_room_success() {
+        let manager = ChatRoomManager::new();
+        manager.create_room("test", "Test Room").await;
+        assert_eq!(manager.room_count().await, 1);
+
+        let result = manager.delete_room("test").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Test Room");
+        assert_eq!(manager.room_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_delete_room_not_found() {
+        let manager = ChatRoomManager::new();
+
+        let result = manager.delete_room("nonexistent").await;
+        assert_eq!(result, Err(DeleteRoomError::NotFound));
+    }
+
+    #[tokio::test]
+    async fn test_delete_room_has_participants() {
+        let manager = ChatRoomManager::new();
+        manager.create_room("test", "Test Room").await;
+
+        let participant = ChatParticipant::new("session1", Some(1), "Alice");
+        manager.join_room("test", participant).await;
+
+        let result = manager.delete_room("test").await;
+        assert_eq!(result, Err(DeleteRoomError::HasParticipants));
+        assert_eq!(manager.room_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn test_delete_room_after_leave() {
+        let manager = ChatRoomManager::new();
+        manager.create_room("test", "Test Room").await;
+
+        let participant = ChatParticipant::new("session1", Some(1), "Alice");
+        manager.join_room("test", participant).await;
+
+        // Cannot delete while participant is in room
+        assert_eq!(manager.delete_room("test").await, Err(DeleteRoomError::HasParticipants));
+
+        // Leave the room
+        manager.leave_room("test", "session1").await;
+
+        // Now can delete
+        let result = manager.delete_room("test").await;
+        assert!(result.is_ok());
+        assert_eq!(manager.room_count().await, 0);
     }
 }
