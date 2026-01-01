@@ -164,6 +164,10 @@ page_of = "{{current}} / {{total}} ページ"
 unread = "未読"
 mark_read = "既読にする"
 mark_all_read = "すべて既読にする"
+read_unread = "未読を読む"
+no_unread = "未読がありません"
+unread_count = "未読{{count}}件を表示します"
+unread_complete = "未読をすべて読みました"
 
 [chat]
 room_list = "チャットルーム一覧"
