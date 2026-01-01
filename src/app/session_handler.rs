@@ -17,7 +17,7 @@ use crate::i18n::{I18n, I18nManager};
 use crate::screen::{create_screen_from_profile, Screen};
 use crate::server::{
     encode_for_client, initial_negotiation, CharacterEncoding, EchoMode, InputResult, LineBuffer,
-    SessionManager, SessionState, TelnetSession,
+    SessionManager, SessionState, TelnetParser, TelnetSession,
 };
 use crate::template::{create_system_context, TemplateContext, TemplateLoader, Value};
 use crate::terminal::TerminalProfile;
@@ -44,6 +44,10 @@ pub struct SessionHandler {
     i18n: Arc<I18n>,
     /// Line buffer for input.
     line_buffer: LineBuffer,
+    /// Telnet parser for filtering IAC commands.
+    telnet_parser: TelnetParser,
+    /// Pending bytes from previous read (bytes after line terminator).
+    pending_bytes: Vec<u8>,
     /// Login limiter.
     login_limiter: LoginLimiter,
 }
@@ -79,6 +83,8 @@ impl SessionHandler {
             screen,
             i18n,
             line_buffer,
+            telnet_parser: TelnetParser::new(),
+            pending_bytes: Vec::new(),
             login_limiter: LoginLimiter::new(),
         }
     }
@@ -860,9 +866,20 @@ Select language / Gengo sentaku:
     }
 
     /// Read a line from the client.
+    ///
+    /// Filters out Telnet IAC commands from the input stream.
     async fn read_line(&mut self, session: &mut TelnetSession) -> Result<String> {
         self.line_buffer.clear();
-        let mut buf = [0u8; 1];
+
+        // Process any pending bytes from previous read first
+        if !self.pending_bytes.is_empty() {
+            let pending = std::mem::take(&mut self.pending_bytes);
+            if let Some(result) = self.process_input_bytes(session, &pending).await? {
+                return Ok(result);
+            }
+        }
+
+        let mut buf = [0u8; 64];
 
         loop {
             match session.stream_mut().read(&mut buf).await {
@@ -872,30 +889,12 @@ Select language / Gengo sentaku:
                         "Connection closed",
                     )));
                 }
-                Ok(_) => {
-                    let (result, echo) = self.line_buffer.process_byte(buf[0]);
+                Ok(n) => {
+                    // Filter out IAC commands
+                    let (data, _commands) = self.telnet_parser.parse(&buf[..n]);
 
-                    // Echo back
-                    if !echo.is_empty() {
-                        session.stream_mut().write_all(&echo).await?;
-                        session.stream_mut().flush().await?;
-                    }
-
-                    match result {
-                        InputResult::Line(line) => {
-                            session.touch();
-                            return Ok(line);
-                        }
-                        InputResult::Cancel => {
-                            return Ok(String::new());
-                        }
-                        InputResult::Eof => {
-                            return Err(HobbsError::Io(std::io::Error::new(
-                                std::io::ErrorKind::UnexpectedEof,
-                                "EOF received",
-                            )));
-                        }
-                        InputResult::Buffering => {}
+                    if let Some(result) = self.process_input_bytes(session, &data).await? {
+                        return Ok(result);
                     }
                 }
                 Err(e) => {
@@ -903,6 +902,60 @@ Select language / Gengo sentaku:
                 }
             }
         }
+    }
+
+    /// Process input bytes and return the line if complete.
+    ///
+    /// Saves any bytes after the line terminator to pending_bytes for the next read.
+    async fn process_input_bytes(
+        &mut self,
+        session: &mut TelnetSession,
+        data: &[u8],
+    ) -> Result<Option<String>> {
+        for (i, &byte) in data.iter().enumerate() {
+            let (result, echo) = self.line_buffer.process_byte(byte);
+
+            // Echo back
+            if !echo.is_empty() {
+                session.stream_mut().write_all(&echo).await?;
+                session.stream_mut().flush().await?;
+            }
+
+            match result {
+                InputResult::Line(line) => {
+                    session.touch();
+                    // Save remaining bytes for next read
+                    // Skip the next byte if it's LF after CR (or CR after LF)
+                    let remaining_start = if i + 1 < data.len() {
+                        let next_byte = data[i + 1];
+                        if (byte == 0x0D && next_byte == 0x0A)
+                            || (byte == 0x0A && next_byte == 0x0D)
+                        {
+                            i + 2
+                        } else {
+                            i + 1
+                        }
+                    } else {
+                        i + 1
+                    };
+                    if remaining_start < data.len() {
+                        self.pending_bytes.extend_from_slice(&data[remaining_start..]);
+                    }
+                    return Ok(Some(line));
+                }
+                InputResult::Cancel => {
+                    return Ok(Some(String::new()));
+                }
+                InputResult::Eof => {
+                    return Err(HobbsError::Io(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        "EOF received",
+                    )));
+                }
+                InputResult::Buffering => {}
+            }
+        }
+        Ok(None)
     }
 }
 
