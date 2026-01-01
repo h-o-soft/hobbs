@@ -213,6 +213,59 @@ impl TestClient {
         Ok(())
     }
 
+    /// Select language/encoding and set client encoding accordingly.
+    /// Options:
+    /// - "E" or "1": English (UTF-8)
+    /// - "J" or "2": Japanese (ShiftJIS)
+    /// - "U" or "3": Japanese (UTF-8)
+    pub async fn select_language_with_encoding(
+        &mut self,
+        choice: &str,
+    ) -> Result<(), std::io::Error> {
+        // Wait for language selection screen
+        self.recv_until("Gengo").await?;
+
+        // Set client encoding based on choice
+        match choice.to_uppercase().as_str() {
+            "E" | "1" => self.encoding = CharacterEncoding::Utf8,
+            "J" | "2" => self.encoding = CharacterEncoding::ShiftJIS,
+            "U" | "3" => self.encoding = CharacterEncoding::Utf8,
+            _ => self.encoding = CharacterEncoding::Utf8,
+        }
+
+        self.send_line(choice).await?;
+        Ok(())
+    }
+
+    /// Perform login with specific encoding.
+    pub async fn login_with_encoding(
+        &mut self,
+        username: &str,
+        password: &str,
+        language_choice: &str,
+    ) -> Result<bool, std::io::Error> {
+        // Handle language selection with encoding
+        self.select_language_with_encoding(language_choice).await?;
+
+        // Choose login - wait for the welcome menu prompt
+        self.recv_until_timeout(":", Duration::from_secs(3)).await?;
+        self.send_line("L").await?;
+
+        // Wait for username prompt
+        self.recv_until_timeout(":", Duration::from_secs(3)).await?;
+        self.send_line(username).await?;
+
+        // Wait for password prompt
+        self.recv_until_timeout(":", Duration::from_secs(3)).await?;
+        self.send_line(password).await?;
+
+        // Wait for login result
+        let response = self.recv_timeout(Duration::from_secs(3)).await?;
+        Ok(response.contains("success")
+            || response.contains("ようこそ")
+            || response.contains("Welcome"))
+    }
+
     /// Perform login sequence.
     /// Assumes client is at the language selection screen or ready to receive it.
     pub async fn login(&mut self, username: &str, password: &str) -> Result<bool, std::io::Error> {
