@@ -471,6 +471,9 @@ Select language / Gengo sentaku:
                     let user_terminal = user.terminal.clone();
                     let user_name = user.username.clone();
 
+                    // Save previous last login before updating
+                    let previous_login = user.last_login.clone();
+
                     // Update last login
                     if let Err(e) = user_repo.update_last_login(user.id) {
                         warn!("Failed to update last login: {}", e);
@@ -480,6 +483,7 @@ Select language / Gengo sentaku:
                     self.set_language(&user_language);
                     self.set_terminal_profile(&user_terminal);
 
+                    // Show login success message
                     self.send_line(
                         session,
                         &self
@@ -487,6 +491,16 @@ Select language / Gengo sentaku:
                             .t_with("login.success", &[("username", &user_name)]),
                     )
                     .await?;
+
+                    // Show previous login time if available
+                    if let Some(prev) = previous_login {
+                        let formatted = format_datetime_default(&prev, &self.config.server.timezone);
+                        self.send_line(
+                            session,
+                            &format!("{}: {}", self.i18n.t("profile.last_login_short"), formatted),
+                        )
+                        .await?;
+                    }
 
                     Ok(true)
                 } else {
@@ -755,13 +769,6 @@ Select language / Gengo sentaku:
                 };
                 context.set("user.role_name", Value::string(role_name.to_string()));
 
-                // Set last login (formatted with configured timezone)
-                let last_login = match user.last_login.as_deref() {
-                    Some(dt) => format_datetime_default(dt, &self.config.server.timezone),
-                    None => "-".to_string(),
-                };
-                context.set("user.last_login", Value::string(last_login));
-
                 // Set unread mail count
                 let unread_count = MailRepository::count_unread(self.db.conn(), user_id)
                     .unwrap_or(0);
@@ -773,7 +780,6 @@ Select language / Gengo sentaku:
                 context.set("user.logged_in", Value::bool(false));
                 context.set("user.is_admin", Value::bool(false));
                 context.set("user.role_name", Value::string(self.i18n.t("role.guest").to_string()));
-                context.set("user.last_login", Value::string("-".to_string()));
                 context.set("user.unread_mail", Value::number(0));
             }
         } else {
@@ -783,7 +789,6 @@ Select language / Gengo sentaku:
             context.set("user.logged_in", Value::bool(false));
             context.set("user.is_admin", Value::bool(false));
             context.set("user.role_name", Value::string(self.i18n.t("role.guest").to_string()));
-            context.set("user.last_login", Value::string("-".to_string()));
             context.set("user.unread_mail", Value::number(0));
         }
 

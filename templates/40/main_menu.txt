@@ -17,6 +17,4 @@
  [Q] {{t "auth.logout"}}
 
 ----------------------------------------
-{{t "profile.last_login_short"}}: {{user.last_login}}
-----------------------------------------
 {{t "menu.select_prompt"}}
