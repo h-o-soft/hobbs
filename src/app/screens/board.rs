@@ -488,6 +488,14 @@ impl BoardScreen {
                     ctx.send_line(session, &post.body).await?;
                     ctx.send_line(session, "").await?;
                 }
+
+                // Mark the last displayed post as read for logged-in users
+                if let Some(user_id) = session.user_id() {
+                    if let Some(last_post) = result.items.last() {
+                        let unread_repo = UnreadRepository::new(&ctx.db);
+                        unread_repo.mark_as_read(user_id, thread.board_id, last_post.id)?;
+                    }
+                }
             }
 
             // Show pagination
@@ -571,6 +579,12 @@ impl BoardScreen {
         ctx.send_line(session, &"-".repeat(40)).await?;
         ctx.send_line(session, &post.body).await?;
         ctx.send_line(session, &"-".repeat(40)).await?;
+
+        // Mark this post as read for logged-in users
+        if let Some(user_id) = session.user_id() {
+            let unread_repo = UnreadRepository::new(&ctx.db);
+            unread_repo.mark_as_read(user_id, post.board_id, post_id)?;
+        }
 
         ctx.wait_for_enter(session).await?;
         Ok(ScreenResult::Back)
