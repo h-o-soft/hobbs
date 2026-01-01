@@ -194,11 +194,10 @@ impl ProfileScreen {
             ),
         )
         .await?;
-        let profile_text = Self::read_multiline(ctx, session).await?;
-        let new_profile = if profile_text.is_empty() {
-            None
-        } else {
-            Some(Some(profile_text))
+        let new_profile = match ctx.read_multiline(session).await? {
+            Some(text) if !text.is_empty() => Some(Some(text)),
+            Some(_) => None, // Empty input, no change
+            None => return Ok(()), // Cancelled
         };
 
         // Build update request
@@ -511,27 +510,6 @@ impl ProfileScreen {
             "c64_ansi" => ctx.i18n.t("terminal.profile_c64_ansi").to_string(),
             _ => ctx.i18n.t("terminal.profile_standard").to_string(),
         }
-    }
-
-    /// Read multiline input.
-    async fn read_multiline(
-        ctx: &mut ScreenContext,
-        session: &mut TelnetSession,
-    ) -> Result<String> {
-        let mut lines = Vec::new();
-
-        loop {
-            ctx.send(session, "> ").await?;
-            let line = ctx.read_line(session).await?;
-
-            if line.trim() == "." {
-                break;
-            }
-
-            lines.push(line);
-        }
-
-        Ok(lines.join("\n"))
     }
 }
 

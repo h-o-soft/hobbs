@@ -30,7 +30,8 @@ user = "User"
 current = "Online"
 people = ""
 only = " only"
-end_with_dot = "End with . on a new line"
+end_with_dot = "End with . on a new line, /c to cancel"
+input_cancelled = "Input cancelled"
 
 [system]
 name = "HOBBS"

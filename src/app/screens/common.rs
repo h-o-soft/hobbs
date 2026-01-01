@@ -185,6 +185,41 @@ impl ScreenContext {
         Ok(())
     }
 
+    /// Read multiline input.
+    ///
+    /// Input ends when a line containing only "." is entered.
+    /// Returns `None` if the user cancels by entering "/c" or "/cancel".
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Some(text))` - User completed input
+    /// - `Ok(None)` - User cancelled input
+    pub async fn read_multiline(&mut self, session: &mut TelnetSession) -> Result<Option<String>> {
+        let mut lines = Vec::new();
+
+        loop {
+            self.send(session, "> ").await?;
+            let line = self.read_line(session).await?;
+            let trimmed = line.trim();
+
+            // Check for end marker
+            if trimmed == "." {
+                break;
+            }
+
+            // Check for cancel commands
+            if trimmed.eq_ignore_ascii_case("/c") || trimmed.eq_ignore_ascii_case("/cancel") {
+                self.send_line(session, self.i18n.t("common.input_cancelled"))
+                    .await?;
+                return Ok(None);
+            }
+
+            lines.push(line);
+        }
+
+        Ok(Some(lines.join("\n")))
+    }
+
     /// Parse a number from input.
     pub fn parse_number(&self, input: &str) -> Option<i64> {
         input.trim().parse().ok()

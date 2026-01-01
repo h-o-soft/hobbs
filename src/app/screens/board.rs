@@ -736,7 +736,10 @@ impl BoardScreen {
             ),
         )
         .await?;
-        let body = Self::read_multiline(ctx, session).await?;
+        let body = match ctx.read_multiline(session).await? {
+            Some(text) => text,
+            None => return Ok(()), // Cancelled
+        };
 
         if body.is_empty() {
             return Ok(());
@@ -795,7 +798,10 @@ impl BoardScreen {
             ),
         )
         .await?;
-        let body = Self::read_multiline(ctx, session).await?;
+        let body = match ctx.read_multiline(session).await? {
+            Some(text) => text,
+            None => return Ok(()), // Cancelled
+        };
 
         if body.is_empty() {
             return Ok(());
@@ -1086,27 +1092,6 @@ impl BoardScreen {
         }
 
         Ok(ScreenResult::Back)
-    }
-
-    /// Read multiline input (ends with a line containing only ".").
-    async fn read_multiline(
-        ctx: &mut ScreenContext,
-        session: &mut TelnetSession,
-    ) -> Result<String> {
-        let mut lines = Vec::new();
-
-        loop {
-            ctx.send(session, "> ").await?;
-            let line = ctx.read_line(session).await?;
-
-            if line.trim() == "." {
-                break;
-            }
-
-            lines.push(line);
-        }
-
-        Ok(lines.join("\n"))
     }
 
     /// Get user role from session.
