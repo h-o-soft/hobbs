@@ -502,7 +502,7 @@ mod tests {
 
         let posts = repo.list_by_flat_board(board_id).unwrap();
         assert_eq!(posts.len(), 3);
-        // Should be ordered by created_at DESC
+        // Should be ordered by created_at DESC (newest first)
         assert_eq!(posts[0].title, Some("Title 3".to_string()));
     }
 
@@ -524,7 +524,7 @@ mod tests {
             .unwrap();
         }
 
-        // Get first page
+        // Get first page (newest first)
         let page1 = repo.list_by_flat_board_paginated(board_id, 0, 2).unwrap();
         assert_eq!(page1.len(), 2);
         assert_eq!(page1[0].title, Some("Title 5".to_string()));

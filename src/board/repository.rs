@@ -140,12 +140,12 @@ impl<'a> BoardRepository<'a> {
         Ok(affected > 0)
     }
 
-    /// List all active boards, ordered by sort_order.
+    /// List all active boards, ordered by sort_order then created_at.
     pub fn list_active(&self) -> Result<Vec<Board>> {
         let mut stmt = self.db.conn().prepare(
             "SELECT id, name, description, board_type, min_read_role, min_write_role,
                     sort_order, is_active, created_at
-             FROM boards WHERE is_active = 1 ORDER BY sort_order, name",
+             FROM boards WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC, id ASC",
         )?;
 
         let boards = stmt
@@ -155,12 +155,12 @@ impl<'a> BoardRepository<'a> {
         Ok(boards)
     }
 
-    /// List all boards (including inactive), ordered by sort_order.
+    /// List all boards (including inactive), ordered by sort_order then created_at.
     pub fn list_all(&self) -> Result<Vec<Board>> {
         let mut stmt = self.db.conn().prepare(
             "SELECT id, name, description, board_type, min_read_role, min_write_role,
                     sort_order, is_active, created_at
-             FROM boards ORDER BY sort_order, name",
+             FROM boards ORDER BY sort_order ASC, created_at ASC, id ASC",
         )?;
 
         let boards = stmt
