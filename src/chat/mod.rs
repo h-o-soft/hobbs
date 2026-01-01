@@ -17,5 +17,5 @@ pub use command::{
     format_help, format_who, get_command_help, parse_input, ChatCommand, ChatInput, CommandInfo,
 };
 pub use log::{ChatLog, ChatLogRepository, NewChatLog, DEFAULT_RECENT_LOG_COUNT};
-pub use manager::{ChatRoomManager, RoomInfo};
+pub use manager::{ChatRoomManager, DeleteRoomError, RoomInfo};
 pub use room::{ChatMessage, ChatParticipant, ChatRoom, MessageType};
