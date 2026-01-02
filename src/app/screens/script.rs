@@ -121,7 +121,7 @@ impl ScriptScreen {
             .await?;
         ctx.send_line(session, "").await?;
 
-        // Execute the script
+        // Execute the script (synchronously for now - interactive input not yet supported)
         let result = service.execute(&script, script_context)?;
 
         // Display output

@@ -7,6 +7,7 @@
 pub mod api;
 pub mod data_repository;
 pub mod engine;
+pub mod input_bridge;
 pub mod loader;
 pub mod log_repository;
 pub mod repository;
@@ -16,6 +17,7 @@ pub mod types;
 pub use api::BbsApi;
 pub use data_repository::ScriptDataRepository;
 pub use engine::{ResourceLimits, ScriptContext, ScriptEngine};
+pub use input_bridge::{create_input_bridge, AsyncInputHandle, InputRequest, ScriptInputHandle};
 pub use loader::ScriptLoader;
 pub use log_repository::{ScriptLog, ScriptLogRepository};
 pub use repository::ScriptRepository;

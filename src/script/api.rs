@@ -4,12 +4,14 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 use mlua::{Lua, Result as LuaResult, Table, Value};
 use rand::Rng;
 
 use super::engine::ScriptContext;
+use super::input_bridge::ScriptInputHandle;
 
 /// Maximum sleep duration in seconds.
 const MAX_SLEEP_SECONDS: f64 = 5.0;
@@ -25,6 +27,7 @@ pub struct BbsApi {
     context: ScriptContext,
     output_buffer: Rc<RefCell<Vec<String>>>,
     input_handler: Rc<RefCell<Option<InputCallback>>>,
+    input_bridge: Option<Arc<ScriptInputHandle>>,
 }
 
 impl BbsApi {
@@ -34,6 +37,7 @@ impl BbsApi {
             context,
             output_buffer: Rc::new(RefCell::new(Vec::new())),
             input_handler: Rc::new(RefCell::new(None)),
+            input_bridge: None,
         }
     }
 
@@ -46,9 +50,21 @@ impl BbsApi {
         self
     }
 
+    /// Set the input bridge for async input handling.
+    pub fn with_input_bridge(mut self, bridge: Arc<ScriptInputHandle>) -> Self {
+        self.input_bridge = Some(bridge);
+        self
+    }
+
     /// Get the output buffer contents.
     pub fn get_output(&self) -> Vec<String> {
         self.output_buffer.borrow().clone()
+    }
+
+    /// Get a shared reference to the output buffer.
+    /// Use this before calling register() to retain access to output after registration.
+    pub fn output_buffer_ref(&self) -> Rc<RefCell<Vec<String>>> {
+        Rc::clone(&self.output_buffer)
     }
 
     /// Clear the output buffer.
@@ -110,88 +126,124 @@ impl BbsApi {
     fn register_input_functions(&self, lua: &Lua, bbs: &Table) -> LuaResult<()> {
         let output = Rc::clone(&self.output_buffer);
         let input_handler = Rc::clone(&self.input_handler);
+        let input_bridge = self.input_bridge.clone();
+
+        // Helper to get input - tries bridge first, then callback
+        fn get_input(
+            bridge: &Option<Arc<ScriptInputHandle>>,
+            handler: &Rc<RefCell<Option<InputCallback>>>,
+            prompt: Option<String>,
+        ) -> Result<Option<String>, mlua::Error> {
+            // Try bridge first
+            if let Some(ref b) = bridge {
+                return Ok(b.request_input(prompt));
+            }
+
+            // Try callback handler
+            let handler = handler.borrow();
+            if let Some(ref h) = *handler {
+                return Ok(h(""));
+            }
+
+            // No input available
+            Err(mlua::Error::RuntimeError(
+                "Input not available: interactive input is not supported in this context"
+                    .to_string(),
+            ))
+        }
 
         // bbs.input(prompt) - get user input
         let input_output = Rc::clone(&output);
         let input_handler_clone = Rc::clone(&input_handler);
+        let input_bridge_clone = input_bridge.clone();
         let input_fn = lua.create_function(move |_, prompt: Option<String>| {
-            // Output prompt if provided
-            if let Some(p) = &prompt {
-                input_output.borrow_mut().push(p.clone());
+            // Output prompt if provided (only if not using bridge, since bridge outputs it)
+            if input_bridge_clone.is_none() {
+                if let Some(p) = &prompt {
+                    input_output.borrow_mut().push(p.clone());
+                }
             }
 
-            // Get input from handler
-            let handler = input_handler_clone.borrow();
-            if let Some(ref h) = *handler {
-                Ok(h(""))
-            } else {
-                // No input handler - return nil
-                Ok(None)
-            }
+            get_input(&input_bridge_clone, &input_handler_clone, prompt)
         })?;
         bbs.set("input", input_fn)?;
 
         // bbs.input_number(prompt) - get numeric input
         let input_number_output = Rc::clone(&output);
         let input_number_handler = Rc::clone(&input_handler);
+        let input_number_bridge = input_bridge.clone();
         let input_number_fn = lua.create_function(move |_, prompt: Option<String>| {
-            // Output prompt if provided
-            if let Some(p) = &prompt {
-                input_number_output.borrow_mut().push(p.clone());
-            }
-
-            // Get input from handler
-            let handler = input_number_handler.borrow();
-            if let Some(ref h) = *handler {
-                if let Some(input) = h("") {
-                    // Try to parse as number
-                    if let Ok(n) = input.trim().parse::<f64>() {
-                        return Ok(Some(n));
-                    }
+            // Output prompt if provided (only if not using bridge)
+            if input_number_bridge.is_none() {
+                if let Some(p) = &prompt {
+                    input_number_output.borrow_mut().push(p.clone());
                 }
             }
-            Ok(None)
+
+            match get_input(&input_number_bridge, &input_number_handler, prompt) {
+                Ok(Some(input)) => {
+                    // Try to parse as number
+                    if let Ok(n) = input.trim().parse::<f64>() {
+                        Ok(Some(n))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                Ok(None) => Ok(None),
+                Err(e) => Err(e),
+            }
         })?;
         bbs.set("input_number", input_number_fn)?;
 
         // bbs.input_yn(prompt) - get Y/N input (returns true for Y, false for N, nil otherwise)
         let input_yn_output = Rc::clone(&output);
         let input_yn_handler = Rc::clone(&input_handler);
+        let input_yn_bridge = input_bridge.clone();
         let input_yn_fn = lua.create_function(move |_, prompt: Option<String>| {
-            // Output prompt if provided
-            if let Some(p) = &prompt {
-                input_yn_output.borrow_mut().push(p.clone());
-            }
-
-            // Get input from handler
-            let handler = input_yn_handler.borrow();
-            if let Some(ref h) = *handler {
-                if let Some(input) = h("") {
-                    let input = input.trim().to_ascii_lowercase();
-                    if input == "y" || input == "yes" {
-                        return Ok(Some(true));
-                    } else if input == "n" || input == "no" {
-                        return Ok(Some(false));
-                    }
+            // Output prompt if provided (only if not using bridge)
+            if input_yn_bridge.is_none() {
+                if let Some(p) = &prompt {
+                    input_yn_output.borrow_mut().push(p.clone());
                 }
             }
-            Ok(None)
+
+            match get_input(&input_yn_bridge, &input_yn_handler, prompt) {
+                Ok(Some(input)) => {
+                    let input = input.trim().to_ascii_lowercase();
+                    if input == "y" || input == "yes" {
+                        Ok(Some(true))
+                    } else if input == "n" || input == "no" {
+                        Ok(Some(false))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                Ok(None) => Ok(None),
+                Err(e) => Err(e),
+            }
         })?;
         bbs.set("input_yn", input_yn_fn)?;
 
         // bbs.pause() - wait for user to press Enter
         let pause_output = Rc::clone(&output);
         let pause_handler = Rc::clone(&input_handler);
+        let pause_bridge = input_bridge.clone();
         let pause_fn = lua.create_function(move |_, ()| {
-            // Output default prompt
-            pause_output
-                .borrow_mut()
-                .push("Press Enter to continue...".to_string());
+            // Output default prompt (only if not using bridge)
+            if pause_bridge.is_none() {
+                pause_output
+                    .borrow_mut()
+                    .push("Press Enter to continue...".to_string());
+            }
 
-            // Wait for input
-            let handler = pause_handler.borrow();
-            if let Some(ref h) = *handler {
-                let _ = h("");
+            // Wait for input - pause doesn't need to return anything
+            if let Some(ref b) = pause_bridge {
+                let _ = b.request_input(Some("Press Enter to continue...".to_string()));
+            } else {
+                let handler = pause_handler.borrow();
+                if let Some(ref h) = *handler {
+                    let _ = h("");
+                }
             }
             Ok(())
         })?;
@@ -730,11 +782,13 @@ mod tests {
     fn test_bbs_input_no_handler() {
         let (engine, _) = create_test_engine_with_api();
 
-        engine.execute("result = bbs.input()").unwrap();
-
-        // Should return nil when no input handler
-        engine.execute("is_nil = result == nil").unwrap();
-        assert!(engine.get_global::<bool>("is_nil").unwrap());
+        // Should error when no input handler is available
+        let result = engine.execute("result = bbs.input()");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Input not available"));
     }
 
     #[test]

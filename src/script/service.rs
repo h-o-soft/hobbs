@@ -77,7 +77,22 @@ impl<'a> ScriptService<'a> {
     /// Execute a script with the given context.
     ///
     /// Returns the execution result containing output and status.
-    pub fn execute(&self, script: &Script, mut context: ScriptContext) -> Result<ExecutionResult> {
+    /// Note: This method does not support interactive input. Use `execute_with_input`
+    /// for scripts that require user input.
+    pub fn execute(&self, script: &Script, context: ScriptContext) -> Result<ExecutionResult> {
+        self.execute_with_input(script, context, None)
+    }
+
+    /// Execute a script with the given context and optional input bridge.
+    ///
+    /// Returns the execution result containing output and status.
+    /// If an input bridge is provided, scripts can request interactive input.
+    pub fn execute_with_input(
+        &self,
+        script: &Script,
+        mut context: ScriptContext,
+        input_bridge: Option<std::sync::Arc<super::input_bridge::ScriptInputHandle>>,
+    ) -> Result<ExecutionResult> {
         // Check if script is enabled
         if !script.enabled {
             return Err(HobbsError::Script("Script is disabled".to_string()));
@@ -115,9 +130,12 @@ impl<'a> ScriptService<'a> {
             context.user_id,
         )?));
 
-        // Register BBS API
-        let api = BbsApi::new(context.clone());
-        let output_buffer = api.get_output();
+        // Register BBS API with optional input bridge
+        let mut api = BbsApi::new(context.clone());
+        if let Some(bridge) = input_bridge {
+            api = api.with_input_bridge(bridge);
+        }
+        let output_buffer = api.output_buffer_ref(); // Get shared reference before register consumes api
         api.register(engine.lua())
             .map_err(|e| HobbsError::Script(format!("Failed to register BBS API: {}", e)))?;
 
@@ -147,7 +165,7 @@ impl<'a> ScriptService<'a> {
         }
 
         // Get output regardless of success/failure
-        let output = output_buffer;
+        let output = output_buffer.borrow().clone();
 
         // Build execution result
         let exec_result = match &result {

@@ -20,16 +20,8 @@ if last_date == today then
     return
 end
 
-bbs.println("Draw your fortune? [Y/N]")
-local answer = bbs.input_yn("> ")
-
-if not answer then
-    bbs.println("Come back when you're ready!")
-    return
-end
-
-bbs.println("")
-bbs.println("Drawing...")
+-- Auto-draw mode (no input required)
+bbs.println("Drawing your fortune...")
 bbs.sleep(1)
 
 -- Fortune weights (total = 100)

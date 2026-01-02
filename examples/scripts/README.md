@@ -12,27 +12,21 @@ cp examples/scripts/*.lua data/files/scripts/
 
 Then use the "Re-sync" option in the Scripts menu (as SubOp or SysOp) to register them.
 
+## Interactive Input Support
+
+**Note:** Interactive input (`bbs.input()`, `bbs.input_number()`, `bbs.input_yn()`) is not yet fully supported. Scripts that require user input will display an error message. The following scripts work without interactive input:
+
+- `hello.lua` - Works (no input required)
+- `fortune.lua` - Works (no input required)
+- `omikuji.lua` - Works (auto-draws fortune)
+
+Scripts requiring interactive input (will show error):
+- `janken.lua`, `number_guess.lua`, `dice.lua`, `quiz.lua`
+
 ## Available Scripts
 
-### janken.lua - Rock-Paper-Scissors
-Classic rock-paper-scissors game against the computer. Tracks win/loss/draw statistics per user.
-
-### number_guess.lua - Number Guessing Game
-Guess a number between 1 and 100. Features:
-- 10 attempts maximum
-- High score tracking (fewest attempts)
-
-### omikuji.lua - Fortune Drawing
-Traditional Japanese fortune drawing (omikuji). Features:
-- Can only draw once per day
-- Weighted random fortunes (rare to get "Great Blessing" or "Bad Luck")
-
-### dice.lua - Dice Roller
-Roll various dice:
-- D6 (6-sided)
-- D20 (20-sided)
-- D100 (percentile)
-- Custom dice (2-1000 sides)
+### hello.lua - Hello World
+Simple greeting script that demonstrates the BBS API. Shows user info, terminal info, and current date/time.
 
 ### fortune.lua - Daily Fortune
 Get a random fortune message with:
@@ -40,7 +34,28 @@ Get a random fortune message with:
 - Lucky numbers
 - Lucky color
 
-### quiz.lua - Quiz Game
+### omikuji.lua - Fortune Drawing
+Traditional Japanese fortune drawing (omikuji). Features:
+- Can only draw once per day
+- Weighted random fortunes (rare to get "Great Blessing" or "Bad Luck")
+- Auto-draws without confirmation
+
+### janken.lua - Rock-Paper-Scissors (requires input)
+Classic rock-paper-scissors game against the computer. Tracks win/loss/draw statistics per user.
+
+### number_guess.lua - Number Guessing Game (requires input)
+Guess a number between 1 and 100. Features:
+- 10 attempts maximum
+- High score tracking (fewest attempts)
+
+### dice.lua - Dice Roller (requires input)
+Roll various dice:
+- D6 (6-sided)
+- D20 (20-sided)
+- D100 (percentile)
+- Custom dice (2-1000 sides)
+
+### quiz.lua - Quiz Game (requires input)
 Test your knowledge with trivia questions:
 - 5 random questions per game
 - Multiple choice answers
