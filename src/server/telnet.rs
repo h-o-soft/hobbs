@@ -176,7 +176,9 @@ impl TelnetParser {
             if self.in_subneg {
                 self.parse_subneg_byte(byte, &mut commands);
             } else if self.in_iac {
-                self.parse_iac_byte(byte, &mut commands);
+                if let Some(data_byte) = self.parse_iac_byte(byte, &mut commands) {
+                    data.push(data_byte);
+                }
             } else if byte == iac::IAC {
                 self.in_iac = true;
             } else {
@@ -187,36 +189,47 @@ impl TelnetParser {
         (data, commands)
     }
 
-    fn parse_iac_byte(&mut self, byte: u8, commands: &mut Vec<TelnetCommand>) {
+    /// Parse a byte in IAC state.
+    ///
+    /// Returns Some(byte) if the byte should be added to data,
+    /// None if it was consumed as part of a command.
+    fn parse_iac_byte(&mut self, byte: u8, commands: &mut Vec<TelnetCommand>) -> Option<u8> {
         match byte {
             iac::IAC => {
                 // Escaped IAC (255 255 = literal 255)
                 self.in_iac = false;
-                // Note: we don't add to data here as this is rare
+                Some(0xFF) // Return the escaped 0xFF as data
             }
             iac::WILL => {
                 self.buffer.push(byte);
+                None
             }
             iac::WONT => {
                 self.buffer.push(byte);
+                None
             }
             iac::DO => {
                 self.buffer.push(byte);
+                None
             }
             iac::DONT => {
                 self.buffer.push(byte);
+                None
             }
             iac::SB => {
                 self.in_subneg = true;
                 self.in_iac = false;
+                None
             }
             iac::NOP => {
                 commands.push(TelnetCommand::Nop);
                 self.in_iac = false;
+                None
             }
             iac::GA => {
                 commands.push(TelnetCommand::GoAhead);
                 self.in_iac = false;
+                None
             }
             _ => {
                 if !self.buffer.is_empty() {
@@ -228,15 +241,31 @@ impl TelnetParser {
                         iac::DO => TelnetCommand::Do(byte),
                         iac::DONT => TelnetCommand::Dont(byte),
                         _ => {
+                            // Invalid command, treat as data
                             self.in_iac = false;
                             self.buffer.clear();
-                            return;
+                            tracing::warn!(
+                                "Invalid Telnet command sequence: IAC {:02X} {:02X}",
+                                cmd,
+                                byte
+                            );
+                            return Some(byte);
                         }
                     };
                     commands.push(command);
+                    self.in_iac = false;
+                    self.buffer.clear();
+                    None
+                } else {
+                    // IAC followed by unexpected byte - treat as data
+                    // This can happen if the client sends malformed data
+                    self.in_iac = false;
+                    tracing::warn!(
+                        "Unexpected byte after IAC: {:02X}, treating as data",
+                        byte
+                    );
+                    Some(byte)
                 }
-                self.in_iac = false;
-                self.buffer.clear();
             }
         }
     }

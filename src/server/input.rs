@@ -42,6 +42,9 @@ pub struct LineBuffer {
     echo_mode: EchoMode,
     /// Character encoding for decoding input.
     encoding: CharacterEncoding,
+    /// Pending bytes for multi-byte character echo.
+    /// Used to buffer incomplete multi-byte characters before echoing.
+    pending_echo: Vec<u8>,
 }
 
 impl LineBuffer {
@@ -52,6 +55,7 @@ impl LineBuffer {
             max_size,
             echo_mode: EchoMode::Normal,
             encoding: CharacterEncoding::default(),
+            pending_echo: Vec::with_capacity(4),
         }
     }
 
@@ -62,6 +66,7 @@ impl LineBuffer {
             max_size,
             echo_mode: EchoMode::Normal,
             encoding,
+            pending_echo: Vec::with_capacity(4),
         }
     }
 
@@ -108,6 +113,7 @@ impl LineBuffer {
     /// Clear the buffer.
     pub fn clear(&mut self) {
         self.buffer.clear();
+        self.pending_echo.clear();
     }
 
     /// Calculate the number of bytes to delete for a backspace operation.
@@ -172,18 +178,61 @@ impl LineBuffer {
         }
     }
 
+    /// Check if pending_echo contains a complete character.
+    /// Returns true if the bytes form a complete character that can be echoed.
+    fn is_pending_echo_complete(&self) -> bool {
+        if self.pending_echo.is_empty() {
+            return false;
+        }
+
+        match self.encoding {
+            CharacterEncoding::Utf8 => {
+                let first = self.pending_echo[0];
+                let expected_len = if first < 0x80 {
+                    1
+                } else if first & 0xE0 == 0xC0 {
+                    2
+                } else if first & 0xF0 == 0xE0 {
+                    3
+                } else if first & 0xF8 == 0xF0 {
+                    4
+                } else {
+                    // Invalid UTF-8 lead byte, treat as single byte
+                    1
+                };
+                self.pending_echo.len() >= expected_len
+            }
+            CharacterEncoding::ShiftJIS => {
+                let first = self.pending_echo[0];
+                // Check if it's a 2-byte character lead byte
+                let is_lead = (0x81..=0x9F).contains(&first) || (0xE0..=0xFC).contains(&first);
+                if is_lead {
+                    self.pending_echo.len() >= 2
+                } else {
+                    // Single-byte character (ASCII or half-width katakana)
+                    true
+                }
+            }
+        }
+    }
+
     /// Process a single byte of input.
     ///
     /// Returns the input result and any bytes that should be echoed back.
     pub fn process_byte(&mut self, byte: u8) -> (InputResult, Vec<u8>) {
         match byte {
             control::CR | control::LF => {
-                // End of line
+                // End of line - flush any pending echo bytes first
+                let mut echo = std::mem::take(&mut self.pending_echo);
+                echo.push(control::CR);
+                echo.push(control::LF);
                 let line = self.take_line();
-                let echo = vec![control::CR, control::LF];
                 (InputResult::Line(line), echo)
             }
             control::BS | control::DEL => {
+                // Clear any pending echo bytes (incomplete multi-byte char)
+                self.pending_echo.clear();
+
                 // Backspace - delete the last character (which may be multi-byte)
                 let bytes_to_del = self.bytes_to_delete();
                 if bytes_to_del > 0 {
@@ -241,10 +290,32 @@ impl LineBuffer {
                 // Regular character
                 if self.buffer.len() < self.max_size {
                     self.buffer.push(byte);
+
                     let echo = match self.echo_mode {
-                        EchoMode::Normal => vec![byte],
+                        EchoMode::Normal => {
+                            // Add byte to pending echo buffer
+                            self.pending_echo.push(byte);
+
+                            // Check if we have a complete character
+                            if self.is_pending_echo_complete() {
+                                // Return all pending bytes as echo
+                                std::mem::take(&mut self.pending_echo)
+                            } else {
+                                // Still waiting for more bytes
+                                vec![]
+                            }
+                        }
                         EchoMode::Password => vec![],
-                        EchoMode::Masked(c) => c.to_string().into_bytes(),
+                        EchoMode::Masked(c) => {
+                            // For masked mode, also wait for complete character
+                            self.pending_echo.push(byte);
+                            if self.is_pending_echo_complete() {
+                                self.pending_echo.clear();
+                                c.to_string().into_bytes()
+                            } else {
+                                vec![]
+                            }
+                        }
                     };
                     (InputResult::Buffering, echo)
                 } else {

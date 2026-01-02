@@ -151,8 +151,8 @@ impl ScreenContext {
                     }
 
                     match result {
-                        InputResult::Line(line) => {
-                            return Ok(line);
+                        InputResult::Line(ref line) => {
+                            return Ok(line.clone());
                         }
                         InputResult::Buffering => {
                             // Continue reading
@@ -172,6 +172,128 @@ impl ScreenContext {
                         "Read timeout",
                     )));
                 }
+            }
+        }
+    }
+
+    /// Read a line with a short timeout (non-blocking for chat).
+    ///
+    /// Returns:
+    /// - `Ok(Some(line))` if a complete line was read
+    /// - `Ok(None)` if timeout elapsed with no input
+    /// - `Err` on connection error
+    pub async fn read_line_nonblocking(
+        &mut self,
+        session: &mut TelnetSession,
+        timeout_ms: u64,
+    ) -> Result<Option<String>> {
+        let mut buf = [0u8; 1];
+        let read_timeout = Duration::from_millis(timeout_ms);
+
+        // Try to read the first byte with timeout
+        match timeout(read_timeout, session.stream_mut().read(&mut buf)).await {
+            Ok(Ok(0)) => {
+                // Connection closed
+                return Ok(Some(String::new()));
+            }
+            Ok(Ok(_)) => {
+                // Got a byte, process it and continue reading
+                let (result, echo) = self.line_buffer.process_byte(buf[0]);
+
+                // Echo the character
+                if !echo.is_empty() {
+                    match self.line_buffer.echo_mode() {
+                        EchoMode::Normal => {
+                            let _ = session.stream_mut().write_all(&echo).await;
+                            let _ = session.stream_mut().flush().await;
+                        }
+                        EchoMode::Password => {
+                            if echo.len() == 1 && echo[0] != b'\x08' {
+                                let _ = session.stream_mut().write_all(b"*").await;
+                                let _ = session.stream_mut().flush().await;
+                            } else if echo.len() > 1 && echo[0] == b'\x08' {
+                                let _ = session.stream_mut().write_all(&echo).await;
+                                let _ = session.stream_mut().flush().await;
+                            }
+                        }
+                        EchoMode::Masked(c) => {
+                            if echo.len() == 1 && echo[0] != b'\x08' {
+                                let _ = session.stream_mut().write_all(&[c as u8]).await;
+                                let _ = session.stream_mut().flush().await;
+                            } else if echo.len() > 1 && echo[0] == b'\x08' {
+                                let _ = session.stream_mut().write_all(&echo).await;
+                                let _ = session.stream_mut().flush().await;
+                            }
+                        }
+                    }
+                }
+
+                match result {
+                    InputResult::Line(line) => return Ok(Some(line)),
+                    InputResult::Buffering => {
+                        // Continue reading until we get a complete line
+                        return self.finish_line_reading(session).await.map(Some);
+                    }
+                    InputResult::Cancel | InputResult::Eof => {
+                        return Ok(Some(String::new()));
+                    }
+                }
+            }
+            Ok(Err(e)) => return Err(e.into()),
+            Err(_) => {
+                // Timeout - no input available
+                return Ok(None);
+            }
+        }
+    }
+
+    /// Continue reading until we get a complete line.
+    async fn finish_line_reading(&mut self, session: &mut TelnetSession) -> Result<String> {
+        let mut buf = [0u8; 1];
+
+        loop {
+            match session.stream_mut().read(&mut buf).await {
+                Ok(0) => return Ok(String::new()),
+                Ok(_) => {
+                    let (result, echo) = self.line_buffer.process_byte(buf[0]);
+
+                    // Echo handling
+                    if !echo.is_empty() {
+                        match self.line_buffer.echo_mode() {
+                            EchoMode::Normal => {
+                                let _ = session.stream_mut().write_all(&echo).await;
+                                let _ = session.stream_mut().flush().await;
+                            }
+                            EchoMode::Password => {
+                                if echo.len() == 1 && echo[0] != b'\x08' {
+                                    let _ = session.stream_mut().write_all(b"*").await;
+                                    let _ = session.stream_mut().flush().await;
+                                } else if echo.len() > 1 && echo[0] == b'\x08' {
+                                    let _ = session.stream_mut().write_all(&echo).await;
+                                    let _ = session.stream_mut().flush().await;
+                                }
+                            }
+                            EchoMode::Masked(c) => {
+                                if echo.len() == 1 && echo[0] != b'\x08' {
+                                    let _ = session.stream_mut().write_all(&[c as u8]).await;
+                                    let _ = session.stream_mut().flush().await;
+                                } else if echo.len() > 1 && echo[0] == b'\x08' {
+                                    let _ = session.stream_mut().write_all(&echo).await;
+                                    let _ = session.stream_mut().flush().await;
+                                }
+                            }
+                        }
+                    }
+
+                    match result {
+                        InputResult::Line(line) => return Ok(line),
+                        InputResult::Buffering => continue,
+                        InputResult::Cancel | InputResult::Eof => {
+                            return Ok(String::new());
+                        }
+                    }
+                }
+                Err(e) => return Err(e.into()),
             }
         }
     }
