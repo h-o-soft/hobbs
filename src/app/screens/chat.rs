@@ -13,6 +13,9 @@ use crate::chat::{
 use crate::error::Result;
 use crate::server::TelnetSession;
 
+/// Maximum length for chat messages (in characters).
+pub const MAX_CHAT_MESSAGE_LENGTH: usize = 500;
+
 /// Chat screen handler.
 pub struct ChatScreen;
 
@@ -231,6 +234,13 @@ impl ChatScreen {
                                         }
                                         ChatCommand::Me(action) => {
                                             if !action.is_empty() {
+                                                // Check message length
+                                                if action.chars().count() > MAX_CHAT_MESSAGE_LENGTH {
+                                                    let msg = ctx.i18n.t("chat.message_too_long")
+                                                        .replace("{{max}}", &MAX_CHAT_MESSAGE_LENGTH.to_string());
+                                                    ctx.send_line(session, &format!("*** {}", msg)).await?;
+                                                    continue;
+                                                }
                                                 room.send_action(session_id, &action).await;
                                                 // Echo to sender
                                                 ctx.send_line(session, &format!("* {} {}", nickname, action)).await?;
@@ -252,6 +262,13 @@ impl ChatScreen {
                                 }
                                 ChatInput::Message(content) => {
                                     if !content.is_empty() {
+                                        // Check message length
+                                        if content.chars().count() > MAX_CHAT_MESSAGE_LENGTH {
+                                            let msg = ctx.i18n.t("chat.message_too_long")
+                                                .replace("{{max}}", &MAX_CHAT_MESSAGE_LENGTH.to_string());
+                                            ctx.send_line(session, &format!("*** {}", msg)).await?;
+                                            continue;
+                                        }
                                         // Send the message
                                         room.send_message(session_id, &content).await;
                                         // Echo to sender
@@ -362,5 +379,34 @@ mod tests {
     #[test]
     fn test_chat_screen_exists() {
         let _ = ChatScreen;
+    }
+
+    #[test]
+    fn test_max_chat_message_length_is_500() {
+        // As specified in CLAUDE.md
+        assert_eq!(MAX_CHAT_MESSAGE_LENGTH, 500);
+    }
+
+    #[test]
+    fn test_message_length_validation_ok() {
+        let message = "a".repeat(500);
+        assert!(message.chars().count() <= MAX_CHAT_MESSAGE_LENGTH);
+    }
+
+    #[test]
+    fn test_message_length_validation_too_long() {
+        let message = "a".repeat(501);
+        assert!(message.chars().count() > MAX_CHAT_MESSAGE_LENGTH);
+    }
+
+    #[test]
+    fn test_message_length_unicode() {
+        // Unicode characters should be counted correctly
+        let message = "あ".repeat(500);
+        assert_eq!(message.chars().count(), 500);
+        assert!(message.chars().count() <= MAX_CHAT_MESSAGE_LENGTH);
+
+        let message_too_long = "あ".repeat(501);
+        assert!(message_too_long.chars().count() > MAX_CHAT_MESSAGE_LENGTH);
     }
 }

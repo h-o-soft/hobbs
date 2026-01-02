@@ -199,6 +199,7 @@ private_message = "プライベートメッセージ"
 whisper_to = "{{nickname}}さんへ: "
 whisper_from = "{{nickname}}さんから: "
 command_help = "/help でコマンド一覧を表示"
+message_too_long = "メッセージが長すぎます（{{max}}文字以内）"
 
 [mail]
 inbox = "受信箱"
