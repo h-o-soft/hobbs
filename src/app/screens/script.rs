@@ -28,28 +28,25 @@ impl ScriptScreen {
             let service = ScriptService::new(&ctx.db).with_scripts_dir(&scripts_dir);
             let scripts = service.list_scripts(user_role)?;
 
+            // Display scripts
             if scripts.is_empty() {
                 ctx.send_line(session, &ctx.i18n.t("script.no_scripts"))
                     .await?;
-                ctx.send_line(session, "").await?;
-                ctx.wait_for_enter(session).await?;
-                return Ok(ScreenResult::Back);
-            }
-
-            // Display scripts
-            for (i, script) in scripts.iter().enumerate() {
-                let description = script.description.as_deref().unwrap_or("");
-                let line = format!(
-                    "  [{:>2}] {}{}",
-                    i + 1,
-                    script.name,
-                    if description.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" - {}", description)
-                    }
-                );
-                ctx.send_line(session, &line).await?;
+            } else {
+                for (i, script) in scripts.iter().enumerate() {
+                    let description = script.description.as_deref().unwrap_or("");
+                    let line = format!(
+                        "  [{:>2}] {}{}",
+                        i + 1,
+                        script.name,
+                        if description.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" - {}", description)
+                        }
+                    );
+                    ctx.send_line(session, &line).await?;
+                }
             }
 
             ctx.send_line(session, "").await?;
@@ -58,6 +55,13 @@ impl ScriptScreen {
             if user_role >= 2 {
                 ctx.send_line(session, &format!("  [R] {}", ctx.i18n.t("script.resync")))
                     .await?;
+                ctx.send_line(session, "").await?;
+            }
+
+            // If no scripts and not admin, just go back
+            if scripts.is_empty() && user_role < 2 {
+                ctx.wait_for_enter(session).await?;
+                return Ok(ScreenResult::Back);
             }
 
             ctx.send(
