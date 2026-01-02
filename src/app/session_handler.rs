@@ -974,12 +974,6 @@ Select language / Gengo sentaku:
             self.config.server.read_timeout_secs
         };
         let read_timeout = Duration::from_secs(timeout_secs);
-        tracing::debug!(
-            "read_line: is_logged_in={}, is_guest={}, timeout={}s",
-            session.is_logged_in(),
-            session.is_guest(),
-            timeout_secs
-        );
 
         loop {
             // Apply timeout to each read operation
