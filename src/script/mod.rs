@@ -4,8 +4,16 @@
 //! environment, allowing SysOps and SubOps to create games and interactive
 //! content (door games).
 
+pub mod api;
+pub mod engine;
+pub mod loader;
 pub mod repository;
+pub mod service;
 pub mod types;
 
+pub use api::BbsApi;
+pub use engine::{ResourceLimits, ScriptContext, ScriptEngine};
+pub use loader::ScriptLoader;
 pub use repository::ScriptRepository;
+pub use service::{ExecutionResult, ScriptService};
 pub use types::{Script, ScriptMetadata, SyncResult};

@@ -15,6 +15,8 @@ pub enum MenuAction {
     Mail,
     /// Go to file library.
     File,
+    /// Go to scripts/games.
+    Script,
     /// Go to user profile.
     Profile,
     /// Go to member list.
@@ -55,9 +57,10 @@ impl MenuAction {
             "C" | "2" => MenuAction::Chat,
             "M" | "3" if is_logged_in => MenuAction::Mail,
             "F" | "4" => MenuAction::File,
-            "P" | "5" if is_logged_in => MenuAction::Profile,
-            "W" | "7" => MenuAction::MemberList,
-            "A" | "6" if is_admin => MenuAction::Admin,
+            "S" | "5" => MenuAction::Script,
+            "P" | "6" if is_logged_in => MenuAction::Profile,
+            "W" | "8" => MenuAction::MemberList,
+            "A" | "7" if is_admin => MenuAction::Admin,
             "H" | "?" => MenuAction::Help,
             "L" if is_logged_in => MenuAction::Logout,
             "L" if !is_logged_in => MenuAction::Login,
@@ -98,6 +101,7 @@ impl MenuAction {
             MenuAction::Chat => "C",
             MenuAction::Mail => "M",
             MenuAction::File => "F",
+            MenuAction::Script => "S",
             MenuAction::Profile => "P",
             MenuAction::MemberList => "W",
             MenuAction::Admin => "A",
@@ -239,9 +243,17 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_script() {
+        assert_eq!(MenuAction::parse("S", true, false), MenuAction::Script);
+        assert_eq!(MenuAction::parse("5", true, false), MenuAction::Script);
+        // Script is also available to guests
+        assert_eq!(MenuAction::parse("S", false, false), MenuAction::Script);
+    }
+
+    #[test]
     fn test_parse_profile_logged_in() {
         assert_eq!(MenuAction::parse("P", true, false), MenuAction::Profile);
-        assert_eq!(MenuAction::parse("5", true, false), MenuAction::Profile);
+        assert_eq!(MenuAction::parse("6", true, false), MenuAction::Profile);
     }
 
     #[test]
@@ -256,7 +268,7 @@ mod tests {
     #[test]
     fn test_parse_admin() {
         assert_eq!(MenuAction::parse("A", true, true), MenuAction::Admin);
-        assert_eq!(MenuAction::parse("6", true, true), MenuAction::Admin);
+        assert_eq!(MenuAction::parse("7", true, true), MenuAction::Admin);
     }
 
     #[test]

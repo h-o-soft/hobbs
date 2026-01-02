@@ -32,6 +32,10 @@ pub enum HobbsError {
     /// Template error.
     #[error("template error: {0}")]
     Template(#[from] crate::template::TemplateError),
+
+    /// Script execution error.
+    #[error("script error: {0}")]
+    Script(String),
 }
 
 /// Result type alias for HOBBS operations.

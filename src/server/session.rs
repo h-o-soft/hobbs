@@ -31,6 +31,8 @@ pub enum SessionState {
     Mail,
     /// User is in file management.
     Files,
+    /// User is running scripts/games.
+    Script,
     /// User is in admin menu.
     Admin,
     /// Session is being closed.

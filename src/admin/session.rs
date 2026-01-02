@@ -270,6 +270,7 @@ pub fn format_session_state(state: SessionState) -> &'static str {
         SessionState::Mail => "メール",
         SessionState::Files => "ファイル",
         SessionState::Admin => "管理メニュー",
+        SessionState::Script => "スクリプト",
         SessionState::Closing => "切断中",
     }
 }
