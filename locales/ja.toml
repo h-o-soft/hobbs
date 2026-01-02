@@ -356,6 +356,11 @@ select_permission = "権限を選択してください"
 new_name = "新しい名前"
 new_description = "新しい説明"
 keep_current = "現在のまま"
+user_number_to_change_role = "ロールを変更するユーザー番号"
+select_new_role = "新しいロールを選択"
+role_changed = "ユーザー「{{name}}」のロールを{{role}}に変更しました"
+cannot_change_own_role = "自分自身のロールは変更できません"
+cannot_demote_last_sysop = "最後のSysOpを降格できません"
 
 [role]
 guest = "ゲスト"
