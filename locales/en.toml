@@ -381,6 +381,11 @@ session_state_mail = "Mail"
 session_state_files = "Files"
 session_state_admin = "Admin"
 session_state_closing = "Closing"
+user_number_to_reset_password = "User number to reset password"
+confirm_reset_password = "Reset password for '{{name}}'? [Y/N]"
+password_reset_success = "Password has been reset"
+new_password_is = "New password: {{password}}"
+password_reset_note = "* This password will only be shown once. Please share it with the user."
 
 [role]
 guest = "Guest"

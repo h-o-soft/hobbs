@@ -87,6 +87,11 @@ impl AdminScreen {
                 &format!("  [9] {}", ctx.i18n.t("admin.session_list")),
             )
             .await?;
+            ctx.send_line(
+                session,
+                &format!("  [10] {}", ctx.i18n.t("admin.reset_password")),
+            )
+            .await?;
             ctx.send_line(session, "").await?;
 
             ctx.send_line(
@@ -96,17 +101,17 @@ impl AdminScreen {
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [10] {}", ctx.i18n.t("admin.chat_room_list")),
+                &format!("  [11] {}", ctx.i18n.t("admin.chat_room_list")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [11] {}", ctx.i18n.t("admin.create_chat_room")),
+                &format!("  [12] {}", ctx.i18n.t("admin.create_chat_room")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [12] {}", ctx.i18n.t("admin.delete_chat_room")),
+                &format!("  [13] {}", ctx.i18n.t("admin.delete_chat_room")),
             )
             .await?;
             ctx.send_line(session, "").await?;
@@ -118,17 +123,17 @@ impl AdminScreen {
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [13] {}", ctx.i18n.t("admin.folder_list")),
+                &format!("  [14] {}", ctx.i18n.t("admin.folder_list")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [14] {}", ctx.i18n.t("admin.create_folder")),
+                &format!("  [15] {}", ctx.i18n.t("admin.create_folder")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [15] {}", ctx.i18n.t("admin.delete_folder")),
+                &format!("  [16] {}", ctx.i18n.t("admin.delete_folder")),
             )
             .await?;
             ctx.send_line(session, "").await?;
@@ -138,7 +143,7 @@ impl AdminScreen {
                 &format!("=== {} ===", ctx.i18n.t("admin.system_status")),
             )
             .await?;
-            ctx.send_line(session, "  [16] System Status").await?;
+            ctx.send_line(session, "  [17] System Status").await?;
             ctx.send_line(session, "").await?;
 
             ctx.send(
@@ -165,13 +170,14 @@ impl AdminScreen {
                 "7" => Self::suspend_user(ctx, session).await?,
                 "8" => Self::activate_user(ctx, session).await?,
                 "9" => Self::show_sessions(ctx, session).await?,
-                "10" => Self::show_chat_rooms(ctx, session).await?,
-                "11" => Self::create_chat_room(ctx, session).await?,
-                "12" => Self::delete_chat_room(ctx, session).await?,
-                "13" => Self::show_folders(ctx, session).await?,
-                "14" => Self::create_folder(ctx, session).await?,
-                "15" => Self::delete_folder(ctx, session).await?,
-                "16" => Self::show_system_status(ctx, session).await?,
+                "10" => Self::reset_user_password(ctx, session).await?,
+                "11" => Self::show_chat_rooms(ctx, session).await?,
+                "12" => Self::create_chat_room(ctx, session).await?,
+                "13" => Self::delete_chat_room(ctx, session).await?,
+                "14" => Self::show_folders(ctx, session).await?,
+                "15" => Self::create_folder(ctx, session).await?,
+                "16" => Self::delete_folder(ctx, session).await?,
+                "17" => Self::show_system_status(ctx, session).await?,
                 _ => {}
             }
         }
@@ -1533,6 +1539,160 @@ impl AdminScreen {
             SessionState::Admin => ctx.i18n.t("admin.session_state_admin").to_string(),
             SessionState::Closing => ctx.i18n.t("admin.session_state_closing").to_string(),
         }
+    }
+
+    /// Reset a user's password.
+    async fn reset_user_password(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+    ) -> Result<()> {
+        use crate::admin::{AdminError, UserAdminService};
+        use crate::db::UserRepository;
+
+        // Get current admin user
+        let current_user = match session.user_id() {
+            Some(user_id) => {
+                let user_repo = UserRepository::new(&ctx.db);
+                match user_repo.get_by_id(user_id)? {
+                    Some(user) => user,
+                    None => {
+                        ctx.send_line(session, ctx.i18n.t("error.user_not_found"))
+                            .await?;
+                        return Ok(());
+                    }
+                }
+            }
+            None => {
+                ctx.send_line(session, ctx.i18n.t("error.not_logged_in"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        // Get all users
+        let user_repo = UserRepository::new(&ctx.db);
+        let users = user_repo.list_all()?;
+
+        if users.is_empty() {
+            ctx.send_line(session, ctx.i18n.t("member.no_members"))
+                .await?;
+            ctx.wait_for_enter(session).await?;
+            return Ok(());
+        }
+
+        // Show user list
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("admin.reset_password")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!(
+                "{:<4} {:<16} {:<16} {}",
+                ctx.i18n.t("common.number"),
+                ctx.i18n.t("profile.username"),
+                ctx.i18n.t("profile.nickname"),
+                ctx.i18n.t("member.role")
+            ),
+        )
+        .await?;
+        ctx.send_line(session, &"-".repeat(50)).await?;
+
+        for (i, user) in users.iter().enumerate() {
+            let role_name = Self::role_to_string(&user.role, ctx);
+            let status = if !user.is_active { " [停止]" } else { "" };
+            ctx.send_line(
+                session,
+                &format!(
+                    "{:<4} {:<16} {:<16} {}{}",
+                    i + 1,
+                    user.username,
+                    user.nickname,
+                    role_name,
+                    status
+                ),
+            )
+            .await?;
+        }
+
+        ctx.send_line(session, "").await?;
+        ctx.send(
+            session,
+            &format!(
+                "{} [Q={}]: ",
+                ctx.i18n.t("admin.user_number_to_reset_password"),
+                ctx.i18n.t("common.cancel")
+            ),
+        )
+        .await?;
+
+        let input = ctx.read_line(session).await?;
+        let input = input.trim();
+
+        if input.eq_ignore_ascii_case("q") || input.is_empty() {
+            return Ok(());
+        }
+
+        let user_num: usize = match input.parse() {
+            Ok(n) if n > 0 && n <= users.len() => n,
+            _ => {
+                ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        let target_user = &users[user_num - 1];
+
+        // Confirmation
+        ctx.send_line(session, "").await?;
+        let confirm_msg = ctx
+            .i18n
+            .t("admin.confirm_reset_password")
+            .replace("{{name}}", &target_user.nickname);
+        ctx.send(session, &format!("{} ", confirm_msg)).await?;
+
+        let confirm = ctx.read_line(session).await?;
+        if !confirm.trim().eq_ignore_ascii_case("y") {
+            return Ok(());
+        }
+
+        // Call UserAdminService to reset password
+        let service = UserAdminService::new(&ctx.db);
+        match service.reset_user_password(target_user.id, &current_user) {
+            Ok(new_password) => {
+                ctx.send_line(session, "").await?;
+                ctx.send_line(session, ctx.i18n.t("admin.password_reset_success"))
+                    .await?;
+                ctx.send_line(session, "").await?;
+                let password_msg = ctx
+                    .i18n
+                    .t("admin.new_password_is")
+                    .replace("{{password}}", &new_password);
+                ctx.send_line(session, &password_msg).await?;
+                ctx.send_line(session, "").await?;
+                ctx.send_line(session, ctx.i18n.t("admin.password_reset_note"))
+                    .await?;
+            }
+            Err(AdminError::Permission(_)) => {
+                ctx.send_line(session, ctx.i18n.t("admin.cannot_suspend_higher_role"))
+                    .await?;
+            }
+            Err(e) => {
+                ctx.send_line(
+                    session,
+                    &format!("{}: {}", ctx.i18n.t("common.error"), e),
+                )
+                .await?;
+            }
+        }
+
+        ctx.send_line(session, "").await?;
+        ctx.wait_for_enter(session).await?;
+        Ok(())
     }
 
     /// Show system status.
