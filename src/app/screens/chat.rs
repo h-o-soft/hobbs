@@ -8,7 +8,7 @@ use super::common::ScreenContext;
 use super::ScreenResult;
 use crate::chat::{
     format_help, format_who, parse_input, ChatCommand, ChatInput, ChatLogRepository, ChatMessage,
-    ChatParticipant, ChatRoom, NewChatLog,
+    ChatParticipant, ChatRoom, JoinResult, NewChatLog,
 };
 use crate::error::Result;
 use crate::server::TelnetSession;
@@ -122,7 +122,14 @@ impl ChatScreen {
 
         // Join the room
         let participant = ChatParticipant::new(&session_id, user_id, &nickname);
-        room.join(participant).await;
+        match room.join(participant).await {
+            JoinResult::Joined => {}
+            JoinResult::AlreadyJoined => {}
+            JoinResult::RoomFull => {
+                ctx.send_line(session, ctx.i18n.t("chat.room_full")).await?;
+                return Ok(ScreenResult::Back);
+            }
+        }
 
         // Subscribe to messages
         let mut receiver = room.subscribe();

@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
-use super::room::{ChatParticipant, ChatRoom};
+use super::room::{ChatParticipant, ChatRoom, JoinResult};
 
 /// Default chat rooms to create on startup.
 const DEFAULT_ROOMS: &[(&str, &str)] = &[
@@ -109,15 +109,18 @@ impl ChatRoomManager {
 
     /// Join a room.
     ///
-    /// Returns the room if joined successfully.
+    /// Returns Ok(room) if joined successfully, or Err(JoinResult) if failed.
     pub async fn join_room(
         &self,
         room_id: &str,
         participant: ChatParticipant,
-    ) -> Option<Arc<ChatRoom>> {
-        let room = self.get_room(room_id).await?;
-        room.join(participant).await;
-        Some(room)
+    ) -> Result<Arc<ChatRoom>, JoinResult> {
+        let room = self.get_room(room_id).await.ok_or(JoinResult::RoomFull)?;
+        let result = room.join(participant).await;
+        match result {
+            JoinResult::Joined => Ok(room),
+            other => Err(other),
+        }
     }
 
     /// Leave a room.
@@ -245,8 +248,18 @@ mod tests {
         let participant = ChatParticipant::new("session1", Some(1), "Alice");
         let room = manager.join_room("lobby", participant).await;
 
-        assert!(room.is_some());
+        assert!(room.is_ok());
         assert_eq!(room.unwrap().participant_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn test_join_room_not_found() {
+        let manager = ChatRoomManager::new();
+
+        let participant = ChatParticipant::new("session1", Some(1), "Alice");
+        let result = manager.join_room("nonexistent", participant).await;
+
+        assert!(result.is_err());
     }
 
     #[tokio::test]
@@ -255,7 +268,7 @@ mod tests {
         manager.create_room("lobby", "Lobby").await;
 
         let participant = ChatParticipant::new("session1", Some(1), "Alice");
-        manager.join_room("lobby", participant).await;
+        let _ = manager.join_room("lobby", participant).await;
 
         let room = manager.get_room("lobby").await.unwrap();
         assert_eq!(room.participant_count().await, 1);
@@ -273,8 +286,8 @@ mod tests {
 
         let p1 = ChatParticipant::new("session1", Some(1), "Alice");
         let p2 = ChatParticipant::new("session1", Some(1), "Alice");
-        manager.join_room("room1", p1).await;
-        manager.join_room("room2", p2).await;
+        let _ = manager.join_room("room1", p1).await;
+        let _ = manager.join_room("room2", p2).await;
 
         let room1 = manager.get_room("room1").await.unwrap();
         let room2 = manager.get_room("room2").await.unwrap();
@@ -295,9 +308,9 @@ mod tests {
 
         assert_eq!(manager.total_participants().await, 0);
 
-        manager.join_room("room1", ChatParticipant::new("s1", Some(1), "Alice")).await;
-        manager.join_room("room1", ChatParticipant::new("s2", Some(2), "Bob")).await;
-        manager.join_room("room2", ChatParticipant::new("s3", Some(3), "Charlie")).await;
+        let _ = manager.join_room("room1", ChatParticipant::new("s1", Some(1), "Alice")).await;
+        let _ = manager.join_room("room1", ChatParticipant::new("s2", Some(2), "Bob")).await;
+        let _ = manager.join_room("room2", ChatParticipant::new("s3", Some(3), "Charlie")).await;
 
         assert_eq!(manager.total_participants().await, 3);
     }
@@ -328,7 +341,7 @@ mod tests {
         manager.create_room("test", "Test Room").await;
 
         let participant = ChatParticipant::new("session1", Some(1), "Alice");
-        manager.join_room("test", participant).await;
+        let _ = manager.join_room("test", participant).await;
 
         let result = manager.delete_room("test").await;
         assert_eq!(result, Err(DeleteRoomError::HasParticipants));
@@ -341,7 +354,7 @@ mod tests {
         manager.create_room("test", "Test Room").await;
 
         let participant = ChatParticipant::new("session1", Some(1), "Alice");
-        manager.join_room("test", participant).await;
+        let _ = manager.join_room("test", participant).await;
 
         // Cannot delete while participant is in room
         assert_eq!(manager.delete_room("test").await, Err(DeleteRoomError::HasParticipants));

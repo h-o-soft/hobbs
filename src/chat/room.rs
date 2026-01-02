@@ -12,6 +12,9 @@ use tokio::sync::{broadcast, RwLock};
 /// Maximum number of messages to buffer in the broadcast channel.
 const CHANNEL_CAPACITY: usize = 100;
 
+/// Maximum number of participants per room.
+pub const MAX_PARTICIPANTS_PER_ROOM: usize = 100;
+
 /// Type of chat message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageType {
@@ -168,6 +171,17 @@ impl ChatParticipant {
     }
 }
 
+/// Result of attempting to join a chat room.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JoinResult {
+    /// Successfully joined the room.
+    Joined,
+    /// Already in the room.
+    AlreadyJoined,
+    /// Room is full.
+    RoomFull,
+}
+
 /// A chat room with broadcast messaging.
 pub struct ChatRoom {
     /// Room ID.
@@ -234,14 +248,21 @@ impl ChatRoom {
 
     /// Join the room.
     ///
-    /// Returns true if the user was added, false if already in the room.
-    pub async fn join(&self, participant: ChatParticipant) -> bool {
+    /// Returns the result of the join attempt.
+    pub async fn join(&self, participant: ChatParticipant) -> JoinResult {
         let session_id = participant.session_id.clone();
         let name = participant.name.clone();
 
         let mut participants = self.participants.write().await;
+
+        // Check if already in the room
         if participants.contains_key(&session_id) {
-            return false;
+            return JoinResult::AlreadyJoined;
+        }
+
+        // Check if room is full
+        if participants.len() >= MAX_PARTICIPANTS_PER_ROOM {
+            return JoinResult::RoomFull;
         }
 
         participants.insert(session_id.clone(), participant);
@@ -249,7 +270,7 @@ impl ChatRoom {
 
         // Broadcast join notification
         let _ = self.sender.send(ChatMessage::join(&session_id, &name));
-        true
+        JoinResult::Joined
     }
 
     /// Leave the room.
@@ -405,8 +426,8 @@ mod tests {
         let room = ChatRoom::new("lobby", "Lobby");
         let participant = ChatParticipant::new("session1", Some(1), "Alice");
 
-        let joined = room.join(participant).await;
-        assert!(joined);
+        let result = room.join(participant).await;
+        assert_eq!(result, JoinResult::Joined);
         assert_eq!(room.participant_count().await, 1);
         assert!(room.is_participant("session1").await);
     }
@@ -417,9 +438,27 @@ mod tests {
         let participant1 = ChatParticipant::new("session1", Some(1), "Alice");
         let participant2 = ChatParticipant::new("session1", Some(1), "Alice");
 
-        assert!(room.join(participant1).await);
-        assert!(!room.join(participant2).await); // Duplicate
+        assert_eq!(room.join(participant1).await, JoinResult::Joined);
+        assert_eq!(room.join(participant2).await, JoinResult::AlreadyJoined);
         assert_eq!(room.participant_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn test_chat_room_join_full() {
+        let room = ChatRoom::new("lobby", "Lobby");
+
+        // Fill the room to capacity
+        for i in 0..MAX_PARTICIPANTS_PER_ROOM {
+            let participant = ChatParticipant::new(format!("session{i}"), Some(i as i64), format!("User{i}"));
+            assert_eq!(room.join(participant).await, JoinResult::Joined);
+        }
+
+        assert_eq!(room.participant_count().await, MAX_PARTICIPANTS_PER_ROOM);
+
+        // Try to join when full
+        let extra = ChatParticipant::new("extra", Some(999), "Extra");
+        assert_eq!(room.join(extra).await, JoinResult::RoomFull);
+        assert_eq!(room.participant_count().await, MAX_PARTICIPANTS_PER_ROOM);
     }
 
     #[tokio::test]
