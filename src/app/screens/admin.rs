@@ -1343,19 +1343,196 @@ impl AdminScreen {
 
     /// Show active sessions.
     async fn show_sessions(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
-        ctx.send_line(session, "").await?;
-        ctx.send_line(
-            session,
-            &format!("=== {} ===", ctx.i18n.t("admin.session_list")),
-        )
-        .await?;
-        ctx.send_line(session, "").await?;
-        ctx.send_line(session, ctx.i18n.t("feature.not_implemented"))
-            .await?;
-        ctx.send_line(session, "").await?;
+        use crate::admin::{AdminError, SessionAdminService};
+        use crate::db::UserRepository;
 
-        ctx.wait_for_enter(session).await?;
-        Ok(())
+        // Get current admin user
+        let current_user = match session.user_id() {
+            Some(user_id) => {
+                let user_repo = UserRepository::new(&ctx.db);
+                match user_repo.get_by_id(user_id)? {
+                    Some(user) => user,
+                    None => {
+                        ctx.send_line(session, ctx.i18n.t("error.user_not_found"))
+                            .await?;
+                        return Ok(());
+                    }
+                }
+            }
+            None => {
+                ctx.send_line(session, ctx.i18n.t("error.not_logged_in"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        let is_sysop = Self::is_sysop(ctx, session);
+
+        // Create SessionAdminService
+        let service = SessionAdminService::new((*ctx.session_manager).clone());
+
+        // Get session list
+        let sessions = match service.list_sessions(&current_user).await {
+            Ok(s) => s,
+            Err(e) => {
+                ctx.send_line(
+                    session,
+                    &format!("{}: {}", ctx.i18n.t("common.error"), e),
+                )
+                .await?;
+                ctx.wait_for_enter(session).await?;
+                return Ok(());
+            }
+        };
+
+        loop {
+            ctx.send_line(session, "").await?;
+            ctx.send_line(
+                session,
+                &format!("=== {} ===", ctx.i18n.t("admin.session_list")),
+            )
+            .await?;
+            ctx.send_line(session, "").await?;
+
+            if sessions.is_empty() {
+                ctx.send_line(session, ctx.i18n.t("admin.no_sessions"))
+                    .await?;
+                ctx.send_line(session, "").await?;
+                ctx.wait_for_enter(session).await?;
+                return Ok(());
+            }
+
+            // Display session list
+            ctx.send_line(
+                session,
+                &format!(
+                    "{:<4} {:<16} {:<16} {:<10}",
+                    ctx.i18n.t("common.number"),
+                    ctx.i18n.t("common.user"),
+                    "IP",
+                    ctx.i18n.t("common.current")
+                ),
+            )
+            .await?;
+            ctx.send_line(session, &"-".repeat(50)).await?;
+
+            for (i, sess) in sessions.iter().enumerate() {
+                let username = sess.username.as_deref().unwrap_or("(Guest)");
+                let ip = sess.peer_addr.ip().to_string();
+                let state = Self::session_state_to_string(&sess.state, ctx);
+                let is_self = sess.id == session.id();
+                let marker = if is_self { " *" } else { "" };
+
+                ctx.send_line(
+                    session,
+                    &format!(
+                        "{:<4} {:<16} {:<16} {}{}",
+                        i + 1,
+                        username,
+                        ip,
+                        state,
+                        marker
+                    ),
+                )
+                .await?;
+            }
+
+            ctx.send_line(session, "").await?;
+
+            // SysOp can disconnect users
+            if is_sysop && sessions.len() > 1 {
+                ctx.send(
+                    session,
+                    &format!(
+                        "{} [Q={}]: ",
+                        ctx.i18n.t("admin.session_number_to_disconnect"),
+                        ctx.i18n.t("common.back")
+                    ),
+                )
+                .await?;
+
+                let input = ctx.read_line(session).await?;
+                let input = input.trim();
+
+                if input.eq_ignore_ascii_case("q") || input.is_empty() {
+                    return Ok(());
+                }
+
+                let sess_num: usize = match input.parse() {
+                    Ok(n) if n > 0 && n <= sessions.len() => n,
+                    _ => {
+                        ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                            .await?;
+                        continue;
+                    }
+                };
+
+                let target_session = &sessions[sess_num - 1];
+
+                // Confirmation
+                ctx.send_line(session, "").await?;
+                let target_name = target_session
+                    .username
+                    .as_deref()
+                    .unwrap_or("Guest");
+                let confirm_msg = ctx
+                    .i18n
+                    .t("admin.confirm_disconnect")
+                    .replace("{{name}}", target_name);
+                ctx.send(session, &format!("{} [Y/N]: ", confirm_msg)).await?;
+
+                let confirm = ctx.read_line(session).await?;
+                if !confirm.trim().eq_ignore_ascii_case("y") {
+                    continue;
+                }
+
+                // Force disconnect
+                match service.force_disconnect(target_session.id, &current_user).await {
+                    Ok(_) => {
+                        let msg = ctx
+                            .i18n
+                            .t("admin.session_disconnected")
+                            .replace("{{name}}", target_name);
+                        ctx.send_line(session, &msg).await?;
+                    }
+                    Err(AdminError::CannotModifySelf) => {
+                        ctx.send_line(session, ctx.i18n.t("admin.cannot_disconnect_self"))
+                            .await?;
+                    }
+                    Err(e) => {
+                        ctx.send_line(
+                            session,
+                            &format!("{}: {}", ctx.i18n.t("common.error"), e),
+                        )
+                        .await?;
+                    }
+                }
+
+                ctx.send_line(session, "").await?;
+                ctx.wait_for_enter(session).await?;
+                return Ok(());
+            } else {
+                ctx.wait_for_enter(session).await?;
+                return Ok(());
+            }
+        }
+    }
+
+    /// Convert session state to localized string.
+    fn session_state_to_string(state: &crate::server::SessionState, ctx: &ScreenContext) -> String {
+        use crate::server::SessionState;
+        match state {
+            SessionState::Welcome => ctx.i18n.t("admin.session_state_welcome").to_string(),
+            SessionState::Login => ctx.i18n.t("admin.session_state_login").to_string(),
+            SessionState::Registration => ctx.i18n.t("admin.session_state_registration").to_string(),
+            SessionState::MainMenu => ctx.i18n.t("admin.session_state_mainmenu").to_string(),
+            SessionState::Board => ctx.i18n.t("admin.session_state_board").to_string(),
+            SessionState::Chat => ctx.i18n.t("admin.session_state_chat").to_string(),
+            SessionState::Mail => ctx.i18n.t("admin.session_state_mail").to_string(),
+            SessionState::Files => ctx.i18n.t("admin.session_state_files").to_string(),
+            SessionState::Admin => ctx.i18n.t("admin.session_state_admin").to_string(),
+            SessionState::Closing => ctx.i18n.t("admin.session_state_closing").to_string(),
+        }
     }
 
     /// Show system status.
