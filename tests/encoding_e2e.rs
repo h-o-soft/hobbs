@@ -215,7 +215,10 @@ async fn test_shiftjis_welcome_screen() {
 
     // Read language selection screen
     tokio::time::sleep(Duration::from_millis(300)).await;
-    let _ = stream.read(&mut buf).await.expect("Failed to read language selection");
+    let _ = stream
+        .read(&mut buf)
+        .await
+        .expect("Failed to read language selection");
 
     // Select Japanese ShiftJIS
     stream.write_all(b"J\r").await.expect("Failed to send J");
@@ -272,7 +275,10 @@ async fn test_utf8_welcome_screen() {
 
     // Read language selection screen
     tokio::time::sleep(Duration::from_millis(300)).await;
-    let _ = stream.read(&mut buf).await.expect("Failed to read language selection");
+    let _ = stream
+        .read(&mut buf)
+        .await
+        .expect("Failed to read language selection");
 
     // Select Japanese UTF-8
     stream.write_all(b"U\r").await.expect("Failed to send");

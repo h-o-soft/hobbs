@@ -4,8 +4,8 @@ use tracing::{error, info};
 
 use hobbs::server::SessionManager;
 use hobbs::{
-    chat::ChatRoomManager, Application, Config, Database, I18nManager, TelnetServer,
-    TelnetSession, TemplateLoader,
+    chat::ChatRoomManager, Application, Config, Database, I18nManager, TelnetServer, TelnetSession,
+    TemplateLoader,
 };
 
 fn main() {

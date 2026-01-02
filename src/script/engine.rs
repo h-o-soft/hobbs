@@ -234,9 +234,7 @@ mod tests {
     #[test]
     fn test_string_operations() {
         let engine = ScriptEngine::new().unwrap();
-        engine
-            .execute(r#"result = string.upper("hello")"#)
-            .unwrap();
+        engine.execute(r#"result = string.upper("hello")"#).unwrap();
 
         let result: String = engine.get_global("result").unwrap();
         assert_eq!(result, "HELLO");

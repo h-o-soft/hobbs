@@ -38,7 +38,10 @@ async fn test_shiftjis_login_and_navigation() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Read response, may need to combine multiple reads
-    let mut response = client.recv_timeout(Duration::from_secs(2)).await.unwrap_or_default();
+    let mut response = client
+        .recv_timeout(Duration::from_secs(2))
+        .await
+        .unwrap_or_default();
     if let Ok(more) = client.recv_timeout(Duration::from_millis(300)).await {
         response.push_str(&more);
     }
@@ -82,7 +85,10 @@ async fn test_utf8_japanese_login_and_menu() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Read response, may need to combine multiple reads
-    let mut response = client.recv_timeout(Duration::from_secs(2)).await.unwrap_or_default();
+    let mut response = client
+        .recv_timeout(Duration::from_secs(2))
+        .await
+        .unwrap_or_default();
     if let Ok(more) = client.recv_timeout(Duration::from_millis(300)).await {
         response.push_str(&more);
     }
@@ -124,7 +130,10 @@ async fn test_shiftjis_chat_access() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Read response, may need to combine multiple reads
-    let mut response = client.recv_timeout(Duration::from_secs(2)).await.unwrap_or_default();
+    let mut response = client
+        .recv_timeout(Duration::from_secs(2))
+        .await
+        .unwrap_or_default();
     if let Ok(more) = client.recv_timeout(Duration::from_millis(300)).await {
         response.push_str(&more);
     }
@@ -168,7 +177,10 @@ async fn test_utf8_board_access() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Read response, may need to combine multiple reads
-    let mut response = client.recv_timeout(Duration::from_secs(2)).await.unwrap_or_default();
+    let mut response = client
+        .recv_timeout(Duration::from_secs(2))
+        .await
+        .unwrap_or_default();
     if let Ok(more) = client.recv_timeout(Duration::from_millis(300)).await {
         response.push_str(&more);
     }
@@ -223,7 +235,7 @@ async fn test_utf8_chat_japanese_message() {
             || response.contains("世界")
             || response.contains("chat_utf8")
             || response.contains("<")
-            || response.len() > 0,  // At least some response received
+            || response.len() > 0, // At least some response received
         "Should see message response: {:?}",
         response
     );
@@ -428,9 +440,7 @@ async fn test_english_utf8_interface() {
 
     // Should see English interface
     assert!(
-        response.contains("Welcome")
-            || response.contains("Login")
-            || response.contains("success"),
+        response.contains("Welcome") || response.contains("Login") || response.contains("success"),
         "Should see English interface: {:?}",
         response
     );
@@ -445,7 +455,10 @@ async fn test_english_utf8_interface() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Read response, may need to combine multiple reads
-    let mut chat_response = client.recv_timeout(Duration::from_secs(2)).await.unwrap_or_default();
+    let mut chat_response = client
+        .recv_timeout(Duration::from_secs(2))
+        .await
+        .unwrap_or_default();
     if let Ok(more) = client.recv_timeout(Duration::from_millis(300)).await {
         chat_response.push_str(&more);
     }

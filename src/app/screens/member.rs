@@ -15,11 +15,8 @@ impl MemberScreen {
         loop {
             // Display member list header
             ctx.send_line(session, "").await?;
-            ctx.send_line(
-                session,
-                &format!("=== {} ===", ctx.i18n.t("member.list")),
-            )
-            .await?;
+            ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("member.list")))
+                .await?;
             ctx.send_line(session, "").await?;
 
             // Get member list from database
@@ -53,7 +50,10 @@ impl MemberScreen {
                     };
                     ctx.send_line(
                         session,
-                        &format!("  {:<16} {:<20} {:<10}", user.username, user.nickname, role_str),
+                        &format!(
+                            "  {:<16} {:<20} {:<10}",
+                            user.username, user.nickname, role_str
+                        ),
                     )
                     .await?;
                 }
@@ -68,11 +68,8 @@ impl MemberScreen {
             }
 
             ctx.send_line(session, "").await?;
-            ctx.send(
-                session,
-                &format!("[Q={}]: ", ctx.i18n.t("common.back")),
-            )
-            .await?;
+            ctx.send(session, &format!("[Q={}]: ", ctx.i18n.t("common.back")))
+                .await?;
 
             let input = ctx.read_line(session).await?;
             let input = input.trim();

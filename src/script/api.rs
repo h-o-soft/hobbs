@@ -4,11 +4,15 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 
 use mlua::{Lua, Result as LuaResult, Table, Value};
 use rand::Rng;
 
 use super::engine::ScriptContext;
+
+/// Maximum sleep duration in seconds.
+const MAX_SLEEP_SECONDS: f64 = 5.0;
 
 /// Output callback type for print/println.
 pub type OutputCallback = Box<dyn Fn(&str) + 'static>;
@@ -20,7 +24,7 @@ pub type InputCallback = Box<dyn Fn(&str) -> Option<String> + 'static>;
 pub struct BbsApi {
     context: ScriptContext,
     output_buffer: Rc<RefCell<Vec<String>>>,
-    input_handler: Option<InputCallback>,
+    input_handler: Rc<RefCell<Option<InputCallback>>>,
 }
 
 impl BbsApi {
@@ -29,16 +33,16 @@ impl BbsApi {
         Self {
             context,
             output_buffer: Rc::new(RefCell::new(Vec::new())),
-            input_handler: None,
+            input_handler: Rc::new(RefCell::new(None)),
         }
     }
 
     /// Set the input handler callback.
-    pub fn with_input_handler<F>(mut self, handler: F) -> Self
+    pub fn with_input_handler<F>(self, handler: F) -> Self
     where
         F: Fn(&str) -> Option<String> + 'static,
     {
-        self.input_handler = Some(Box::new(handler));
+        *self.input_handler.borrow_mut() = Some(Box::new(handler));
         self
     }
 
@@ -58,6 +62,9 @@ impl BbsApi {
 
         // === Output functions ===
         self.register_print_functions(lua, &bbs)?;
+
+        // === Input functions ===
+        self.register_input_functions(lua, &bbs)?;
 
         // === User functions ===
         self.register_user_functions(lua, &bbs)?;
@@ -99,6 +106,100 @@ impl BbsApi {
         Ok(())
     }
 
+    /// Register input functions.
+    fn register_input_functions(&self, lua: &Lua, bbs: &Table) -> LuaResult<()> {
+        let output = Rc::clone(&self.output_buffer);
+        let input_handler = Rc::clone(&self.input_handler);
+
+        // bbs.input(prompt) - get user input
+        let input_output = Rc::clone(&output);
+        let input_handler_clone = Rc::clone(&input_handler);
+        let input_fn = lua.create_function(move |_, prompt: Option<String>| {
+            // Output prompt if provided
+            if let Some(p) = &prompt {
+                input_output.borrow_mut().push(p.clone());
+            }
+
+            // Get input from handler
+            let handler = input_handler_clone.borrow();
+            if let Some(ref h) = *handler {
+                Ok(h(""))
+            } else {
+                // No input handler - return nil
+                Ok(None)
+            }
+        })?;
+        bbs.set("input", input_fn)?;
+
+        // bbs.input_number(prompt) - get numeric input
+        let input_number_output = Rc::clone(&output);
+        let input_number_handler = Rc::clone(&input_handler);
+        let input_number_fn = lua.create_function(move |_, prompt: Option<String>| {
+            // Output prompt if provided
+            if let Some(p) = &prompt {
+                input_number_output.borrow_mut().push(p.clone());
+            }
+
+            // Get input from handler
+            let handler = input_number_handler.borrow();
+            if let Some(ref h) = *handler {
+                if let Some(input) = h("") {
+                    // Try to parse as number
+                    if let Ok(n) = input.trim().parse::<f64>() {
+                        return Ok(Some(n));
+                    }
+                }
+            }
+            Ok(None)
+        })?;
+        bbs.set("input_number", input_number_fn)?;
+
+        // bbs.input_yn(prompt) - get Y/N input (returns true for Y, false for N, nil otherwise)
+        let input_yn_output = Rc::clone(&output);
+        let input_yn_handler = Rc::clone(&input_handler);
+        let input_yn_fn = lua.create_function(move |_, prompt: Option<String>| {
+            // Output prompt if provided
+            if let Some(p) = &prompt {
+                input_yn_output.borrow_mut().push(p.clone());
+            }
+
+            // Get input from handler
+            let handler = input_yn_handler.borrow();
+            if let Some(ref h) = *handler {
+                if let Some(input) = h("") {
+                    let input = input.trim().to_ascii_lowercase();
+                    if input == "y" || input == "yes" {
+                        return Ok(Some(true));
+                    } else if input == "n" || input == "no" {
+                        return Ok(Some(false));
+                    }
+                }
+            }
+            Ok(None)
+        })?;
+        bbs.set("input_yn", input_yn_fn)?;
+
+        // bbs.pause() - wait for user to press Enter
+        let pause_output = Rc::clone(&output);
+        let pause_handler = Rc::clone(&input_handler);
+        let pause_fn = lua.create_function(move |_, ()| {
+            // Output default prompt
+            pause_output
+                .borrow_mut()
+                .push("Press Enter to continue...".to_string());
+
+            // Wait for input
+            let handler = pause_handler.borrow();
+            if let Some(ref h) = *handler {
+                let _ = h("");
+            }
+            Ok(())
+        })?;
+        bbs.set("pause", pause_fn)?;
+
+        Ok(())
+    }
+
     /// Register user-related functions.
     fn register_user_functions(&self, lua: &Lua, bbs: &Table) -> LuaResult<()> {
         // bbs.get_user() - returns user info table
@@ -135,6 +236,9 @@ impl BbsApi {
 
     /// Register utility functions.
     fn register_utility_functions(&self, lua: &Lua, bbs: &Table) -> LuaResult<()> {
+        let output = Rc::clone(&self.output_buffer);
+        let has_ansi = self.context.has_ansi;
+
         // bbs.random(min, max) - generate random number
         let random_fn = lua.create_function(|_, (min, max): (i64, i64)| {
             if min > max {
@@ -146,6 +250,30 @@ impl BbsApi {
             Ok(rng.random_range(min..=max))
         })?;
         bbs.set("random", random_fn)?;
+
+        // bbs.sleep(seconds) - wait for specified seconds (max 5)
+        let sleep_fn = lua.create_function(|_, seconds: f64| {
+            if seconds < 0.0 {
+                return Err(mlua::Error::RuntimeError(
+                    "sleep: seconds must be non-negative".to_string(),
+                ));
+            }
+            let clamped = seconds.min(MAX_SLEEP_SECONDS);
+            std::thread::sleep(Duration::from_secs_f64(clamped));
+            Ok(())
+        })?;
+        bbs.set("sleep", sleep_fn)?;
+
+        // bbs.clear() - clear screen (ANSI terminals only)
+        let clear_output = Rc::clone(&output);
+        let clear_fn = lua.create_function(move |_, ()| {
+            if has_ansi {
+                // ANSI escape: clear screen and move cursor to home
+                clear_output.borrow_mut().push("\x1b[2J\x1b[H".to_string());
+            }
+            Ok(())
+        })?;
+        bbs.set("clear", clear_fn)?;
 
         // bbs.get_time() - get current time as HH:MM:SS
         let get_time_fn = lua.create_function(|_, ()| {
@@ -299,10 +427,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(engine.get_global::<i64>("user_id").unwrap(), 42);
-        assert_eq!(
-            engine.get_global::<String>("username").unwrap(),
-            "testuser"
-        );
+        assert_eq!(engine.get_global::<String>("username").unwrap(), "testuser");
         assert_eq!(
             engine.get_global::<String>("nickname").unwrap(),
             "Test User"
@@ -482,5 +607,212 @@ mod tests {
         assert_eq!(out[1], "Hello, Test User!\n");
         assert_eq!(out[2], "Terminal: 80x24\n");
         assert!(out[3].starts_with("Random: "));
+    }
+
+    #[test]
+    fn test_bbs_sleep() {
+        let (engine, _) = create_test_engine_with_api();
+
+        let start = std::time::Instant::now();
+        engine.execute("bbs.sleep(0.1)").unwrap();
+        let elapsed = start.elapsed();
+
+        // Should sleep at least 100ms
+        assert!(elapsed.as_millis() >= 100);
+        // But not too long
+        assert!(elapsed.as_millis() < 200);
+    }
+
+    #[test]
+    fn test_bbs_sleep_clamped() {
+        let (engine, _) = create_test_engine_with_api();
+
+        let start = std::time::Instant::now();
+        // Request 10 seconds, should be clamped to 5
+        engine.execute("bbs.sleep(10)").unwrap();
+        let elapsed = start.elapsed();
+
+        // Should be around 5 seconds (clamped)
+        assert!(elapsed.as_secs() >= 5);
+        assert!(elapsed.as_secs() < 6);
+    }
+
+    #[test]
+    fn test_bbs_sleep_negative_error() {
+        let (engine, _) = create_test_engine_with_api();
+
+        let result = engine.execute("bbs.sleep(-1)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bbs_clear_ansi() {
+        let (engine, output) = create_test_engine_with_api();
+
+        engine.execute("bbs.clear()").unwrap();
+
+        let out = output.borrow();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0], "\x1b[2J\x1b[H");
+    }
+
+    #[test]
+    fn test_bbs_clear_no_ansi() {
+        let engine = ScriptEngine::new().unwrap();
+        let context = ScriptContext {
+            script_id: Some(1),
+            has_ansi: false,
+            ..Default::default()
+        };
+        let api = BbsApi::new(context);
+        let output = Rc::clone(&api.output_buffer);
+        api.register(engine.lua()).unwrap();
+
+        engine.execute("bbs.clear()").unwrap();
+
+        let out = output.borrow();
+        // No output when ANSI is disabled
+        assert!(out.is_empty());
+    }
+
+    fn create_test_engine_with_input(
+        input_responses: Vec<String>,
+    ) -> (ScriptEngine, Rc<RefCell<Vec<String>>>) {
+        let engine = ScriptEngine::new().unwrap();
+        let context = ScriptContext {
+            script_id: Some(1),
+            user_id: Some(42),
+            username: "testuser".to_string(),
+            nickname: "Test User".to_string(),
+            user_role: 1,
+            terminal_width: 80,
+            terminal_height: 24,
+            has_ansi: true,
+        };
+
+        let responses = Rc::new(RefCell::new(input_responses));
+        let response_index = Rc::new(RefCell::new(0usize));
+
+        let responses_clone = Rc::clone(&responses);
+        let index_clone = Rc::clone(&response_index);
+
+        let api = BbsApi::new(context).with_input_handler(move |_| {
+            let mut idx = index_clone.borrow_mut();
+            let resps = responses_clone.borrow();
+            if *idx < resps.len() {
+                let result = resps[*idx].clone();
+                *idx += 1;
+                Some(result)
+            } else {
+                None
+            }
+        });
+
+        let output = Rc::clone(&api.output_buffer);
+        api.register(engine.lua()).unwrap();
+        (engine, output)
+    }
+
+    #[test]
+    fn test_bbs_input() {
+        let (engine, output) = create_test_engine_with_input(vec!["hello".to_string()]);
+
+        engine.execute(r#"result = bbs.input("Enter: ")"#).unwrap();
+
+        let result: String = engine.get_global("result").unwrap();
+        assert_eq!(result, "hello");
+
+        let out = output.borrow();
+        assert_eq!(out[0], "Enter: ");
+    }
+
+    #[test]
+    fn test_bbs_input_no_handler() {
+        let (engine, _) = create_test_engine_with_api();
+
+        engine.execute("result = bbs.input()").unwrap();
+
+        // Should return nil when no input handler
+        engine.execute("is_nil = result == nil").unwrap();
+        assert!(engine.get_global::<bool>("is_nil").unwrap());
+    }
+
+    #[test]
+    fn test_bbs_input_number() {
+        let (engine, _) = create_test_engine_with_input(vec!["42".to_string()]);
+
+        engine.execute("result = bbs.input_number()").unwrap();
+
+        let result: f64 = engine.get_global("result").unwrap();
+        assert!((result - 42.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_bbs_input_number_float() {
+        let (engine, _) = create_test_engine_with_input(vec!["3.14".to_string()]);
+
+        engine.execute("result = bbs.input_number()").unwrap();
+
+        let result: f64 = engine.get_global("result").unwrap();
+        assert!((result - 3.14).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_bbs_input_number_invalid() {
+        let (engine, _) = create_test_engine_with_input(vec!["not a number".to_string()]);
+
+        engine.execute("result = bbs.input_number()").unwrap();
+
+        // Should return nil for invalid input
+        engine.execute("is_nil = result == nil").unwrap();
+        assert!(engine.get_global::<bool>("is_nil").unwrap());
+    }
+
+    #[test]
+    fn test_bbs_input_yn_yes() {
+        let (engine, _) = create_test_engine_with_input(vec!["y".to_string()]);
+
+        engine.execute("result = bbs.input_yn()").unwrap();
+
+        assert!(engine.get_global::<bool>("result").unwrap());
+    }
+
+    #[test]
+    fn test_bbs_input_yn_yes_full() {
+        let (engine, _) = create_test_engine_with_input(vec!["YES".to_string()]);
+
+        engine.execute("result = bbs.input_yn()").unwrap();
+
+        assert!(engine.get_global::<bool>("result").unwrap());
+    }
+
+    #[test]
+    fn test_bbs_input_yn_no() {
+        let (engine, _) = create_test_engine_with_input(vec!["n".to_string()]);
+
+        engine.execute("result = bbs.input_yn()").unwrap();
+
+        assert!(!engine.get_global::<bool>("result").unwrap());
+    }
+
+    #[test]
+    fn test_bbs_input_yn_invalid() {
+        let (engine, _) = create_test_engine_with_input(vec!["maybe".to_string()]);
+
+        engine.execute("result = bbs.input_yn()").unwrap();
+
+        // Should return nil for invalid input
+        engine.execute("is_nil = result == nil").unwrap();
+        assert!(engine.get_global::<bool>("is_nil").unwrap());
+    }
+
+    #[test]
+    fn test_bbs_pause() {
+        let (engine, output) = create_test_engine_with_input(vec!["".to_string()]);
+
+        engine.execute("bbs.pause()").unwrap();
+
+        let out = output.borrow();
+        assert_eq!(out[0], "Press Enter to continue...");
     }
 }

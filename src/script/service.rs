@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::time::Instant;
 
 use mlua::Table;
 
@@ -10,6 +11,7 @@ use super::api::BbsApi;
 use super::data_repository::ScriptDataRepository;
 use super::engine::{ResourceLimits, ScriptContext, ScriptEngine};
 use super::loader::ScriptLoader;
+use super::log_repository::ScriptLogRepository;
 use super::repository::ScriptRepository;
 use super::types::Script;
 use crate::db::Database;
@@ -107,9 +109,11 @@ impl<'a> ScriptService<'a> {
         // Load existing data from database
         let data_repo = ScriptDataRepository::new(self.db);
         let global_data = Rc::new(RefCell::new(self.load_global_data(&data_repo, script.id)?));
-        let user_data = Rc::new(RefCell::new(
-            self.load_user_data(&data_repo, script.id, context.user_id)?,
-        ));
+        let user_data = Rc::new(RefCell::new(self.load_user_data(
+            &data_repo,
+            script.id,
+            context.user_id,
+        )?));
 
         // Register BBS API
         let api = BbsApi::new(context.clone());
@@ -118,11 +122,23 @@ impl<'a> ScriptService<'a> {
             .map_err(|e| HobbsError::Script(format!("Failed to register BBS API: {}", e)))?;
 
         // Register data API
-        self.register_data_api(engine.lua(), script.id, context.user_id, &global_data, &user_data)
-            .map_err(|e| HobbsError::Script(format!("Failed to register data API: {}", e)))?;
+        self.register_data_api(
+            engine.lua(),
+            script.id,
+            context.user_id,
+            &global_data,
+            &user_data,
+        )
+        .map_err(|e| HobbsError::Script(format!("Failed to register data API: {}", e)))?;
+
+        // Start timing
+        let start_time = Instant::now();
 
         // Execute the script
         let result = engine.execute(&source);
+
+        // Calculate execution time
+        let execution_ms = start_time.elapsed().as_millis() as i64;
 
         // Save data changes back to database
         self.save_global_data(&data_repo, script.id, &global_data.borrow())?;
@@ -133,20 +149,33 @@ impl<'a> ScriptService<'a> {
         // Get output regardless of success/failure
         let output = output_buffer;
 
-        match result {
-            Ok(()) => Ok(ExecutionResult {
+        // Build execution result
+        let exec_result = match &result {
+            Ok(()) => ExecutionResult {
                 output,
                 instructions_used: engine.instruction_count(),
                 success: true,
                 error: None,
-            }),
-            Err(e) => Ok(ExecutionResult {
+            },
+            Err(e) => ExecutionResult {
                 output,
                 instructions_used: engine.instruction_count(),
                 success: false,
                 error: Some(e.to_string()),
-            }),
-        }
+            },
+        };
+
+        // Log the execution
+        let log_repo = ScriptLogRepository::new(self.db);
+        let _ = log_repo.log_execution(
+            script.id,
+            context.user_id,
+            execution_ms,
+            exec_result.success,
+            exec_result.error.as_deref(),
+        );
+
+        Ok(exec_result)
     }
 
     /// Load global data for a script.
@@ -325,9 +354,10 @@ impl<'a> ScriptService<'a> {
 
     /// Load script source code from the file system.
     fn load_script_source(&self, file_path: &str) -> Result<String> {
-        let scripts_dir = self.scripts_dir.as_ref().ok_or_else(|| {
-            HobbsError::Script("Scripts directory not configured".to_string())
-        })?;
+        let scripts_dir = self
+            .scripts_dir
+            .as_ref()
+            .ok_or_else(|| HobbsError::Script("Scripts directory not configured".to_string()))?;
 
         let loader = ScriptLoader::new(scripts_dir);
         loader.read_script_source(file_path)
@@ -335,9 +365,10 @@ impl<'a> ScriptService<'a> {
 
     /// Sync scripts from the file system to the database.
     pub fn sync_scripts(&self) -> Result<super::types::SyncResult> {
-        let scripts_dir = self.scripts_dir.as_ref().ok_or_else(|| {
-            HobbsError::Script("Scripts directory not configured".to_string())
-        })?;
+        let scripts_dir = self
+            .scripts_dir
+            .as_ref()
+            .ok_or_else(|| HobbsError::Script("Scripts directory not configured".to_string()))?;
 
         let loader = ScriptLoader::new(scripts_dir);
         loader.sync(self.db)
@@ -514,7 +545,10 @@ bbs.println("admin only")
         let result = service.execute(&script, context);
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Insufficient role"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Insufficient role"));
     }
 
     #[test]

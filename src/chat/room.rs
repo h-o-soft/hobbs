@@ -449,7 +449,8 @@ mod tests {
 
         // Fill the room to capacity
         for i in 0..MAX_PARTICIPANTS_PER_ROOM {
-            let participant = ChatParticipant::new(format!("session{i}"), Some(i as i64), format!("User{i}"));
+            let participant =
+                ChatParticipant::new(format!("session{i}"), Some(i as i64), format!("User{i}"));
             assert_eq!(room.join(participant).await, JoinResult::Joined);
         }
 

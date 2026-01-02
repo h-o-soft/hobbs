@@ -14,21 +14,15 @@ pub struct ScriptScreen;
 
 impl ScriptScreen {
     /// Run the script screen.
-    pub async fn run(
-        ctx: &mut ScreenContext,
-        session: &mut TelnetSession,
-    ) -> Result<ScreenResult> {
+    pub async fn run(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<ScreenResult> {
         let scripts_dir = Self::get_scripts_dir(ctx);
         let user_role = Self::get_user_role(ctx, session);
 
         loop {
             // Display script list
             ctx.send_line(session, "").await?;
-            ctx.send_line(
-                session,
-                &format!("=== {} ===", ctx.i18n.t("script.title")),
-            )
-            .await?;
+            ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("script.title")))
+                .await?;
             ctx.send_line(session, "").await?;
 
             let service = ScriptService::new(&ctx.db).with_scripts_dir(&scripts_dir);
@@ -44,10 +38,7 @@ impl ScriptScreen {
 
             // Display scripts
             for (i, script) in scripts.iter().enumerate() {
-                let description = script
-                    .description
-                    .as_deref()
-                    .unwrap_or("");
+                let description = script.description.as_deref().unwrap_or("");
                 let line = format!(
                     "  [{:>2}] {}{}",
                     i + 1,
@@ -92,8 +83,7 @@ impl ScriptScreen {
                     if let Ok(num) = input.parse::<usize>() {
                         if num > 0 && num <= scripts.len() {
                             let script = &scripts[num - 1];
-                            Self::execute_script(ctx, session, &scripts_dir, script.id)
-                                .await?;
+                            Self::execute_script(ctx, session, &scripts_dir, script.id).await?;
                         }
                     }
                 }
@@ -123,11 +113,8 @@ impl ScriptScreen {
         let script_context = Self::create_script_context(ctx, session);
 
         ctx.send_line(session, "").await?;
-        ctx.send_line(
-            session,
-            &format!("--- {} ---", script.name),
-        )
-        .await?;
+        ctx.send_line(session, &format!("--- {} ---", script.name))
+            .await?;
         ctx.send_line(session, "").await?;
 
         // Execute the script
@@ -163,7 +150,8 @@ impl ScriptScreen {
         scripts_dir: &PathBuf,
     ) -> Result<()> {
         ctx.send_line(session, "").await?;
-        ctx.send_line(session, &ctx.i18n.t("script.syncing")).await?;
+        ctx.send_line(session, &ctx.i18n.t("script.syncing"))
+            .await?;
 
         let service = ScriptService::new(&ctx.db).with_scripts_dir(scripts_dir);
         let result = service.sync_scripts()?;
@@ -171,11 +159,7 @@ impl ScriptScreen {
         ctx.send_line(session, "").await?;
         ctx.send_line(
             session,
-            &format!(
-                "  {}: {}",
-                ctx.i18n.t("script.sync_added"),
-                result.added
-            ),
+            &format!("  {}: {}", ctx.i18n.t("script.sync_added"), result.added),
         )
         .await?;
         ctx.send_line(

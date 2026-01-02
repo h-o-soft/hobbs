@@ -40,7 +40,10 @@ async fn test_profile_settings_accessible() {
     let _ = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
 
     // Go to profile (wait for menu prompt)
-    let _ = client.recv_timeout(Duration::from_secs(1)).await.unwrap_or_default();
+    let _ = client
+        .recv_timeout(Duration::from_secs(1))
+        .await
+        .unwrap_or_default();
     client.send_line("P").await.unwrap();
 
     // Wait for profile screen with options
@@ -48,8 +51,10 @@ async fn test_profile_settings_accessible() {
 
     // Profile should show user info and menu options with [S] for settings
     assert!(
-        response.contains("settingsuser") || response.contains("Profile")
-            || response.contains("[S]") || response.contains("[E]"),
+        response.contains("settingsuser")
+            || response.contains("Profile")
+            || response.contains("[S]")
+            || response.contains("[E]"),
         "Profile screen should show username or options: {:?}",
         response
     );
@@ -72,10 +77,14 @@ async fn test_profile_settings_accessible() {
 
     // Settings should show language and encoding options
     assert!(
-        settings.contains("Language") || settings.contains("Encoding")
-            || settings.contains("UTF-8") || settings.contains("[1]")
-            || settings.contains("言語") || settings.contains("文字")
-            || settings.contains("English") || settings.contains("Japanese"),
+        settings.contains("Language")
+            || settings.contains("Encoding")
+            || settings.contains("UTF-8")
+            || settings.contains("[1]")
+            || settings.contains("言語")
+            || settings.contains("文字")
+            || settings.contains("English")
+            || settings.contains("Japanese"),
         "Settings screen should show language/encoding options: {:?}",
         settings
     );
@@ -109,7 +118,10 @@ async fn test_change_language_en_to_ja() {
 
     // Wait for login success and menu
     let _ = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
-    let _ = client.recv_timeout(Duration::from_secs(1)).await.unwrap_or_default();
+    let _ = client
+        .recv_timeout(Duration::from_secs(1))
+        .await
+        .unwrap_or_default();
 
     // Go to profile
     client.send_line("P").await.unwrap();
@@ -151,7 +163,10 @@ async fn test_change_language_en_to_ja() {
     client.send_line("").await.unwrap();
 
     // Wait for terminal profile prompt
-    let _ = client.recv_timeout(Duration::from_secs(1)).await.unwrap_or_default();
+    let _ = client
+        .recv_timeout(Duration::from_secs(1))
+        .await
+        .unwrap_or_default();
 
     // Keep terminal profile as default
     client.send_line("").await.unwrap();
@@ -208,7 +223,10 @@ async fn test_change_encoding_utf8_to_shiftjis() {
 
     // Wait for login success
     let _ = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
-    let _ = client.recv_timeout(Duration::from_secs(1)).await.unwrap_or_default();
+    let _ = client
+        .recv_timeout(Duration::from_secs(1))
+        .await
+        .unwrap_or_default();
 
     // Go to profile
     client.send_line("P").await.unwrap();
@@ -222,8 +240,11 @@ async fn test_change_encoding_utf8_to_shiftjis() {
     // Wait for settings screen
     let settings = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
     assert!(
-        settings.contains("UTF-8") || settings.contains("ShiftJIS") || settings.contains("[1]")
-            || settings.contains("言語") || settings.contains("文字"),
+        settings.contains("UTF-8")
+            || settings.contains("ShiftJIS")
+            || settings.contains("[1]")
+            || settings.contains("言語")
+            || settings.contains("文字"),
         "Settings should show encoding options: {:?}",
         settings
     );
@@ -232,13 +253,19 @@ async fn test_change_encoding_utf8_to_shiftjis() {
     client.send_line("").await.unwrap();
 
     // Wait for encoding prompt
-    let _ = client.recv_timeout(Duration::from_secs(1)).await.unwrap_or_default();
+    let _ = client
+        .recv_timeout(Duration::from_secs(1))
+        .await
+        .unwrap_or_default();
 
     // Select ShiftJIS encoding (option 2)
     client.send_line("2").await.unwrap();
 
     // Wait for terminal profile prompt
-    let _ = client.recv_timeout(Duration::from_secs(2)).await.unwrap_or_default();
+    let _ = client
+        .recv_timeout(Duration::from_secs(2))
+        .await
+        .unwrap_or_default();
 
     // Keep terminal profile as default
     client.send_line("").await.unwrap();
@@ -293,7 +320,10 @@ async fn test_settings_persist_on_main_menu() {
 
     // Wait for login and menu
     let _ = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
-    let _ = client.recv_timeout(Duration::from_secs(1)).await.unwrap_or_default();
+    let _ = client
+        .recv_timeout(Duration::from_secs(1))
+        .await
+        .unwrap_or_default();
 
     // Go to profile
     client.send_line("P").await.unwrap();
@@ -325,7 +355,10 @@ async fn test_settings_persist_on_main_menu() {
     client.send_line("").await.unwrap();
 
     // Wait for terminal profile prompt
-    let _ = client.recv_timeout(Duration::from_secs(1)).await.unwrap_or_default();
+    let _ = client
+        .recv_timeout(Duration::from_secs(1))
+        .await
+        .unwrap_or_default();
 
     // Keep terminal profile as default
     client.send_line("").await.unwrap();
@@ -352,7 +385,10 @@ async fn test_settings_persist_on_main_menu() {
     );
 
     // Get more output to see main menu
-    let menu = client.recv_timeout(Duration::from_secs(2)).await.unwrap_or_default();
+    let menu = client
+        .recv_timeout(Duration::from_secs(2))
+        .await
+        .unwrap_or_default();
     let combined = format!("{}{}", response, menu);
 
     // Main menu should now be in Japanese (or show menu options)

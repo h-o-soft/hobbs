@@ -12,12 +12,12 @@ use tracing::{error, info, warn};
 use super::menu::{MenuAction, MenuItems};
 use crate::auth::{verify_password, LimitResult, LoginLimiter, RegistrationRequest};
 use crate::chat::ChatRoomManager;
-use crate::datetime::format_datetime_default;
-use crate::mail::MailRepository;
 use crate::config::Config;
+use crate::datetime::format_datetime_default;
 use crate::db::{Database, Role, UserRepository};
 use crate::error::{HobbsError, Result};
 use crate::i18n::{I18n, I18nManager};
+use crate::mail::MailRepository;
 use crate::screen::{create_screen_from_profile, Screen};
 use crate::server::{
     encode_for_client, initial_negotiation, CharacterEncoding, EchoMode, InputResult, LineBuffer,
@@ -512,7 +512,8 @@ Select language / Gengo sentaku:
 
                     // Show previous login time if available
                     if let Some(prev) = previous_login {
-                        let formatted = format_datetime_default(&prev, &self.config.server.timezone);
+                        let formatted =
+                            format_datetime_default(&prev, &self.config.server.timezone);
                         self.send_line(
                             session,
                             &format!("{}: {}", self.i18n.t("profile.last_login_short"), formatted),
@@ -791,25 +792,43 @@ Select language / Gengo sentaku:
                 context.set("user.role_name", Value::string(role_name.to_string()));
 
                 // Set unread mail count
-                let unread_count = MailRepository::count_unread(self.db.conn(), user_id)
-                    .unwrap_or(0);
+                let unread_count =
+                    MailRepository::count_unread(self.db.conn(), user_id).unwrap_or(0);
                 context.set("user.unread_mail", Value::number(unread_count));
             } else {
                 // Fallback if user not found
-                context.set("user.name", Value::string(self.i18n.t("user.guest").to_string()));
-                context.set("user.nickname", Value::string(self.i18n.t("user.guest").to_string()));
+                context.set(
+                    "user.name",
+                    Value::string(self.i18n.t("user.guest").to_string()),
+                );
+                context.set(
+                    "user.nickname",
+                    Value::string(self.i18n.t("user.guest").to_string()),
+                );
                 context.set("user.logged_in", Value::bool(false));
                 context.set("user.is_admin", Value::bool(false));
-                context.set("user.role_name", Value::string(self.i18n.t("role.guest").to_string()));
+                context.set(
+                    "user.role_name",
+                    Value::string(self.i18n.t("role.guest").to_string()),
+                );
                 context.set("user.unread_mail", Value::number(0));
             }
         } else {
             // Guest user
-            context.set("user.name", Value::string(self.i18n.t("user.guest").to_string()));
-            context.set("user.nickname", Value::string(self.i18n.t("user.guest").to_string()));
+            context.set(
+                "user.name",
+                Value::string(self.i18n.t("user.guest").to_string()),
+            );
+            context.set(
+                "user.nickname",
+                Value::string(self.i18n.t("user.guest").to_string()),
+            );
             context.set("user.logged_in", Value::bool(false));
             context.set("user.is_admin", Value::bool(false));
-            context.set("user.role_name", Value::string(self.i18n.t("role.guest").to_string()));
+            context.set(
+                "user.role_name",
+                Value::string(self.i18n.t("role.guest").to_string()),
+            );
             context.set("user.unread_mail", Value::number(0));
         }
 
@@ -1018,7 +1037,8 @@ Select language / Gengo sentaku:
                         i + 1
                     };
                     if remaining_start < data.len() {
-                        self.pending_bytes.extend_from_slice(&data[remaining_start..]);
+                        self.pending_bytes
+                            .extend_from_slice(&data[remaining_start..]);
                     }
                     return Ok(Some(line));
                 }

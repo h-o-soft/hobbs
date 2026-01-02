@@ -193,10 +193,7 @@ impl<'a> ScriptRepository<'a> {
 
     /// List all file paths in the database (for sync).
     pub fn list_all_file_paths(&self) -> Result<Vec<String>> {
-        let mut stmt = self
-            .db
-            .conn()
-            .prepare("SELECT file_path FROM scripts")?;
+        let mut stmt = self.db.conn().prepare("SELECT file_path FROM scripts")?;
 
         let paths = stmt
             .query_map([], |row| row.get(0))?

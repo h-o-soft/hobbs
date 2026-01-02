@@ -11,11 +11,8 @@ use tokio::sync::RwLock;
 use super::room::{ChatParticipant, ChatRoom, JoinResult};
 
 /// Default chat rooms to create on startup.
-const DEFAULT_ROOMS: &[(&str, &str)] = &[
-    ("lobby", "Lobby"),
-    ("tech", "Tech"),
-    ("random", "Random"),
-];
+const DEFAULT_ROOMS: &[(&str, &str)] =
+    &[("lobby", "Lobby"), ("tech", "Tech"), ("random", "Random")];
 
 /// Manager for chat rooms.
 ///
@@ -46,7 +43,11 @@ impl ChatRoomManager {
     /// Create a new room.
     ///
     /// Returns the room if created, or None if a room with that ID already exists.
-    pub async fn create_room(&self, id: impl Into<String>, name: impl Into<String>) -> Option<Arc<ChatRoom>> {
+    pub async fn create_room(
+        &self,
+        id: impl Into<String>,
+        name: impl Into<String>,
+    ) -> Option<Arc<ChatRoom>> {
         let id = id.into();
         let mut rooms = self.rooms.write().await;
 
@@ -308,9 +309,15 @@ mod tests {
 
         assert_eq!(manager.total_participants().await, 0);
 
-        let _ = manager.join_room("room1", ChatParticipant::new("s1", Some(1), "Alice")).await;
-        let _ = manager.join_room("room1", ChatParticipant::new("s2", Some(2), "Bob")).await;
-        let _ = manager.join_room("room2", ChatParticipant::new("s3", Some(3), "Charlie")).await;
+        let _ = manager
+            .join_room("room1", ChatParticipant::new("s1", Some(1), "Alice"))
+            .await;
+        let _ = manager
+            .join_room("room1", ChatParticipant::new("s2", Some(2), "Bob"))
+            .await;
+        let _ = manager
+            .join_room("room2", ChatParticipant::new("s3", Some(3), "Charlie"))
+            .await;
 
         assert_eq!(manager.total_participants().await, 3);
     }
@@ -357,7 +364,10 @@ mod tests {
         let _ = manager.join_room("test", participant).await;
 
         // Cannot delete while participant is in room
-        assert_eq!(manager.delete_room("test").await, Err(DeleteRoomError::HasParticipants));
+        assert_eq!(
+            manager.delete_room("test").await,
+            Err(DeleteRoomError::HasParticipants)
+        );
 
         // Leave the room
         manager.leave_room("test", "session1").await;

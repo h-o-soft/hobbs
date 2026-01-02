@@ -260,10 +260,7 @@ impl TelnetParser {
                     // IAC followed by unexpected byte - treat as data
                     // This can happen if the client sends malformed data
                     self.in_iac = false;
-                    tracing::warn!(
-                        "Unexpected byte after IAC: {:02X}, treating as data",
-                        byte
-                    );
+                    tracing::warn!("Unexpected byte after IAC: {:02X}, treating as data", byte);
                     Some(byte)
                 }
             }

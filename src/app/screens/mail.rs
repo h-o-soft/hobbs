@@ -351,7 +351,6 @@ impl MailScreen {
 
         Ok(())
     }
-
 }
 
 #[cfg(test)]
