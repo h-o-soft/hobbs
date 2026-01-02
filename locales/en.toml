@@ -195,6 +195,7 @@ private_message = "Private Message"
 whisper_to = "To {{nickname}}: "
 whisper_from = "From {{nickname}}: "
 command_help = "Type /help for commands"
+message_too_long = "Message too long (max {{max}} chars)"
 
 [mail]
 inbox = "Inbox"
