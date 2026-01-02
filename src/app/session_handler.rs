@@ -174,6 +174,7 @@ impl SessionHandler {
                         WelcomeChoice::Guest => {
                             // Guest: select encoding first, then proceed to menu
                             self.show_language_selection(session).await?;
+                            session.set_guest(true);
                             session.set_state(SessionState::MainMenu);
                         }
                         WelcomeChoice::Quit => {
@@ -944,6 +945,10 @@ Select language / Gengo sentaku:
     ///
     /// Filters out Telnet IAC commands from the input stream.
     /// Each read operation has a timeout to prevent Slowloris-type DoS attacks.
+    /// Timeout duration varies based on session state:
+    /// - Unauthenticated: read_timeout_secs (default 30s)
+    /// - Guest: guest_timeout_secs (default 120s)
+    /// - Logged in: idle_timeout_secs (default 300s)
     async fn read_line(&mut self, session: &mut TelnetSession) -> Result<String> {
         self.line_buffer.clear();
 
@@ -956,7 +961,19 @@ Select language / Gengo sentaku:
         }
 
         let mut buf = [0u8; 64];
-        let read_timeout = Duration::from_secs(self.config.server.read_timeout_secs);
+
+        // Determine timeout based on session state
+        let timeout_secs = if session.is_logged_in() {
+            // Logged-in users get the full idle timeout
+            self.config.server.idle_timeout_secs
+        } else if session.is_guest() {
+            // Guest users get a medium timeout
+            self.config.server.guest_timeout_secs
+        } else {
+            // Unauthenticated connections get a short timeout (DoS protection)
+            self.config.server.read_timeout_secs
+        };
+        let read_timeout = Duration::from_secs(timeout_secs);
 
         loop {
             // Apply timeout to each read operation
