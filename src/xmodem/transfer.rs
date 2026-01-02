@@ -34,6 +34,10 @@ pub enum TransferError {
     /// Too many retries.
     #[error("Max retries exceeded")]
     MaxRetries,
+
+    /// File exceeds maximum size limit.
+    #[error("File too large (max: {0} bytes)")]
+    FileTooLarge(usize),
 }
 
 // XMODEM control characters
@@ -141,11 +145,12 @@ async fn enable_binary_mode(stream: &mut TcpStream) -> std::io::Result<()> {
 /// # Arguments
 ///
 /// * `stream` - The TCP stream to use for transfer
+/// * `max_size` - Maximum allowed file size in bytes
 ///
 /// # Returns
 ///
 /// The received data on success.
-pub async fn xmodem_receive(stream: &mut TcpStream) -> TransferResult<Vec<u8>> {
+pub async fn xmodem_receive(stream: &mut TcpStream, max_size: usize) -> TransferResult<Vec<u8>> {
     // Enable Telnet binary mode to prevent CR+NUL conversion
     // This is critical for binary file transfer
     enable_binary_mode(stream).await?;
@@ -178,6 +183,20 @@ pub async fn xmodem_receive(stream: &mut TcpStream) -> TransferResult<Vec<u8>> {
                         );
 
                         if block_num == expected_block {
+                            // Check if adding this block would exceed the size limit
+                            if data.len() + block_data.len() > max_size {
+                                tracing::warn!(
+                                    "XMODEM: File too large ({} + {} > {} bytes), sending CAN",
+                                    data.len(),
+                                    block_data.len(),
+                                    max_size
+                                );
+                                // Send CAN twice to cancel transfer
+                                stream.write_all(&[CAN, CAN]).await?;
+                                stream.flush().await?;
+                                return Err(TransferError::FileTooLarge(max_size));
+                            }
+
                             data.extend_from_slice(&block_data);
                             expected_block = expected_block.wrapping_add(1);
                             total_blocks += 1;
@@ -542,6 +561,9 @@ mod tests {
 
         let err = TransferError::MaxRetries;
         assert_eq!(err.to_string(), "Max retries exceeded");
+
+        let err = TransferError::FileTooLarge(10 * 1024 * 1024);
+        assert_eq!(err.to_string(), "File too large (max: 10485760 bytes)");
     }
 
     #[test]
