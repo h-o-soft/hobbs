@@ -3,8 +3,10 @@
 //! Provides the main session loop and screen transitions.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::time::timeout;
 use tracing::{error, info, warn};
 
 use super::menu::{MenuAction, MenuItems};
@@ -941,6 +943,7 @@ Select language / Gengo sentaku:
     /// Read a line from the client.
     ///
     /// Filters out Telnet IAC commands from the input stream.
+    /// Each read operation has a timeout to prevent Slowloris-type DoS attacks.
     async fn read_line(&mut self, session: &mut TelnetSession) -> Result<String> {
         self.line_buffer.clear();
 
@@ -953,16 +956,20 @@ Select language / Gengo sentaku:
         }
 
         let mut buf = [0u8; 64];
+        let read_timeout = Duration::from_secs(self.config.server.read_timeout_secs);
 
         loop {
-            match session.stream_mut().read(&mut buf).await {
-                Ok(0) => {
+            // Apply timeout to each read operation
+            let read_result = timeout(read_timeout, session.stream_mut().read(&mut buf)).await;
+
+            match read_result {
+                Ok(Ok(0)) => {
                     return Err(HobbsError::Io(std::io::Error::new(
                         std::io::ErrorKind::UnexpectedEof,
                         "Connection closed",
                     )));
                 }
-                Ok(n) => {
+                Ok(Ok(n)) => {
                     // Filter out IAC commands
                     let (data, _commands) = self.telnet_parser.parse(&buf[..n]);
 
@@ -970,8 +977,15 @@ Select language / Gengo sentaku:
                         return Ok(result);
                     }
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     return Err(HobbsError::Io(e));
+                }
+                Err(_) => {
+                    // Timeout elapsed - no data received within the timeout period
+                    return Err(HobbsError::Io(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "Read timeout",
+                    )));
                 }
             }
         }

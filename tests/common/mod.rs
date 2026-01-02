@@ -379,6 +379,7 @@ impl TestServer {
             port: 0, // Let OS assign a port
             max_connections: 10,
             idle_timeout_secs: 300,
+            read_timeout_secs: 30,
             timezone: "Asia/Tokyo".to_string(),
         };
 
@@ -510,6 +511,7 @@ pub fn test_config() -> Config {
             port: 0,
             max_connections: 10,
             idle_timeout_secs: 300,
+            read_timeout_secs: 30,
             timezone: "Asia/Tokyo".to_string(),
         },
         database: DatabaseConfig {
