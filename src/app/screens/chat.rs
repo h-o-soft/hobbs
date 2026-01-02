@@ -215,9 +215,9 @@ impl ChatScreen {
                 }
 
                 // Read user input (with a small timeout to check messages)
-                input_result = Self::read_input_with_timeout(ctx, session) => {
+                input_result = ctx.read_line_nonblocking(session, 100) => {
                     match input_result {
-                        Some(Ok(line)) => {
+                        Ok(Some(line)) => {
                             let parsed = parse_input(&line);
                             match parsed {
                                 ChatInput::Command(cmd) => {
@@ -280,93 +280,15 @@ impl ChatScreen {
                                 }
                             }
                         }
-                        Some(Err(_)) => {
+                        Err(_) => {
                             // Connection error
                             return Ok(ScreenResult::Quit);
                         }
-                        None => {
+                        Ok(None) => {
                             // Timeout, just continue to check messages
                         }
                     }
                 }
-            }
-        }
-    }
-
-    /// Read input with a timeout.
-    async fn read_input_with_timeout(
-        ctx: &mut ScreenContext,
-        session: &mut TelnetSession,
-    ) -> Option<Result<String>> {
-        use tokio::io::AsyncReadExt;
-        use tokio::time::{timeout, Duration};
-
-        let mut buf = [0u8; 1];
-        ctx.line_buffer.clear();
-
-        // Try to read with a short timeout
-        match timeout(Duration::from_millis(100), session.stream_mut().read(&mut buf)).await {
-            Ok(Ok(0)) => {
-                // Connection closed
-                Some(Ok(String::new()))
-            }
-            Ok(Ok(_)) => {
-                // Got a byte, process it
-                let (result, echo) = ctx.line_buffer.process_byte(buf[0]);
-
-                // Echo the character
-                if !echo.is_empty() {
-                    let _ = session.stream_mut().write_all(&echo).await;
-                    let _ = session.stream_mut().flush().await;
-                }
-
-                use tokio::io::AsyncWriteExt;
-
-                match result {
-                    crate::server::InputResult::Line(line) => Some(Ok(line)),
-                    crate::server::InputResult::Buffering => {
-                        // Continue reading until we get a complete line
-                        Self::finish_reading_line(ctx, session).await
-                    }
-                    crate::server::InputResult::Cancel | crate::server::InputResult::Eof => {
-                        Some(Ok(String::new()))
-                    }
-                }
-            }
-            Ok(Err(e)) => Some(Err(e.into())),
-            Err(_) => None, // Timeout
-        }
-    }
-
-    /// Continue reading until we get a complete line.
-    async fn finish_reading_line(
-        ctx: &mut ScreenContext,
-        session: &mut TelnetSession,
-    ) -> Option<Result<String>> {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-        let mut buf = [0u8; 1];
-
-        loop {
-            match session.stream_mut().read(&mut buf).await {
-                Ok(0) => return Some(Ok(String::new())),
-                Ok(_) => {
-                    let (result, echo) = ctx.line_buffer.process_byte(buf[0]);
-
-                    if !echo.is_empty() {
-                        let _ = session.stream_mut().write_all(&echo).await;
-                        let _ = session.stream_mut().flush().await;
-                    }
-
-                    match result {
-                        crate::server::InputResult::Line(line) => return Some(Ok(line)),
-                        crate::server::InputResult::Buffering => continue,
-                        crate::server::InputResult::Cancel | crate::server::InputResult::Eof => {
-                            return Some(Ok(String::new()))
-                        }
-                    }
-                }
-                Err(e) => return Some(Err(e.into())),
             }
         }
     }

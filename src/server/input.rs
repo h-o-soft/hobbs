@@ -42,6 +42,9 @@ pub struct LineBuffer {
     echo_mode: EchoMode,
     /// Character encoding for decoding input.
     encoding: CharacterEncoding,
+    /// Pending bytes for multi-byte character echo.
+    /// Used to buffer incomplete multi-byte characters before echoing.
+    pending_echo: Vec<u8>,
 }
 
 impl LineBuffer {
@@ -52,6 +55,7 @@ impl LineBuffer {
             max_size,
             echo_mode: EchoMode::Normal,
             encoding: CharacterEncoding::default(),
+            pending_echo: Vec::with_capacity(4),
         }
     }
 
@@ -62,6 +66,7 @@ impl LineBuffer {
             max_size,
             echo_mode: EchoMode::Normal,
             encoding,
+            pending_echo: Vec::with_capacity(4),
         }
     }
 
@@ -108,6 +113,107 @@ impl LineBuffer {
     /// Clear the buffer.
     pub fn clear(&mut self) {
         self.buffer.clear();
+        self.pending_echo.clear();
+    }
+
+    /// Calculate the number of bytes to delete for a backspace operation.
+    ///
+    /// This handles multi-byte characters correctly based on the current encoding.
+    fn bytes_to_delete(&self) -> usize {
+        if self.buffer.is_empty() {
+            return 0;
+        }
+
+        match self.encoding {
+            CharacterEncoding::Utf8 => {
+                // UTF-8: scan backwards for continuation bytes (0x80-0xBF)
+                let mut len = 0;
+                for &byte in self.buffer.iter().rev() {
+                    len += 1;
+                    if byte & 0xC0 != 0x80 {
+                        // Not a continuation byte, this is the start of the character
+                        break;
+                    }
+                }
+                len
+            }
+            CharacterEncoding::ShiftJIS => {
+                // ShiftJIS: check if last byte is part of a 2-byte character
+                let last = *self.buffer.last().unwrap();
+
+                // Check for 1-byte characters first
+                // ASCII (0x00-0x7F) or half-width katakana (0xA1-0xDF)
+                if last <= 0x7F || (0xA1..=0xDF).contains(&last) {
+                    return 1;
+                }
+
+                // Check if this could be the second byte of a 2-byte character
+                if self.buffer.len() >= 2 {
+                    let prev = self.buffer[self.buffer.len() - 2];
+                    // Is prev a lead byte? (0x81-0x9F or 0xE0-0xFC)
+                    let is_lead =
+                        (0x81..=0x9F).contains(&prev) || (0xE0..=0xFC).contains(&prev);
+                    // Is last a valid trail byte? (0x40-0x7E or 0x80-0xFC)
+                    let is_trail =
+                        (0x40..=0x7E).contains(&last) || (0x80..=0xFC).contains(&last);
+                    if is_lead && is_trail {
+                        return 2;
+                    }
+                }
+
+                1
+            }
+        }
+    }
+
+    /// Calculate the display width of deleted bytes.
+    ///
+    /// For multi-byte characters (2+ bytes), assumes 2-column width (full-width).
+    /// For single-byte characters, assumes 1-column width.
+    fn display_width_of_deleted(&self, bytes_deleted: usize) -> usize {
+        if bytes_deleted > 1 {
+            2 // Full-width character
+        } else {
+            1 // Half-width character
+        }
+    }
+
+    /// Check if pending_echo contains a complete character.
+    /// Returns true if the bytes form a complete character that can be echoed.
+    fn is_pending_echo_complete(&self) -> bool {
+        if self.pending_echo.is_empty() {
+            return false;
+        }
+
+        match self.encoding {
+            CharacterEncoding::Utf8 => {
+                let first = self.pending_echo[0];
+                let expected_len = if first < 0x80 {
+                    1
+                } else if first & 0xE0 == 0xC0 {
+                    2
+                } else if first & 0xF0 == 0xE0 {
+                    3
+                } else if first & 0xF8 == 0xF0 {
+                    4
+                } else {
+                    // Invalid UTF-8 lead byte, treat as single byte
+                    1
+                };
+                self.pending_echo.len() >= expected_len
+            }
+            CharacterEncoding::ShiftJIS => {
+                let first = self.pending_echo[0];
+                // Check if it's a 2-byte character lead byte
+                let is_lead = (0x81..=0x9F).contains(&first) || (0xE0..=0xFC).contains(&first);
+                if is_lead {
+                    self.pending_echo.len() >= 2
+                } else {
+                    // Single-byte character (ASCII or half-width katakana)
+                    true
+                }
+            }
+        }
     }
 
     /// Process a single byte of input.
@@ -116,16 +222,39 @@ impl LineBuffer {
     pub fn process_byte(&mut self, byte: u8) -> (InputResult, Vec<u8>) {
         match byte {
             control::CR | control::LF => {
-                // End of line
+                // End of line - flush any pending echo bytes first
+                let mut echo = std::mem::take(&mut self.pending_echo);
+                echo.push(control::CR);
+                echo.push(control::LF);
                 let line = self.take_line();
-                let echo = vec![control::CR, control::LF];
                 (InputResult::Line(line), echo)
             }
             control::BS | control::DEL => {
-                // Backspace
-                if self.buffer.pop().is_some() {
-                    // Echo: move cursor back, print space, move cursor back
-                    let echo = vec![control::BS, b' ', control::BS];
+                // Clear any pending echo bytes (incomplete multi-byte char)
+                self.pending_echo.clear();
+
+                // Backspace - delete the last character (which may be multi-byte)
+                let bytes_to_del = self.bytes_to_delete();
+                if bytes_to_del > 0 {
+                    // Calculate display width before deleting
+                    let width = self.display_width_of_deleted(bytes_to_del);
+
+                    // Delete the bytes
+                    let new_len = self.buffer.len() - bytes_to_del;
+                    self.buffer.truncate(new_len);
+
+                    // Echo: move cursor back, print spaces, move cursor back
+                    // Repeat for each column the character occupied
+                    let mut echo = Vec::with_capacity(width * 3);
+                    for _ in 0..width {
+                        echo.push(control::BS);
+                    }
+                    for _ in 0..width {
+                        echo.push(b' ');
+                    }
+                    for _ in 0..width {
+                        echo.push(control::BS);
+                    }
                     (InputResult::Buffering, echo)
                 } else {
                     // Buffer was empty, no echo
@@ -161,10 +290,32 @@ impl LineBuffer {
                 // Regular character
                 if self.buffer.len() < self.max_size {
                     self.buffer.push(byte);
+
                     let echo = match self.echo_mode {
-                        EchoMode::Normal => vec![byte],
+                        EchoMode::Normal => {
+                            // Add byte to pending echo buffer
+                            self.pending_echo.push(byte);
+
+                            // Check if we have a complete character
+                            if self.is_pending_echo_complete() {
+                                // Return all pending bytes as echo
+                                std::mem::take(&mut self.pending_echo)
+                            } else {
+                                // Still waiting for more bytes
+                                vec![]
+                            }
+                        }
                         EchoMode::Password => vec![],
-                        EchoMode::Masked(c) => c.to_string().into_bytes(),
+                        EchoMode::Masked(c) => {
+                            // For masked mode, also wait for complete character
+                            self.pending_echo.push(byte);
+                            if self.is_pending_echo_complete() {
+                                self.pending_echo.clear();
+                                c.to_string().into_bytes()
+                            } else {
+                                vec![]
+                            }
+                        }
                     };
                     (InputResult::Buffering, echo)
                 } else {
@@ -592,5 +743,166 @@ mod tests {
             }
             _ => panic!("Expected Line results"),
         }
+    }
+
+    #[test]
+    fn test_line_buffer_backspace_utf8_multibyte() {
+        // Test backspace with UTF-8 multi-byte character "あ" (3 bytes: 0xE3 0x81 0x82)
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::Utf8);
+
+        // Input "Aあ" (1 ASCII + 3 UTF-8 bytes)
+        buffer.process_byte(b'A');
+        for &b in "あ".as_bytes() {
+            buffer.process_byte(b);
+        }
+        assert_eq!(buffer.len(), 4); // 1 + 3 bytes
+
+        // Backspace should delete the entire "あ" character (3 bytes)
+        let (result, echo) = buffer.process_byte(control::BS);
+        assert_eq!(result, InputResult::Buffering);
+        // Echo should be 2-column width (full-width character)
+        assert_eq!(echo, vec![control::BS, control::BS, b' ', b' ', control::BS, control::BS]);
+        assert_eq!(buffer.contents(), b"A");
+        assert_eq!(buffer.len(), 1);
+    }
+
+    #[test]
+    fn test_line_buffer_backspace_utf8_4byte() {
+        // Test backspace with UTF-8 4-byte character "𠀋" (U+2000B)
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::Utf8);
+
+        // Input the 4-byte character
+        let char_bytes = "𠀋".as_bytes();
+        assert_eq!(char_bytes.len(), 4);
+        for &b in char_bytes {
+            buffer.process_byte(b);
+        }
+        assert_eq!(buffer.len(), 4);
+
+        // Backspace should delete all 4 bytes
+        let (result, _) = buffer.process_byte(control::BS);
+        assert_eq!(result, InputResult::Buffering);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn test_line_buffer_backspace_shiftjis_multibyte() {
+        // Test backspace with ShiftJIS 2-byte character "あ" (0x82 0xA0)
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::ShiftJIS);
+
+        // Input "Aあ" in ShiftJIS
+        buffer.process_byte(b'A');
+        buffer.process_byte(0x82); // Lead byte of "あ"
+        buffer.process_byte(0xA0); // Trail byte of "あ"
+        assert_eq!(buffer.len(), 3); // 1 + 2 bytes
+
+        // Backspace should delete the entire "あ" character (2 bytes)
+        let (result, echo) = buffer.process_byte(control::BS);
+        assert_eq!(result, InputResult::Buffering);
+        // Echo should be 2-column width
+        assert_eq!(echo, vec![control::BS, control::BS, b' ', b' ', control::BS, control::BS]);
+        assert_eq!(buffer.contents(), b"A");
+        assert_eq!(buffer.len(), 1);
+    }
+
+    #[test]
+    fn test_line_buffer_backspace_shiftjis_halfwidth_katakana() {
+        // Test backspace with ShiftJIS half-width katakana "ｱ" (0xB1, single byte)
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::ShiftJIS);
+
+        buffer.process_byte(b'A');
+        buffer.process_byte(0xB1); // Half-width "ｱ"
+        assert_eq!(buffer.len(), 2);
+
+        // Backspace should delete only 1 byte (half-width character)
+        let (result, echo) = buffer.process_byte(control::BS);
+        assert_eq!(result, InputResult::Buffering);
+        // Echo should be 1-column width
+        assert_eq!(echo, vec![control::BS, b' ', control::BS]);
+        assert_eq!(buffer.contents(), b"A");
+    }
+
+    #[test]
+    fn test_line_buffer_backspace_mixed_ascii_and_multibyte() {
+        // Test multiple backspaces with mixed ASCII and multi-byte characters
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::Utf8);
+
+        // Input "ABあい" (2 ASCII + 2 Japanese characters)
+        buffer.process_byte(b'A');
+        buffer.process_byte(b'B');
+        for &b in "あ".as_bytes() {
+            buffer.process_byte(b);
+        }
+        for &b in "い".as_bytes() {
+            buffer.process_byte(b);
+        }
+        assert_eq!(buffer.len(), 8); // 2 + 3 + 3 bytes
+
+        // First backspace: delete "い" (3 bytes)
+        buffer.process_byte(control::BS);
+        assert_eq!(buffer.len(), 5); // 2 + 3 bytes
+
+        // Second backspace: delete "あ" (3 bytes)
+        buffer.process_byte(control::BS);
+        assert_eq!(buffer.len(), 2); // Just "AB"
+
+        // Third backspace: delete "B" (1 byte)
+        let (_, echo) = buffer.process_byte(control::BS);
+        assert_eq!(buffer.len(), 1);
+        // ASCII should have 1-column echo
+        assert_eq!(echo, vec![control::BS, b' ', control::BS]);
+        assert_eq!(buffer.contents(), b"A");
+    }
+
+    #[test]
+    fn test_bytes_to_delete_utf8() {
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::Utf8);
+
+        // Empty buffer
+        assert_eq!(buffer.bytes_to_delete(), 0);
+
+        // ASCII character
+        buffer.process_byte(b'A');
+        assert_eq!(buffer.bytes_to_delete(), 1);
+
+        buffer.clear();
+
+        // 2-byte UTF-8 character (e.g., "é" = 0xC3 0xA9)
+        buffer.process_byte(0xC3);
+        buffer.process_byte(0xA9);
+        assert_eq!(buffer.bytes_to_delete(), 2);
+
+        buffer.clear();
+
+        // 3-byte UTF-8 character (e.g., "あ" = 0xE3 0x81 0x82)
+        buffer.process_byte(0xE3);
+        buffer.process_byte(0x81);
+        buffer.process_byte(0x82);
+        assert_eq!(buffer.bytes_to_delete(), 3);
+    }
+
+    #[test]
+    fn test_bytes_to_delete_shiftjis() {
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::ShiftJIS);
+
+        // Empty buffer
+        assert_eq!(buffer.bytes_to_delete(), 0);
+
+        // ASCII character
+        buffer.process_byte(b'A');
+        assert_eq!(buffer.bytes_to_delete(), 1);
+
+        buffer.clear();
+
+        // Half-width katakana (single byte)
+        buffer.process_byte(0xB1); // "ｱ"
+        assert_eq!(buffer.bytes_to_delete(), 1);
+
+        buffer.clear();
+
+        // Full-width character "あ" (0x82 0xA0)
+        buffer.process_byte(0x82);
+        buffer.process_byte(0xA0);
+        assert_eq!(buffer.bytes_to_delete(), 2);
     }
 }
