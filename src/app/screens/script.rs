@@ -237,6 +237,7 @@ impl ScriptScreen {
             let user_repo = UserRepository::new(&ctx.db);
             if let Ok(Some(user)) = user_repo.get_by_id(user_id) {
                 return ScriptContext {
+                    script_id: None, // Set by ScriptService.execute()
                     user_id: Some(user_id),
                     username: user.username,
                     nickname: user.nickname,
@@ -250,6 +251,7 @@ impl ScriptScreen {
 
         // Guest user
         ScriptContext {
+            script_id: None, // Set by ScriptService.execute()
             user_id: None,
             username: "guest".to_string(),
             nickname: "Guest".to_string(),
