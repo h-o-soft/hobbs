@@ -352,6 +352,11 @@ select_permission = "Select permission level"
 new_name = "New name"
 new_description = "New description"
 keep_current = "Keep current"
+user_number_to_change_role = "User number to change role"
+select_new_role = "Select new role"
+role_changed = "User '{{name}}' role changed to {{role}}"
+cannot_change_own_role = "Cannot change your own role"
+cannot_demote_last_sysop = "Cannot demote the last SysOp"
 
 [role]
 guest = "Guest"

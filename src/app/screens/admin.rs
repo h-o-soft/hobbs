@@ -64,9 +64,17 @@ impl AdminScreen {
                 &format!("  [5] {}", ctx.i18n.t("admin.user_list")),
             )
             .await?;
+            // SysOp only: change role
+            if Self::is_sysop(ctx, session) {
+                ctx.send_line(
+                    session,
+                    &format!("  [6] {}", ctx.i18n.t("admin.change_role")),
+                )
+                .await?;
+            }
             ctx.send_line(
                 session,
-                &format!("  [6] {}", ctx.i18n.t("admin.session_list")),
+                &format!("  [7] {}", ctx.i18n.t("admin.session_list")),
             )
             .await?;
             ctx.send_line(session, "").await?;
@@ -78,17 +86,17 @@ impl AdminScreen {
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [7] {}", ctx.i18n.t("admin.chat_room_list")),
+                &format!("  [8] {}", ctx.i18n.t("admin.chat_room_list")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [8] {}", ctx.i18n.t("admin.create_chat_room")),
+                &format!("  [9] {}", ctx.i18n.t("admin.create_chat_room")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [9] {}", ctx.i18n.t("admin.delete_chat_room")),
+                &format!("  [10] {}", ctx.i18n.t("admin.delete_chat_room")),
             )
             .await?;
             ctx.send_line(session, "").await?;
@@ -100,17 +108,17 @@ impl AdminScreen {
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [10] {}", ctx.i18n.t("admin.folder_list")),
+                &format!("  [11] {}", ctx.i18n.t("admin.folder_list")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [11] {}", ctx.i18n.t("admin.create_folder")),
+                &format!("  [12] {}", ctx.i18n.t("admin.create_folder")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [12] {}", ctx.i18n.t("admin.delete_folder")),
+                &format!("  [13] {}", ctx.i18n.t("admin.delete_folder")),
             )
             .await?;
             ctx.send_line(session, "").await?;
@@ -120,7 +128,7 @@ impl AdminScreen {
                 &format!("=== {} ===", ctx.i18n.t("admin.system_status")),
             )
             .await?;
-            ctx.send_line(session, "  [13] System Status").await?;
+            ctx.send_line(session, "  [14] System Status").await?;
             ctx.send_line(session, "").await?;
 
             ctx.send(
@@ -143,14 +151,15 @@ impl AdminScreen {
                 "3" => Self::edit_board(ctx, session).await?,
                 "4" => Self::delete_board(ctx, session).await?,
                 "5" => Self::show_user_list(ctx, session).await?,
-                "6" => Self::show_sessions(ctx, session).await?,
-                "7" => Self::show_chat_rooms(ctx, session).await?,
-                "8" => Self::create_chat_room(ctx, session).await?,
-                "9" => Self::delete_chat_room(ctx, session).await?,
-                "10" => Self::show_folders(ctx, session).await?,
-                "11" => Self::create_folder(ctx, session).await?,
-                "12" => Self::delete_folder(ctx, session).await?,
-                "13" => Self::show_system_status(ctx, session).await?,
+                "6" => Self::change_user_role(ctx, session).await?,
+                "7" => Self::show_sessions(ctx, session).await?,
+                "8" => Self::show_chat_rooms(ctx, session).await?,
+                "9" => Self::create_chat_room(ctx, session).await?,
+                "10" => Self::delete_chat_room(ctx, session).await?,
+                "11" => Self::show_folders(ctx, session).await?,
+                "12" => Self::create_folder(ctx, session).await?,
+                "13" => Self::delete_folder(ctx, session).await?,
+                "14" => Self::show_system_status(ctx, session).await?,
                 _ => {}
             }
         }
@@ -832,6 +841,200 @@ impl AdminScreen {
         Ok(())
     }
 
+    /// Change user role (SysOp only).
+    async fn change_user_role(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+    ) -> Result<()> {
+        use crate::admin::{AdminError, UserAdminService};
+        use crate::db::{Role, UserRepository};
+
+        // Check SysOp permission
+        if !Self::is_sysop(ctx, session) {
+            ctx.send_line(session, ctx.i18n.t("admin.sysop_required"))
+                .await?;
+            return Ok(());
+        }
+
+        // Get current user
+        let current_user_id = match session.user_id() {
+            Some(id) => id,
+            None => return Ok(()),
+        };
+
+        let current_user = {
+            let user_repo = UserRepository::new(&ctx.db);
+            match user_repo.get_by_id(current_user_id)? {
+                Some(u) => u,
+                None => return Ok(()),
+            }
+        };
+
+        // Get all users
+        let users = {
+            let user_repo = UserRepository::new(&ctx.db);
+            user_repo.list_all()?
+        };
+
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("admin.change_role")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        if users.is_empty() {
+            ctx.send_line(session, "No users found.").await?;
+            ctx.wait_for_enter(session).await?;
+            return Ok(());
+        }
+
+        // Display user list
+        ctx.send_line(
+            session,
+            &format!(
+                "{:<4} {:<16} {:<16} {:<8}",
+                ctx.i18n.t("common.number"),
+                ctx.i18n.t("profile.username"),
+                ctx.i18n.t("profile.nickname"),
+                ctx.i18n.t("member.role")
+            ),
+        )
+        .await?;
+        ctx.send_line(session, &"-".repeat(50)).await?;
+
+        for (i, user) in users.iter().enumerate() {
+            let role_name = Self::role_to_string(&user.role, ctx);
+            let status = if !user.is_active { " [停止]" } else { "" };
+            ctx.send_line(
+                session,
+                &format!(
+                    "{:<4} {:<16} {:<16} {}{}",
+                    i + 1,
+                    user.username,
+                    user.nickname,
+                    role_name,
+                    status
+                ),
+            )
+            .await?;
+        }
+
+        ctx.send_line(session, "").await?;
+        ctx.send(
+            session,
+            &format!(
+                "{} [Q={}]: ",
+                ctx.i18n.t("admin.user_number_to_change_role"),
+                ctx.i18n.t("common.cancel")
+            ),
+        )
+        .await?;
+
+        let input = ctx.read_line(session).await?;
+        let input = input.trim();
+
+        if input.eq_ignore_ascii_case("q") || input.is_empty() {
+            return Ok(());
+        }
+
+        let user_num: usize = match input.parse() {
+            Ok(n) if n > 0 && n <= users.len() => n,
+            _ => {
+                ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        let target_user = &users[user_num - 1];
+
+        // Show role selection
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!(
+                "{}: {} ({})",
+                ctx.i18n.t("admin.select_new_role"),
+                target_user.nickname,
+                Self::role_to_string(&target_user.role, ctx)
+            ),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+        ctx.send_line(session, &format!("  [1] {}", ctx.i18n.t("role.guest")))
+            .await?;
+        ctx.send_line(session, &format!("  [2] {}", ctx.i18n.t("role.member")))
+            .await?;
+        ctx.send_line(session, &format!("  [3] {}", ctx.i18n.t("role.subop")))
+            .await?;
+        ctx.send_line(session, &format!("  [4] {}", ctx.i18n.t("role.sysop")))
+            .await?;
+        ctx.send_line(session, "").await?;
+        ctx.send(
+            session,
+            &format!("{} [Q={}]: ", ctx.i18n.t("common.number"), ctx.i18n.t("common.cancel")),
+        )
+        .await?;
+
+        let role_input = ctx.read_line(session).await?;
+        let role_input = role_input.trim();
+
+        if role_input.eq_ignore_ascii_case("q") || role_input.is_empty() {
+            return Ok(());
+        }
+
+        let new_role = match role_input {
+            "1" => Role::Guest,
+            "2" => Role::Member,
+            "3" => Role::SubOp,
+            "4" => Role::SysOp,
+            _ => {
+                ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        // Call UserAdminService to change role
+        let service = UserAdminService::new(&ctx.db);
+        match service.change_user_role(target_user.id, new_role, &current_user) {
+            Ok(updated) => {
+                let role_name = Self::role_to_string(&updated.role, ctx);
+                let msg = ctx
+                    .i18n
+                    .t("admin.role_changed")
+                    .replace("{{name}}", &updated.nickname)
+                    .replace("{{role}}", &role_name);
+                ctx.send_line(session, &msg).await?;
+            }
+            Err(AdminError::CannotModifySelf) => {
+                ctx.send_line(session, ctx.i18n.t("admin.cannot_change_own_role"))
+                    .await?;
+            }
+            Err(AdminError::LastSysOp) => {
+                ctx.send_line(session, ctx.i18n.t("admin.cannot_demote_last_sysop"))
+                    .await?;
+            }
+            Err(AdminError::Permission(_)) => {
+                ctx.send_line(session, ctx.i18n.t("admin.sysop_required"))
+                    .await?;
+            }
+            Err(e) => {
+                ctx.send_line(
+                    session,
+                    &format!("{}: {}", ctx.i18n.t("common.error"), e),
+                )
+                .await?;
+            }
+        }
+
+        ctx.send_line(session, "").await?;
+        ctx.wait_for_enter(session).await?;
+        Ok(())
+    }
+
     /// Show active sessions.
     async fn show_sessions(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
         ctx.send_line(session, "").await?;
@@ -1314,6 +1517,18 @@ impl AdminScreen {
             let user_repo = UserRepository::new(&ctx.db);
             if let Ok(Some(user)) = user_repo.get_by_id(user_id) {
                 return user.role >= Role::SubOp;
+            }
+        }
+        false
+    }
+
+    fn is_sysop(ctx: &ScreenContext, session: &TelnetSession) -> bool {
+        use crate::db::{Role, UserRepository};
+
+        if let Some(user_id) = session.user_id() {
+            let user_repo = UserRepository::new(&ctx.db);
+            if let Ok(Some(user)) = user_repo.get_by_id(user_id) {
+                return user.role == Role::SysOp;
             }
         }
         false
