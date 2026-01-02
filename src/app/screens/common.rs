@@ -17,6 +17,9 @@ use crate::server::{
 use crate::template::{create_system_context, TemplateContext, TemplateLoader, Value};
 use crate::terminal::TerminalProfile;
 
+/// Maximum number of lines in multiline input (to prevent memory exhaustion).
+pub const MAX_MULTILINE_LINES: usize = 1000;
+
 /// Shared context for screen handlers.
 pub struct ScreenContext {
     /// Database connection.
@@ -276,6 +279,18 @@ impl ScreenContext {
                 return Ok(None);
             }
 
+            // Check line count limit
+            if lines.len() >= MAX_MULTILINE_LINES {
+                self.send_line(
+                    session,
+                    &self
+                        .i18n
+                        .t_with("common.too_many_lines", &[("max", &MAX_MULTILINE_LINES.to_string())]),
+                )
+                .await?;
+                return Ok(None);
+            }
+
             lines.push(line);
         }
 
@@ -423,5 +438,14 @@ mod tests {
     fn test_pagination_zero_page_normalized() {
         let p = Pagination::new(0, 10, 100);
         assert_eq!(p.page, 1); // Should be normalized to 1
+    }
+
+    #[test]
+    fn test_max_multiline_lines_constant() {
+        // Verify the constant is set to a reasonable value
+        assert_eq!(MAX_MULTILINE_LINES, 1000);
+        // Should be large enough for typical posts but prevent memory exhaustion
+        assert!(MAX_MULTILINE_LINES >= 100);
+        assert!(MAX_MULTILINE_LINES <= 10000);
     }
 }
