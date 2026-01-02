@@ -52,6 +52,11 @@ impl AdminScreen {
                 &format!("  [4] {}", ctx.i18n.t("admin.delete_board")),
             )
             .await?;
+            ctx.send_line(
+                session,
+                &format!("  [5] {}", ctx.i18n.t("admin.content_management")),
+            )
+            .await?;
             ctx.send_line(session, "").await?;
 
             ctx.send_line(
@@ -61,35 +66,35 @@ impl AdminScreen {
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [5] {}", ctx.i18n.t("admin.user_list")),
+                &format!("  [6] {}", ctx.i18n.t("admin.user_list")),
             )
             .await?;
             // SysOp only: change role
             if Self::is_sysop(ctx, session) {
                 ctx.send_line(
                     session,
-                    &format!("  [6] {}", ctx.i18n.t("admin.change_role")),
+                    &format!("  [7] {}", ctx.i18n.t("admin.change_role")),
                 )
                 .await?;
             }
             ctx.send_line(
                 session,
-                &format!("  [7] {}", ctx.i18n.t("admin.suspend_user")),
+                &format!("  [8] {}", ctx.i18n.t("admin.suspend_user")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [8] {}", ctx.i18n.t("admin.activate_user")),
+                &format!("  [9] {}", ctx.i18n.t("admin.activate_user")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [9] {}", ctx.i18n.t("admin.session_list")),
+                &format!("  [10] {}", ctx.i18n.t("admin.session_list")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [10] {}", ctx.i18n.t("admin.reset_password")),
+                &format!("  [11] {}", ctx.i18n.t("admin.reset_password")),
             )
             .await?;
             ctx.send_line(session, "").await?;
@@ -101,17 +106,17 @@ impl AdminScreen {
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [11] {}", ctx.i18n.t("admin.chat_room_list")),
+                &format!("  [12] {}", ctx.i18n.t("admin.chat_room_list")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [12] {}", ctx.i18n.t("admin.create_chat_room")),
+                &format!("  [13] {}", ctx.i18n.t("admin.create_chat_room")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [13] {}", ctx.i18n.t("admin.delete_chat_room")),
+                &format!("  [14] {}", ctx.i18n.t("admin.delete_chat_room")),
             )
             .await?;
             ctx.send_line(session, "").await?;
@@ -123,17 +128,17 @@ impl AdminScreen {
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [14] {}", ctx.i18n.t("admin.folder_list")),
+                &format!("  [15] {}", ctx.i18n.t("admin.folder_list")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [15] {}", ctx.i18n.t("admin.create_folder")),
+                &format!("  [16] {}", ctx.i18n.t("admin.create_folder")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [16] {}", ctx.i18n.t("admin.delete_folder")),
+                &format!("  [17] {}", ctx.i18n.t("admin.delete_folder")),
             )
             .await?;
             ctx.send_line(session, "").await?;
@@ -143,7 +148,7 @@ impl AdminScreen {
                 &format!("=== {} ===", ctx.i18n.t("admin.system_status")),
             )
             .await?;
-            ctx.send_line(session, "  [17] System Status").await?;
+            ctx.send_line(session, "  [18] System Status").await?;
             ctx.send_line(session, "").await?;
 
             ctx.send(
@@ -165,19 +170,20 @@ impl AdminScreen {
                 "2" => Self::create_board(ctx, session).await?,
                 "3" => Self::edit_board(ctx, session).await?,
                 "4" => Self::delete_board(ctx, session).await?,
-                "5" => Self::show_user_list(ctx, session).await?,
-                "6" => Self::change_user_role(ctx, session).await?,
-                "7" => Self::suspend_user(ctx, session).await?,
-                "8" => Self::activate_user(ctx, session).await?,
-                "9" => Self::show_sessions(ctx, session).await?,
-                "10" => Self::reset_user_password(ctx, session).await?,
-                "11" => Self::show_chat_rooms(ctx, session).await?,
-                "12" => Self::create_chat_room(ctx, session).await?,
-                "13" => Self::delete_chat_room(ctx, session).await?,
-                "14" => Self::show_folders(ctx, session).await?,
-                "15" => Self::create_folder(ctx, session).await?,
-                "16" => Self::delete_folder(ctx, session).await?,
-                "17" => Self::show_system_status(ctx, session).await?,
+                "5" => Self::manage_content(ctx, session).await?,
+                "6" => Self::show_user_list(ctx, session).await?,
+                "7" => Self::change_user_role(ctx, session).await?,
+                "8" => Self::suspend_user(ctx, session).await?,
+                "9" => Self::activate_user(ctx, session).await?,
+                "10" => Self::show_sessions(ctx, session).await?,
+                "11" => Self::reset_user_password(ctx, session).await?,
+                "12" => Self::show_chat_rooms(ctx, session).await?,
+                "13" => Self::create_chat_room(ctx, session).await?,
+                "14" => Self::delete_chat_room(ctx, session).await?,
+                "15" => Self::show_folders(ctx, session).await?,
+                "16" => Self::create_folder(ctx, session).await?,
+                "17" => Self::delete_folder(ctx, session).await?,
+                "18" => Self::show_system_status(ctx, session).await?,
                 _ => {}
             }
         }
@@ -2150,6 +2156,709 @@ impl AdminScreen {
         }
 
         Ok(())
+    }
+
+    /// Content management - hierarchical navigation for posts and threads.
+    async fn manage_content(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
+        use crate::board::{BoardRepository, BoardType, PostRepository, ThreadRepository};
+        use crate::db::UserRepository;
+
+        // Get current admin user
+        let current_user = match session.user_id() {
+            Some(user_id) => {
+                let user_repo = UserRepository::new(&ctx.db);
+                match user_repo.get_by_id(user_id)? {
+                    Some(user) => user,
+                    None => {
+                        ctx.send_line(session, ctx.i18n.t("error.user_not_found"))
+                            .await?;
+                        return Ok(());
+                    }
+                }
+            }
+            None => {
+                ctx.send_line(session, ctx.i18n.t("error.not_logged_in"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        // Level 1: Board list
+        loop {
+            let board_repo = BoardRepository::new(&ctx.db);
+            let boards = board_repo.list_all()?;
+
+            ctx.send_line(session, "").await?;
+            ctx.send_line(
+                session,
+                &format!("=== {} ===", ctx.i18n.t("admin.content_management")),
+            )
+            .await?;
+            ctx.send_line(session, "").await?;
+            ctx.send_line(session, ctx.i18n.t("admin.select_board")).await?;
+            ctx.send_line(session, "").await?;
+
+            if boards.is_empty() {
+                ctx.send_line(session, ctx.i18n.t("board.no_boards"))
+                    .await?;
+                ctx.wait_for_enter(session).await?;
+                return Ok(());
+            }
+
+            for (i, board) in boards.iter().enumerate() {
+                let count_info = match board.board_type {
+                    BoardType::Thread => {
+                        let thread_repo = ThreadRepository::new(&ctx.db);
+                        let thread_count = thread_repo.count_by_board(board.id).unwrap_or(0);
+                        format!("{} threads", thread_count)
+                    }
+                    BoardType::Flat => {
+                        let post_repo = PostRepository::new(&ctx.db);
+                        let post_count = post_repo.count_by_flat_board(board.id).unwrap_or(0);
+                        format!("{} posts", post_count)
+                    }
+                };
+                let type_marker = match board.board_type {
+                    BoardType::Thread => "[T]",
+                    BoardType::Flat => "[F]",
+                };
+                ctx.send_line(
+                    session,
+                    &format!(
+                        "  [{}] {} {} ({})",
+                        i + 1,
+                        type_marker,
+                        board.name,
+                        count_info
+                    ),
+                )
+                .await?;
+            }
+
+            ctx.send_line(session, "").await?;
+            ctx.send(
+                session,
+                &format!(
+                    "{} [Q={}]: ",
+                    ctx.i18n.t("menu.select_prompt"),
+                    ctx.i18n.t("common.back")
+                ),
+            )
+            .await?;
+
+            let input = ctx.read_line(session).await?;
+            let input = input.trim();
+
+            if input.eq_ignore_ascii_case("q") || input.is_empty() {
+                return Ok(());
+            }
+
+            let board_num: usize = match input.parse() {
+                Ok(n) if n > 0 && n <= boards.len() => n,
+                _ => {
+                    ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                        .await?;
+                    continue;
+                }
+            };
+
+            let board = &boards[board_num - 1];
+
+            // Branch based on board type
+            match board.board_type {
+                BoardType::Flat => {
+                    // Flat board: directly show posts
+                    Self::manage_flat_board_content(ctx, session, board, &current_user).await?;
+                }
+                BoardType::Thread => {
+                    // Thread board: show threads first
+                    Self::manage_thread_board_content(ctx, session, board, &current_user).await?;
+                }
+            }
+        }
+    }
+
+    /// Manage content for flat-type boards (posts only, no threads).
+    async fn manage_flat_board_content(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        board: &crate::board::Board,
+        current_user: &crate::db::User,
+    ) -> Result<()> {
+        use crate::admin::{AdminError, ContentAdminService, PostDeletionMode};
+        use crate::board::PostRepository;
+
+        loop {
+            let post_repo = PostRepository::new(&ctx.db);
+            let posts = post_repo.list_by_flat_board(board.id)?;
+
+            ctx.send_line(session, "").await?;
+            ctx.send_line(
+                session,
+                &format!(
+                    "=== {} - {} ===",
+                    ctx.i18n.t("admin.content_management"),
+                    board.name
+                ),
+            )
+            .await?;
+            ctx.send_line(session, "").await?;
+            ctx.send_line(session, ctx.i18n.t("admin.select_post")).await?;
+            ctx.send_line(session, "").await?;
+
+            if posts.is_empty() {
+                ctx.send_line(session, ctx.i18n.t("admin.no_posts_in_thread"))
+                    .await?;
+                ctx.send_line(session, "").await?;
+                ctx.send_line(
+                    session,
+                    &format!("[Q] {}", ctx.i18n.t("admin.back_to_boards")),
+                )
+                .await?;
+                ctx.send(session, &format!("{}: ", ctx.i18n.t("menu.select_prompt")))
+                    .await?;
+                let _ = ctx.read_line(session).await?;
+                return Ok(());
+            }
+
+            for (i, post) in posts.iter().enumerate() {
+                let preview = if post.body.chars().count() > 40 {
+                    format!("{}...", post.body.chars().take(37).collect::<String>())
+                } else {
+                    post.body.clone()
+                };
+                let preview = preview.replace('\n', " ").replace('\r', "");
+                ctx.send_line(
+                    session,
+                    &format!("  [{}] #{}: {}", i + 1, post.id, preview),
+                )
+                .await?;
+            }
+
+            ctx.send_line(session, "").await?;
+            ctx.send_line(
+                session,
+                &format!("[D] {}", ctx.i18n.t("admin.delete_post")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("[Q] {}", ctx.i18n.t("admin.back_to_boards")),
+            )
+            .await?;
+            ctx.send_line(session, "").await?;
+            ctx.send(session, &format!("{}: ", ctx.i18n.t("menu.select_prompt")))
+                .await?;
+
+            let input = ctx.read_line(session).await?;
+            let input = input.trim();
+
+            if input.eq_ignore_ascii_case("q") || input.is_empty() {
+                return Ok(());
+            }
+
+            if input.eq_ignore_ascii_case("d") {
+                // Delete post mode
+                ctx.send(
+                    session,
+                    &format!(
+                        "{} [Q={}]: ",
+                        ctx.i18n.t("admin.post_number_to_delete"),
+                        ctx.i18n.t("common.cancel")
+                    ),
+                )
+                .await?;
+
+                let del_input = ctx.read_line(session).await?;
+                let del_input = del_input.trim();
+
+                if del_input.eq_ignore_ascii_case("q") || del_input.is_empty() {
+                    continue;
+                }
+
+                let post_num: usize = match del_input.parse() {
+                    Ok(n) if n > 0 && n <= posts.len() => n,
+                    _ => {
+                        ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                            .await?;
+                        continue;
+                    }
+                };
+
+                let target_post = &posts[post_num - 1];
+
+                // Select deletion mode
+                ctx.send_line(session, "").await?;
+                ctx.send_line(session, ctx.i18n.t("admin.select_deletion_mode"))
+                    .await?;
+                ctx.send_line(
+                    session,
+                    &format!("  [1] {}", ctx.i18n.t("admin.soft_delete")),
+                )
+                .await?;
+                ctx.send_line(
+                    session,
+                    &format!("  [2] {}", ctx.i18n.t("admin.hard_delete")),
+                )
+                .await?;
+                ctx.send(
+                    session,
+                    &format!(
+                        "{} [Q={}]: ",
+                        ctx.i18n.t("menu.select_prompt"),
+                        ctx.i18n.t("common.cancel")
+                    ),
+                )
+                .await?;
+
+                let mode_input = ctx.read_line(session).await?;
+                let mode_input = mode_input.trim();
+
+                if mode_input.eq_ignore_ascii_case("q") || mode_input.is_empty() {
+                    continue;
+                }
+
+                let mode = match mode_input {
+                    "1" => PostDeletionMode::Soft,
+                    "2" => PostDeletionMode::Hard,
+                    _ => {
+                        ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                            .await?;
+                        continue;
+                    }
+                };
+
+                // Confirmation
+                let confirm_msg = ctx
+                    .i18n
+                    .t("admin.confirm_delete_post")
+                    .replace("{{id}}", &target_post.id.to_string());
+                ctx.send(session, &format!("{} ", confirm_msg)).await?;
+
+                let confirm = ctx.read_line(session).await?;
+                if !confirm.trim().eq_ignore_ascii_case("y") {
+                    continue;
+                }
+
+                let service = ContentAdminService::new(&ctx.db);
+                match service.delete_post(target_post.id, mode, current_user) {
+                    Ok(true) => {
+                        let msg = ctx
+                            .i18n
+                            .t("admin.post_deleted")
+                            .replace("{{id}}", &target_post.id.to_string());
+                        ctx.send_line(session, &msg).await?;
+                    }
+                    Ok(false) => {
+                        ctx.send_line(session, ctx.i18n.t("admin.post_not_found"))
+                            .await?;
+                    }
+                    Err(AdminError::NotFound(_)) => {
+                        ctx.send_line(session, ctx.i18n.t("admin.post_not_found"))
+                            .await?;
+                    }
+                    Err(e) => {
+                        ctx.send_line(
+                            session,
+                            &format!("{}: {}", ctx.i18n.t("common.error"), e),
+                        )
+                        .await?;
+                    }
+                }
+                continue;
+            }
+
+            // Invalid input
+            ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                .await?;
+        }
+    }
+
+    /// Manage content for thread-type boards.
+    async fn manage_thread_board_content(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        board: &crate::board::Board,
+        current_user: &crate::db::User,
+    ) -> Result<()> {
+        use crate::admin::{AdminError, ContentAdminService};
+        use crate::board::{PostRepository, ThreadRepository};
+
+        // Level 2: Thread list for selected board
+        loop {
+            let thread_repo = ThreadRepository::new(&ctx.db);
+            let threads = thread_repo.list_by_board(board.id)?;
+
+            ctx.send_line(session, "").await?;
+            ctx.send_line(
+                session,
+                &format!(
+                    "=== {} - {} ===",
+                    ctx.i18n.t("admin.content_management"),
+                    board.name
+                ),
+            )
+            .await?;
+            ctx.send_line(session, "").await?;
+            ctx.send_line(session, ctx.i18n.t("admin.select_thread"))
+                .await?;
+            ctx.send_line(session, "").await?;
+
+            if threads.is_empty() {
+                ctx.send_line(session, ctx.i18n.t("admin.no_threads_in_board"))
+                    .await?;
+                ctx.send_line(session, "").await?;
+                ctx.send_line(
+                    session,
+                    &format!("[Q] {}", ctx.i18n.t("admin.back_to_boards")),
+                )
+                .await?;
+                ctx.send(
+                    session,
+                    &format!("{}: ", ctx.i18n.t("menu.select_prompt")),
+                )
+                .await?;
+                let _ = ctx.read_line(session).await?;
+                return Ok(());
+            }
+
+            for (i, thread) in threads.iter().enumerate() {
+                let post_repo = PostRepository::new(&ctx.db);
+                let post_count = post_repo.count_by_thread(thread.id).unwrap_or(0);
+                ctx.send_line(
+                    session,
+                    &format!(
+                        "  [{}] {} ({} posts)",
+                        i + 1,
+                        if thread.title.chars().count() > 30 {
+                            format!(
+                                "{}...",
+                                thread.title.chars().take(27).collect::<String>()
+                            )
+                        } else {
+                            thread.title.clone()
+                        },
+                        post_count
+                    ),
+                )
+                .await?;
+            }
+
+            ctx.send_line(session, "").await?;
+            ctx.send_line(
+                session,
+                &format!("[D] {}", ctx.i18n.t("admin.delete_thread")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("[Q] {}", ctx.i18n.t("admin.back_to_boards")),
+            )
+            .await?;
+            ctx.send_line(session, "").await?;
+            ctx.send(
+                session,
+                &format!("{}: ", ctx.i18n.t("menu.select_prompt")),
+            )
+            .await?;
+
+            let input = ctx.read_line(session).await?;
+            let input = input.trim();
+
+            if input.eq_ignore_ascii_case("q") || input.is_empty() {
+                return Ok(());
+            }
+
+            if input.eq_ignore_ascii_case("d") {
+                // Delete thread mode
+                ctx.send(
+                    session,
+                    &format!(
+                        "{} [Q={}]: ",
+                        ctx.i18n.t("admin.thread_number_to_delete"),
+                        ctx.i18n.t("common.cancel")
+                    ),
+                )
+                .await?;
+
+                let del_input = ctx.read_line(session).await?;
+                let del_input = del_input.trim();
+
+                if del_input.eq_ignore_ascii_case("q") || del_input.is_empty() {
+                    continue;
+                }
+
+                let thread_num: usize = match del_input.parse() {
+                    Ok(n) if n > 0 && n <= threads.len() => n,
+                    _ => {
+                        ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                            .await?;
+                        continue;
+                    }
+                };
+
+                let target_thread = &threads[thread_num - 1];
+                let post_repo = PostRepository::new(&ctx.db);
+                let post_count = post_repo.count_by_thread(target_thread.id).unwrap_or(0);
+
+                let confirm_msg = ctx
+                    .i18n
+                    .t("admin.confirm_delete_thread")
+                    .replace("{{title}}", &target_thread.title)
+                    .replace("{{posts}}", &post_count.to_string());
+                ctx.send(session, &format!("{} ", confirm_msg)).await?;
+
+                let confirm = ctx.read_line(session).await?;
+                if !confirm.trim().eq_ignore_ascii_case("y") {
+                    continue;
+                }
+
+                let service = ContentAdminService::new(&ctx.db);
+                match service.delete_thread(target_thread.id, current_user) {
+                    Ok(true) => {
+                        let msg = ctx
+                            .i18n
+                            .t("admin.thread_deleted")
+                            .replace("{{title}}", &target_thread.title);
+                        ctx.send_line(session, &msg).await?;
+                    }
+                    Ok(false) => {
+                        ctx.send_line(session, ctx.i18n.t("admin.thread_not_found"))
+                            .await?;
+                    }
+                    Err(AdminError::NotFound(_)) => {
+                        ctx.send_line(session, ctx.i18n.t("admin.thread_not_found"))
+                            .await?;
+                    }
+                    Err(e) => {
+                        ctx.send_line(
+                            session,
+                            &format!("{}: {}", ctx.i18n.t("common.error"), e),
+                        )
+                        .await?;
+                    }
+                }
+                continue;
+            }
+
+            // Select thread to view posts
+            let thread_num: usize = match input.parse() {
+                Ok(n) if n > 0 && n <= threads.len() => n,
+                _ => {
+                    ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                        .await?;
+                    continue;
+                }
+            };
+
+            let thread = &threads[thread_num - 1];
+
+            // Level 3: Post list for selected thread
+            Self::manage_thread_posts(ctx, session, thread, current_user).await?;
+        }
+    }
+
+    /// Manage posts within a thread.
+    async fn manage_thread_posts(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        thread: &crate::board::Thread,
+        current_user: &crate::db::User,
+    ) -> Result<()> {
+        use crate::admin::{AdminError, ContentAdminService, PostDeletionMode};
+        use crate::board::PostRepository;
+
+        loop {
+            let post_repo = PostRepository::new(&ctx.db);
+            let posts = post_repo.list_by_thread(thread.id)?;
+
+            ctx.send_line(session, "").await?;
+            ctx.send_line(
+                session,
+                &format!(
+                    "=== {} - {} ===",
+                    ctx.i18n.t("admin.content_management"),
+                    thread.title
+                ),
+            )
+            .await?;
+            ctx.send_line(session, "").await?;
+            ctx.send_line(session, ctx.i18n.t("admin.select_post"))
+                .await?;
+            ctx.send_line(session, "").await?;
+
+            if posts.is_empty() {
+                ctx.send_line(session, ctx.i18n.t("admin.no_posts_in_thread"))
+                    .await?;
+                ctx.send_line(session, "").await?;
+                ctx.send_line(
+                    session,
+                    &format!("[Q] {}", ctx.i18n.t("admin.back_to_threads")),
+                )
+                .await?;
+                ctx.send(
+                    session,
+                    &format!("{}: ", ctx.i18n.t("menu.select_prompt")),
+                )
+                .await?;
+                let _ = ctx.read_line(session).await?;
+                return Ok(());
+            }
+
+            for (i, post) in posts.iter().enumerate() {
+                let preview = if post.body.chars().count() > 40 {
+                    format!("{}...", post.body.chars().take(37).collect::<String>())
+                } else {
+                    post.body.clone()
+                };
+                let preview = preview.replace('\n', " ").replace('\r', "");
+                ctx.send_line(
+                    session,
+                    &format!("  [{}] #{}: {}", i + 1, post.id, preview),
+                )
+                .await?;
+            }
+
+            ctx.send_line(session, "").await?;
+            ctx.send_line(
+                session,
+                &format!("[D] {}", ctx.i18n.t("admin.delete_post")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("[Q] {}", ctx.i18n.t("admin.back_to_threads")),
+            )
+            .await?;
+            ctx.send_line(session, "").await?;
+            ctx.send(
+                session,
+                &format!("{}: ", ctx.i18n.t("menu.select_prompt")),
+            )
+            .await?;
+
+            let input = ctx.read_line(session).await?;
+            let input = input.trim();
+
+            if input.eq_ignore_ascii_case("q") || input.is_empty() {
+                return Ok(());
+            }
+
+            if input.eq_ignore_ascii_case("d") {
+                // Delete post mode
+                ctx.send(
+                    session,
+                    &format!(
+                        "{} [Q={}]: ",
+                        ctx.i18n.t("admin.post_number_to_delete"),
+                        ctx.i18n.t("common.cancel")
+                    ),
+                )
+                .await?;
+
+                let del_input = ctx.read_line(session).await?;
+                let del_input = del_input.trim();
+
+                if del_input.eq_ignore_ascii_case("q") || del_input.is_empty() {
+                    continue;
+                }
+
+                let post_num: usize = match del_input.parse() {
+                    Ok(n) if n > 0 && n <= posts.len() => n,
+                    _ => {
+                        ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                            .await?;
+                        continue;
+                    }
+                };
+
+                let target_post = &posts[post_num - 1];
+
+                // Select deletion mode
+                ctx.send_line(session, "").await?;
+                ctx.send_line(session, ctx.i18n.t("admin.select_deletion_mode"))
+                    .await?;
+                ctx.send_line(
+                    session,
+                    &format!("  [1] {}", ctx.i18n.t("admin.soft_delete")),
+                )
+                .await?;
+                ctx.send_line(
+                    session,
+                    &format!("  [2] {}", ctx.i18n.t("admin.hard_delete")),
+                )
+                .await?;
+                ctx.send(
+                    session,
+                    &format!(
+                        "{} [Q={}]: ",
+                        ctx.i18n.t("menu.select_prompt"),
+                        ctx.i18n.t("common.cancel")
+                    ),
+                )
+                .await?;
+
+                let mode_input = ctx.read_line(session).await?;
+                let mode_input = mode_input.trim();
+
+                if mode_input.eq_ignore_ascii_case("q") || mode_input.is_empty() {
+                    continue;
+                }
+
+                let mode = match mode_input {
+                    "1" => PostDeletionMode::Soft,
+                    "2" => PostDeletionMode::Hard,
+                    _ => {
+                        ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                            .await?;
+                        continue;
+                    }
+                };
+
+                // Confirmation
+                let confirm_msg = ctx
+                    .i18n
+                    .t("admin.confirm_delete_post")
+                    .replace("{{id}}", &target_post.id.to_string());
+                ctx.send(session, &format!("{} ", confirm_msg)).await?;
+
+                let confirm = ctx.read_line(session).await?;
+                if !confirm.trim().eq_ignore_ascii_case("y") {
+                    continue;
+                }
+
+                let service = ContentAdminService::new(&ctx.db);
+                match service.delete_post(target_post.id, mode, current_user) {
+                    Ok(true) => {
+                        let msg = ctx
+                            .i18n
+                            .t("admin.post_deleted")
+                            .replace("{{id}}", &target_post.id.to_string());
+                        ctx.send_line(session, &msg).await?;
+                    }
+                    Ok(false) => {
+                        ctx.send_line(session, ctx.i18n.t("admin.post_not_found"))
+                            .await?;
+                    }
+                    Err(AdminError::NotFound(_)) => {
+                        ctx.send_line(session, ctx.i18n.t("admin.post_not_found"))
+                            .await?;
+                    }
+                    Err(e) => {
+                        ctx.send_line(
+                            session,
+                            &format!("{}: {}", ctx.i18n.t("common.error"), e),
+                        )
+                        .await?;
+                    }
+                }
+                continue;
+            }
+
+            // Invalid input
+            ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                .await?;
+        }
     }
 
     /// Check if user is admin.
