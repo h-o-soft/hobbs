@@ -841,50 +841,6 @@ Select language / Gengo sentaku:
         Ok(())
     }
 
-    /// Show profile screen.
-    async fn show_profile(&self, session: &mut TelnetSession) -> Result<()> {
-        if let Some(user_id) = session.user_id() {
-            let user_repo = UserRepository::new(&self.db);
-
-            if let Ok(Some(user)) = user_repo.get_by_id(user_id) {
-                let mut context = self.create_context();
-                context.set("user.id", Value::number(user.id));
-                context.set("user.username", Value::string(user.username.clone()));
-                context.set("user.nickname", Value::string(user.nickname.clone()));
-                context.set(
-                    "user.email",
-                    Value::string(user.email.clone().unwrap_or_default()),
-                );
-                context.set("user.role", Value::string(format!("{:?}", user.role)));
-
-                // TODO: Use profile template when available
-                self.send_line(
-                    session,
-                    &format!("=== {} ===", self.i18n.t("profile.title")),
-                )
-                .await?;
-                self.send_line(
-                    session,
-                    &format!("{}: {}", self.i18n.t("profile.username"), user.username),
-                )
-                .await?;
-                self.send_line(
-                    session,
-                    &format!("{}: {}", self.i18n.t("profile.nickname"), user.nickname),
-                )
-                .await?;
-            }
-        }
-
-        // Wait for key press
-        self.send(session, self.i18n.t("common.press_enter"))
-            .await?;
-        let mut buf = [0u8; 1];
-        let _ = session.stream_mut().read(&mut buf).await;
-
-        Ok(())
-    }
-
     /// Check if the user is an admin.
     async fn is_admin(&self, session: &TelnetSession) -> bool {
         if let Some(user_id) = session.user_id() {

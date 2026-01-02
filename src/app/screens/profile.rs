@@ -5,9 +5,10 @@ use tracing::error;
 use super::common::ScreenContext;
 use super::ScreenResult;
 use crate::auth::{change_password, update_profile, ProfileUpdateRequest};
-use crate::db::{UserRepository, UserUpdate};
+use crate::db::{Role, UserRepository, UserUpdate};
 use crate::error::Result;
 use crate::server::{CharacterEncoding, EchoMode, TelnetSession};
+use crate::template::Value;
 
 /// Profile screen handler.
 pub struct ProfileScreen;
@@ -32,62 +33,26 @@ impl ProfileScreen {
                 None => return Ok(ScreenResult::Back),
             };
 
-            // Display profile
-            ctx.send_line(session, "").await?;
-            ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("profile.title")))
-                .await?;
-            ctx.send_line(session, "").await?;
-            ctx.send_line(
-                session,
-                &format!("{}: {}", ctx.i18n.t("profile.username"), user.username),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("{}: {}", ctx.i18n.t("profile.nickname"), user.nickname),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!(
-                    "{}: {}",
-                    ctx.i18n.t("auth.email"),
-                    user.email.as_deref().unwrap_or("-")
-                ),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("{}: {:?}", ctx.i18n.t("role.member"), user.role),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!(
-                    "{}: {}",
-                    ctx.i18n.t("profile.member_since"),
-                    user.created_at
-                ),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!(
-                    "{}: {}",
-                    ctx.i18n.t("profile.last_login"),
-                    user.last_login.as_deref().unwrap_or("-")
-                ),
-            )
-            .await?;
-
-            if let Some(ref profile_text) = user.profile {
-                ctx.send_line(session, "").await?;
-                ctx.send_line(session, &format!("--- {} ---", ctx.i18n.t("profile.bio")))
-                    .await?;
-                ctx.send_line(session, profile_text).await?;
+            // Display profile using template
+            let mut context = ctx.create_context();
+            context.set("user.username", Value::string(user.username.clone()));
+            context.set("user.nickname", Value::string(user.nickname.clone()));
+            context.set(
+                "user.email",
+                Value::string(user.email.as_deref().unwrap_or("-").to_string()),
+            );
+            context.set("user.role_name", Value::string(Self::role_name(ctx, user.role)));
+            context.set("user.created_at", Value::string(user.created_at.clone()));
+            context.set(
+                "user.last_login",
+                Value::string(user.last_login.as_deref().unwrap_or("-").to_string()),
+            );
+            if let Some(ref bio) = user.profile {
+                context.set("user.bio", Value::string(bio.clone()));
             }
 
-            ctx.send_line(session, "").await?;
+            let content = ctx.render_template("profile", &context)?;
+            ctx.send(session, &content).await?;
 
             // Options
             ctx.send(
@@ -509,6 +474,16 @@ impl ProfileScreen {
             "c64" => ctx.i18n.t("terminal.profile_c64").to_string(),
             "c64_ansi" => ctx.i18n.t("terminal.profile_c64_ansi").to_string(),
             _ => ctx.i18n.t("terminal.profile_standard").to_string(),
+        }
+    }
+
+    /// Get display name for a role.
+    fn role_name(ctx: &ScreenContext, role: Role) -> String {
+        match role {
+            Role::Guest => ctx.i18n.t("role.guest").to_string(),
+            Role::Member => ctx.i18n.t("role.member").to_string(),
+            Role::SubOp => ctx.i18n.t("role.subop").to_string(),
+            Role::SysOp => ctx.i18n.t("role.sysop").to_string(),
         }
     }
 }

@@ -1,0 +1,16 @@
+================================================================================
+    {{t "profile.title"}}
+================================================================================
+
+    {{t "profile.username"}}    : {{user.username}}
+    {{t "profile.nickname"}}    : {{user.nickname}}
+    {{t "auth.email"}}          : {{user.email}}
+    {{t "member.role"}}         : {{user.role_name}}
+    {{t "profile.member_since"}}: {{user.created_at}}
+    {{t "profile.last_login"}}  : {{user.last_login}}
+{{#if user.bio}}
+
+    --- {{t "profile.bio"}} ---
+    {{user.bio}}
+{{/if}}
+
