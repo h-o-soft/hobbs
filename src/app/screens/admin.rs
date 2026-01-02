@@ -133,12 +133,17 @@ impl AdminScreen {
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [16] {}", ctx.i18n.t("admin.create_folder")),
+                &format!("  [16] {}", ctx.i18n.t("admin.edit_folder")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [17] {}", ctx.i18n.t("admin.delete_folder")),
+                &format!("  [17] {}", ctx.i18n.t("admin.create_folder")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [18] {}", ctx.i18n.t("admin.delete_folder")),
             )
             .await?;
             ctx.send_line(session, "").await?;
@@ -148,7 +153,7 @@ impl AdminScreen {
                 &format!("=== {} ===", ctx.i18n.t("admin.system_status")),
             )
             .await?;
-            ctx.send_line(session, "  [18] System Status").await?;
+            ctx.send_line(session, "  [19] System Status").await?;
             ctx.send_line(session, "").await?;
 
             ctx.send(
@@ -181,9 +186,10 @@ impl AdminScreen {
                 "13" => Self::create_chat_room(ctx, session).await?,
                 "14" => Self::delete_chat_room(ctx, session).await?,
                 "15" => Self::show_folders(ctx, session).await?,
-                "16" => Self::create_folder(ctx, session).await?,
-                "17" => Self::delete_folder(ctx, session).await?,
-                "18" => Self::show_system_status(ctx, session).await?,
+                "16" => Self::edit_folder(ctx, session).await?,
+                "17" => Self::create_folder(ctx, session).await?,
+                "18" => Self::delete_folder(ctx, session).await?,
+                "19" => Self::show_system_status(ctx, session).await?,
                 _ => {}
             }
         }
@@ -2054,6 +2060,347 @@ impl AdminScreen {
             }
             Err(e) => {
                 ctx.send_line(session, &format!("Error: {}", e)).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Edit a folder.
+    async fn edit_folder(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
+        use crate::admin::FolderAdminService;
+        use crate::db::{Role, UserRepository};
+        use crate::file::{FolderRepository, FolderUpdate};
+
+        // Get current admin user
+        let current_user = match session.user_id() {
+            Some(user_id) => {
+                let user_repo = UserRepository::new(&ctx.db);
+                match user_repo.get_by_id(user_id)? {
+                    Some(user) => user,
+                    None => {
+                        ctx.send_line(session, ctx.i18n.t("error.user_not_found"))
+                            .await?;
+                        return Ok(());
+                    }
+                }
+            }
+            None => {
+                ctx.send_line(session, ctx.i18n.t("error.not_logged_in"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        let folders = FolderRepository::list_root(ctx.db.conn())?;
+
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("admin.edit_folder")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        if folders.is_empty() {
+            ctx.send_line(session, ctx.i18n.t("file.no_folders")).await?;
+            ctx.send_line(session, "").await?;
+            ctx.wait_for_enter(session).await?;
+            return Ok(());
+        }
+
+        // Show folder list
+        for (i, folder) in folders.iter().enumerate() {
+            let perm_str = Self::role_to_string(&folder.permission, ctx);
+            let upload_str = Self::role_to_string(&folder.upload_perm, ctx);
+            ctx.send_line(
+                session,
+                &format!(
+                    "  [{}] {} (View: {}, Upload: {})",
+                    i + 1,
+                    folder.name,
+                    perm_str,
+                    upload_str
+                ),
+            )
+            .await?;
+        }
+
+        ctx.send_line(session, "").await?;
+        ctx.send(
+            session,
+            &format!(
+                "{} [Q={}]: ",
+                ctx.i18n.t("admin.folder_number_to_edit"),
+                ctx.i18n.t("common.cancel")
+            ),
+        )
+        .await?;
+
+        let input = ctx.read_line(session).await?;
+        let input = input.trim();
+
+        if input.eq_ignore_ascii_case("q") || input.is_empty() {
+            return Ok(());
+        }
+
+        let folder_num: usize = match input.parse() {
+            Ok(n) if n > 0 && n <= folders.len() => n,
+            _ => {
+                ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        let folder = &folders[folder_num - 1];
+
+        // Show current settings
+        ctx.send_line(session, "").await?;
+        ctx.send_line(session, ctx.i18n.t("admin.folder_current_settings"))
+            .await?;
+        ctx.send_line(
+            session,
+            &format!(
+                "  {}: {}",
+                ctx.i18n.t("admin.folder_name"),
+                folder.name
+            ),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!(
+                "  {}: {}",
+                ctx.i18n.t("file.description"),
+                folder.description.as_deref().unwrap_or("-")
+            ),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!(
+                "  {}: {}",
+                ctx.i18n.t("admin.permission"),
+                Self::role_to_string(&folder.permission, ctx)
+            ),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!(
+                "  {}: {}",
+                ctx.i18n.t("admin.upload_perm"),
+                Self::role_to_string(&folder.upload_perm, ctx)
+            ),
+        )
+        .await?;
+
+        // Show edit menu
+        ctx.send_line(session, "").await?;
+        ctx.send_line(session, ctx.i18n.t("admin.folder_select_item"))
+            .await?;
+        ctx.send_line(
+            session,
+            &format!("  [1] {}", ctx.i18n.t("admin.folder_edit_name")),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!("  [2] {}", ctx.i18n.t("admin.folder_edit_description")),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!("  [3] {}", ctx.i18n.t("admin.folder_edit_permission")),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!("  [4] {}", ctx.i18n.t("admin.folder_edit_upload_perm")),
+        )
+        .await?;
+        ctx.send(
+            session,
+            &format!(
+                "{} [Q={}]: ",
+                ctx.i18n.t("menu.select_prompt"),
+                ctx.i18n.t("common.cancel")
+            ),
+        )
+        .await?;
+
+        let edit_input = ctx.read_line(session).await?;
+        let edit_input = edit_input.trim();
+
+        if edit_input.eq_ignore_ascii_case("q") || edit_input.is_empty() {
+            return Ok(());
+        }
+
+        let mut update = FolderUpdate::new();
+        let mut updated_field = String::new();
+
+        match edit_input {
+            "1" => {
+                // Edit name
+                ctx.send(
+                    session,
+                    &format!(
+                        "{} [{}={}]: ",
+                        ctx.i18n.t("admin.new_name"),
+                        ctx.i18n.t("common.cancel"),
+                        ctx.i18n.t("admin.keep_current")
+                    ),
+                )
+                .await?;
+                let new_name = ctx.read_line(session).await?;
+                let new_name = new_name.trim();
+                if new_name.is_empty() {
+                    return Ok(());
+                }
+                update = update.name(new_name);
+                updated_field = ctx.i18n.t("admin.folder_name").to_string();
+            }
+            "2" => {
+                // Edit description
+                ctx.send(
+                    session,
+                    &format!(
+                        "{} [{}={}]: ",
+                        ctx.i18n.t("admin.new_description"),
+                        ctx.i18n.t("common.cancel"),
+                        ctx.i18n.t("admin.keep_current")
+                    ),
+                )
+                .await?;
+                let new_desc = ctx.read_line(session).await?;
+                let new_desc = new_desc.trim();
+                if new_desc.is_empty() {
+                    return Ok(());
+                }
+                if new_desc == "-" {
+                    update = update.description(None::<String>);
+                } else {
+                    update = update.description(Some(new_desc));
+                }
+                updated_field = ctx.i18n.t("file.description").to_string();
+            }
+            "3" => {
+                // Edit view permission
+                ctx.send_line(session, "").await?;
+                ctx.send_line(session, ctx.i18n.t("admin.select_permission"))
+                    .await?;
+                ctx.send_line(
+                    session,
+                    &format!("  [1] {}", ctx.i18n.t("role.guest")),
+                )
+                .await?;
+                ctx.send_line(
+                    session,
+                    &format!("  [2] {}", ctx.i18n.t("role.member")),
+                )
+                .await?;
+                ctx.send_line(
+                    session,
+                    &format!("  [3] {}", ctx.i18n.t("role.subop")),
+                )
+                .await?;
+                ctx.send_line(
+                    session,
+                    &format!("  [4] {}", ctx.i18n.t("role.sysop")),
+                )
+                .await?;
+                ctx.send(
+                    session,
+                    &format!(
+                        "{} [Q={}]: ",
+                        ctx.i18n.t("menu.select_prompt"),
+                        ctx.i18n.t("common.cancel")
+                    ),
+                )
+                .await?;
+
+                let perm_input = ctx.read_line(session).await?;
+                let permission = match perm_input.trim() {
+                    "1" => Role::Guest,
+                    "2" => Role::Member,
+                    "3" => Role::SubOp,
+                    "4" => Role::SysOp,
+                    _ => return Ok(()),
+                };
+                update = update.permission(permission);
+                updated_field = ctx.i18n.t("admin.permission").to_string();
+            }
+            "4" => {
+                // Edit upload permission
+                ctx.send_line(session, "").await?;
+                ctx.send_line(session, ctx.i18n.t("admin.select_permission"))
+                    .await?;
+                ctx.send_line(
+                    session,
+                    &format!("  [1] {}", ctx.i18n.t("role.guest")),
+                )
+                .await?;
+                ctx.send_line(
+                    session,
+                    &format!("  [2] {}", ctx.i18n.t("role.member")),
+                )
+                .await?;
+                ctx.send_line(
+                    session,
+                    &format!("  [3] {}", ctx.i18n.t("role.subop")),
+                )
+                .await?;
+                ctx.send_line(
+                    session,
+                    &format!("  [4] {}", ctx.i18n.t("role.sysop")),
+                )
+                .await?;
+                ctx.send(
+                    session,
+                    &format!(
+                        "{} [Q={}]: ",
+                        ctx.i18n.t("menu.select_prompt"),
+                        ctx.i18n.t("common.cancel")
+                    ),
+                )
+                .await?;
+
+                let perm_input = ctx.read_line(session).await?;
+                let permission = match perm_input.trim() {
+                    "1" => Role::Guest,
+                    "2" => Role::Member,
+                    "3" => Role::SubOp,
+                    "4" => Role::SysOp,
+                    _ => return Ok(()),
+                };
+                update = update.upload_perm(permission);
+                updated_field = ctx.i18n.t("admin.upload_perm").to_string();
+            }
+            _ => {
+                ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                    .await?;
+                return Ok(());
+            }
+        }
+
+        // Apply update
+        let service = FolderAdminService::new(&ctx.db);
+        match service.update_folder(folder.id, &update, &current_user) {
+            Ok(updated_folder) => {
+                let msg = ctx
+                    .i18n
+                    .t("admin.folder_updated")
+                    .replace("{{name}}", &updated_folder.name)
+                    .replace("{{field}}", &updated_field);
+                ctx.send_line(session, &msg).await?;
+            }
+            Err(e) => {
+                ctx.send_line(
+                    session,
+                    &format!("{}: {}", ctx.i18n.t("common.error"), e),
+                )
+                .await?;
             }
         }
 
