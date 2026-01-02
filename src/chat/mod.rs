@@ -18,4 +18,6 @@ pub use command::{
 };
 pub use log::{ChatLog, ChatLogRepository, NewChatLog, DEFAULT_RECENT_LOG_COUNT};
 pub use manager::{ChatRoomManager, DeleteRoomError, RoomInfo};
-pub use room::{ChatMessage, ChatParticipant, ChatRoom, MessageType};
+pub use room::{
+    ChatMessage, ChatParticipant, ChatRoom, JoinResult, MessageType, MAX_PARTICIPANTS_PER_ROOM,
+};
