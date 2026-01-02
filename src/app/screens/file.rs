@@ -441,8 +441,11 @@ impl FileScreen {
         // Small delay to let user start their XMODEM sender
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-        // Perform XMODEM receive
-        match xmodem_receive(session.stream_mut()).await {
+        // Calculate max file size in bytes from config (MB)
+        let max_size = (ctx.config.files.max_upload_size_mb as usize) * 1024 * 1024;
+
+        // Perform XMODEM receive with size limit
+        match xmodem_receive(session.stream_mut(), max_size).await {
             Ok(data) => {
                 // Save the file
                 let storage = match FileStorage::new(&ctx.config.files.storage_path) {
@@ -492,6 +495,15 @@ impl FileScreen {
                 let error_msg = match e {
                     TransferError::Cancelled => ctx.i18n.t("file.xmodem_cancelled").to_string(),
                     TransferError::Timeout => ctx.i18n.t("file.xmodem_timeout").to_string(),
+                    TransferError::FileTooLarge(max) => {
+                        // Show max size in MB
+                        let max_mb = max / 1024 / 1024;
+                        format!(
+                            "{} (max: {} MB)",
+                            ctx.i18n.t("file.xmodem_file_too_large"),
+                            max_mb
+                        )
+                    }
                     _ => format!("{}: {}", ctx.i18n.t("file.xmodem_failed"), e),
                 };
                 ctx.send_line(session, &error_msg).await?;

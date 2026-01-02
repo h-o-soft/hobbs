@@ -248,6 +248,7 @@ xmodem_complete = "Transfer complete"
 xmodem_failed = "Transfer failed"
 xmodem_cancelled = "Transfer cancelled"
 xmodem_timeout = "Transfer timed out"
+xmodem_file_too_large = "File exceeds size limit"
 
 [profile]
 title = "Profile"

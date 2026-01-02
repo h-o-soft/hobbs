@@ -252,6 +252,7 @@ xmodem_complete = "転送が完了しました"
 xmodem_failed = "転送に失敗しました"
 xmodem_cancelled = "転送がキャンセルされました"
 xmodem_timeout = "転送がタイムアウトしました"
+xmodem_file_too_large = "ファイルサイズが制限を超えています"
 
 [profile]
 title = "プロフィール"
