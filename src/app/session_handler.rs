@@ -268,6 +268,21 @@ impl SessionHandler {
                         }
                     }
                 }
+                SessionState::Script => {
+                    let mut screen_ctx = self.create_screen_context();
+                    match super::screens::ScriptScreen::run(&mut screen_ctx, session).await? {
+                        super::screens::ScreenResult::Logout => {
+                            session.clear_user();
+                            session.set_state(SessionState::Welcome);
+                        }
+                        super::screens::ScreenResult::Quit => {
+                            break;
+                        }
+                        _ => {
+                            session.set_state(SessionState::MainMenu);
+                        }
+                    }
+                }
                 SessionState::Admin => {
                     let mut screen_ctx = self.create_screen_context();
                     match super::screens::AdminScreen::run(&mut screen_ctx, session).await? {
@@ -666,6 +681,9 @@ Select language / Gengo sentaku:
             }
             MenuAction::File => {
                 session.set_state(SessionState::Files);
+            }
+            MenuAction::Script => {
+                session.set_state(SessionState::Script);
             }
             MenuAction::Profile => {
                 if is_logged_in {

@@ -6,6 +6,7 @@
     [C] {{t "menu.chat"}}          - {{t "menu.chat_desc"}} ({{t "common.current"}} {{chat.online_count}}{{t "common.people"}})
     [M] {{t "menu.mail"}}            - {{t "menu.mail_desc"}} ({{t "mail.unread_count" count=user.unread_mail}})
     [F] {{t "menu.file"}}          - {{t "menu.file_desc"}}
+    [S] {{t "menu.script"}}          - {{t "menu.script_desc"}}
     [P] {{t "menu.profile"}}      - {{t "menu.profile_desc"}}
     [W] {{t "menu.user_list"}}          - {{t "menu.user_list_desc"}}
 
