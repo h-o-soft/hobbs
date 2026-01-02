@@ -12,6 +12,44 @@ use super::thread_repository::ThreadRepository;
 use super::types::{Board, BoardType};
 use super::{Post, Thread};
 
+/// Maximum length for post/thread titles (in characters).
+pub const MAX_TITLE_LENGTH: usize = 50;
+
+/// Maximum length for post body (in characters).
+pub const MAX_BODY_LENGTH: usize = 10_000;
+
+/// Validate a title string.
+fn validate_title(title: &str) -> Result<()> {
+    let char_count = title.chars().count();
+    if char_count > MAX_TITLE_LENGTH {
+        return Err(HobbsError::Validation(format!(
+            "タイトルが長すぎます（{}文字以内）",
+            MAX_TITLE_LENGTH
+        )));
+    }
+    if title.trim().is_empty() {
+        return Err(HobbsError::Validation(
+            "タイトルを入力してください".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Validate a post body string.
+fn validate_body(body: &str) -> Result<()> {
+    let char_count = body.chars().count();
+    if char_count > MAX_BODY_LENGTH {
+        return Err(HobbsError::Validation(format!(
+            "本文が長すぎます（{}文字以内）",
+            MAX_BODY_LENGTH
+        )));
+    }
+    if body.trim().is_empty() {
+        return Err(HobbsError::Validation("本文を入力してください".to_string()));
+    }
+    Ok(())
+}
+
 /// Pagination parameters.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Pagination {
@@ -280,6 +318,11 @@ impl<'a> BoardService<'a> {
         author_id: i64,
         user_role: Role,
     ) -> Result<Thread> {
+        let title = title.into();
+
+        // Validate title
+        validate_title(&title)?;
+
         // Check board access and write permission
         let board = self.get_board(board_id, user_role)?;
 
@@ -310,6 +353,11 @@ impl<'a> BoardService<'a> {
         body: impl Into<String>,
         user_role: Role,
     ) -> Result<Post> {
+        let body = body.into();
+
+        // Validate body
+        validate_body(&body)?;
+
         // Get thread to check permissions and get board_id
         let thread = self.get_thread(thread_id, user_role)?;
 
@@ -342,6 +390,13 @@ impl<'a> BoardService<'a> {
         body: impl Into<String>,
         user_role: Role,
     ) -> Result<Post> {
+        let title = title.into();
+        let body = body.into();
+
+        // Validate title and body
+        validate_title(&title)?;
+        validate_body(&body)?;
+
         // Check board access and write permission
         let board = self.get_board(board_id, user_role)?;
 
@@ -1387,6 +1442,116 @@ mod tests {
 
         let service = BoardService::new(&db);
         let result = service.get_post(post.id, Role::Guest);
+
+        assert!(result.is_err());
+    }
+
+    // ========== Validation Tests ==========
+
+    #[test]
+    fn test_validate_title_ok() {
+        assert!(super::validate_title("Normal title").is_ok());
+        assert!(super::validate_title("a").is_ok());
+        assert!(super::validate_title(&"あ".repeat(50)).is_ok()); // 50 chars
+    }
+
+    #[test]
+    fn test_validate_title_empty() {
+        assert!(super::validate_title("").is_err());
+        assert!(super::validate_title("   ").is_err());
+    }
+
+    #[test]
+    fn test_validate_title_too_long() {
+        let long_title = "あ".repeat(51); // 51 chars
+        assert!(super::validate_title(&long_title).is_err());
+    }
+
+    #[test]
+    fn test_validate_body_ok() {
+        assert!(super::validate_body("Normal body").is_ok());
+        assert!(super::validate_body("a").is_ok());
+        assert!(super::validate_body(&"あ".repeat(10_000)).is_ok()); // 10,000 chars
+    }
+
+    #[test]
+    fn test_validate_body_empty() {
+        assert!(super::validate_body("").is_err());
+        assert!(super::validate_body("   ").is_err());
+    }
+
+    #[test]
+    fn test_validate_body_too_long() {
+        let long_body = "あ".repeat(10_001); // 10,001 chars
+        assert!(super::validate_body(&long_body).is_err());
+    }
+
+    #[test]
+    fn test_create_thread_title_too_long() {
+        let db = setup_db();
+        let author_id = create_test_user(&db);
+        let board_repo = BoardRepository::new(&db);
+        let board = board_repo
+            .create(&NewBoard::new("test").with_board_type(BoardType::Thread))
+            .unwrap();
+
+        let service = BoardService::new(&db);
+        let long_title = "あ".repeat(51);
+        let result = service.create_thread(board.id, long_title, author_id, Role::Member);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_thread_post_body_too_long() {
+        let db = setup_db();
+        let author_id = create_test_user(&db);
+        let board_repo = BoardRepository::new(&db);
+        let board = board_repo
+            .create(&NewBoard::new("test").with_board_type(BoardType::Thread))
+            .unwrap();
+
+        let service = BoardService::new(&db);
+        let thread = service
+            .create_thread(board.id, "Test Thread", author_id, Role::Member)
+            .unwrap();
+
+        let long_body = "あ".repeat(10_001);
+        let result = service.create_thread_post(thread.id, author_id, long_body, Role::Member);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_flat_post_title_too_long() {
+        let db = setup_db();
+        let author_id = create_test_user(&db);
+        let board_repo = BoardRepository::new(&db);
+        let board = board_repo
+            .create(&NewBoard::new("test").with_board_type(BoardType::Flat))
+            .unwrap();
+
+        let service = BoardService::new(&db);
+        let long_title = "あ".repeat(51);
+        let result =
+            service.create_flat_post(board.id, author_id, long_title, "Body", Role::Member);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_flat_post_body_too_long() {
+        let db = setup_db();
+        let author_id = create_test_user(&db);
+        let board_repo = BoardRepository::new(&db);
+        let board = board_repo
+            .create(&NewBoard::new("test").with_board_type(BoardType::Flat))
+            .unwrap();
+
+        let service = BoardService::new(&db);
+        let long_body = "あ".repeat(10_001);
+        let result =
+            service.create_flat_post(board.id, author_id, "Title", long_body, Role::Member);
 
         assert!(result.is_err());
     }
