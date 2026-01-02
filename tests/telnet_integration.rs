@@ -233,10 +233,9 @@ fn test_escaped_iac() {
     let input = vec![b'H', b'i', iac::IAC, iac::IAC, b'!'];
     let (data, commands) = parser.parse(&input);
 
-    // The escaped IAC is not added to data in current implementation
-    // but no command should be generated
+    // Escaped IAC should produce a literal 0xFF byte in data
     assert!(commands.is_empty());
-    assert_eq!(data, b"Hi!");
+    assert_eq!(data, vec![b'H', b'i', 0xFF, b'!']);
 }
 
 #[test]
