@@ -410,9 +410,10 @@ impl ScreenContext {
             if lines.len() >= MAX_MULTILINE_LINES {
                 self.send_line(
                     session,
-                    &self
-                        .i18n
-                        .t_with("common.too_many_lines", &[("max", &MAX_MULTILINE_LINES.to_string())]),
+                    &self.i18n.t_with(
+                        "common.too_many_lines",
+                        &[("max", &MAX_MULTILINE_LINES.to_string())],
+                    ),
                 )
                 .await?;
                 return Ok(None);

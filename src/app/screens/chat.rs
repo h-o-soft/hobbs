@@ -139,19 +139,26 @@ impl ChatScreen {
 
         // Show room header
         ctx.send_line(session, "").await?;
-        ctx.send_line(
-            session,
-            &format!("=== {} ===", room.name()),
-        )
-        .await?;
-        ctx.send_line(session, ctx.i18n.t("chat.command_help")).await?;
+        ctx.send_line(session, &format!("=== {} ===", room.name()))
+            .await?;
+        ctx.send_line(session, ctx.i18n.t("chat.command_help"))
+            .await?;
         ctx.send_line(session, "").await?;
 
         // Show recent logs
         Self::show_recent_logs(ctx, session, room_id).await?;
 
         // Main chat loop
-        let result = Self::chat_loop(ctx, session, &room, &mut receiver, &session_id, user_id, &nickname).await;
+        let result = Self::chat_loop(
+            ctx,
+            session,
+            &room,
+            &mut receiver,
+            &session_id,
+            user_id,
+            &nickname,
+        )
+        .await;
 
         // Leave the room
         room.leave(&session_id).await;

@@ -274,9 +274,10 @@ impl<'a> UnreadRepository<'a> {
         params.push(Box::new(last_read_id));
 
         let unread_ids = stmt
-            .query_map(rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())), |row| {
-                row.get::<_, i64>(0)
-            })?
+            .query_map(
+                rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())),
+                |row| row.get::<_, i64>(0),
+            )?
             .collect::<rusqlite::Result<std::collections::HashSet<_>>>()?;
 
         Ok(unread_ids)
@@ -295,7 +296,11 @@ impl<'a> UnreadRepository<'a> {
     /// Returns posts from all accessible boards that the user hasn't read,
     /// ordered by board sort order, then by post ID.
     /// Each post includes the board name for display purposes.
-    pub fn get_all_unread_posts(&self, user_id: i64, user_role: Role) -> Result<Vec<UnreadPostWithBoard>> {
+    pub fn get_all_unread_posts(
+        &self,
+        user_id: i64,
+        user_role: Role,
+    ) -> Result<Vec<UnreadPostWithBoard>> {
         // Get all active boards with their read positions
         let mut stmt = self.db.conn().prepare(
             "SELECT b.id, b.name, b.min_read_role,
@@ -415,7 +420,10 @@ impl<'a> UnreadRepository<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::board::{BoardRepository, NewBoard, NewFlatPost, NewThread, NewThreadPost, PostRepository, ThreadRepository};
+    use crate::board::{
+        BoardRepository, NewBoard, NewFlatPost, NewThread, NewThreadPost, PostRepository,
+        ThreadRepository,
+    };
     use crate::db::{NewUser, UserRepository};
 
     fn setup_db() -> Database {
@@ -781,7 +789,12 @@ mod tests {
         thread.id
     }
 
-    fn create_test_thread_post(db: &Database, board_id: i64, thread_id: i64, author_id: i64) -> i64 {
+    fn create_test_thread_post(
+        db: &Database,
+        board_id: i64,
+        thread_id: i64,
+        author_id: i64,
+    ) -> i64 {
         let post_repo = PostRepository::new(db);
         let post = post_repo
             .create_thread_post(&NewThreadPost::new(board_id, thread_id, author_id, "Body"))
@@ -891,7 +904,9 @@ mod tests {
         // Add new post to thread
         create_test_thread_post(&db, board_id, thread_id, user_id);
 
-        let unread_ids = repo.get_unread_thread_ids(user_id, board_id, &[thread_id]).unwrap();
+        let unread_ids = repo
+            .get_unread_thread_ids(user_id, board_id, &[thread_id])
+            .unwrap();
 
         // Thread should now have unread posts
         assert_eq!(unread_ids.len(), 1);

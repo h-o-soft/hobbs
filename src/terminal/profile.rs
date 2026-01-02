@@ -447,8 +447,14 @@ mod tests {
     #[test]
     fn test_from_name_case_insensitive() {
         assert_eq!(TerminalProfile::from_name("C64"), TerminalProfile::c64());
-        assert_eq!(TerminalProfile::from_name("C64_ANSI"), TerminalProfile::c64_ansi());
-        assert_eq!(TerminalProfile::from_name("STANDARD"), TerminalProfile::standard());
+        assert_eq!(
+            TerminalProfile::from_name("C64_ANSI"),
+            TerminalProfile::c64_ansi()
+        );
+        assert_eq!(
+            TerminalProfile::from_name("STANDARD"),
+            TerminalProfile::standard()
+        );
     }
 
     #[test]

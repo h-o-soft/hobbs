@@ -215,6 +215,23 @@ CREATE INDEX idx_script_data_script ON script_data(script_id);
 CREATE INDEX idx_script_data_user ON script_data(user_id);
 CREATE INDEX idx_script_data_script_user ON script_data(script_id, user_id);
 "#,
+    // v14: Script execution logs
+    r#"
+-- Script execution logs for tracking usage and debugging
+CREATE TABLE script_logs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    script_id       INTEGER NOT NULL REFERENCES scripts(id) ON DELETE CASCADE,
+    user_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    executed_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    execution_ms    INTEGER NOT NULL,       -- Execution time in milliseconds
+    success         INTEGER NOT NULL,       -- 1 = success, 0 = error
+    error_message   TEXT                    -- Error message if success = 0
+);
+
+CREATE INDEX idx_script_logs_script ON script_logs(script_id);
+CREATE INDEX idx_script_logs_user ON script_logs(user_id);
+CREATE INDEX idx_script_logs_executed_at ON script_logs(executed_at);
+"#,
 ];
 
 #[cfg(test)]
@@ -382,5 +399,20 @@ mod tests {
         assert!(script_data_migration.contains("idx_script_data_script"));
         assert!(script_data_migration.contains("idx_script_data_user"));
         assert!(script_data_migration.contains("idx_script_data_script_user"));
+    }
+
+    #[test]
+    fn test_script_logs_migration_contains_script_logs_table() {
+        let script_logs_migration = MIGRATIONS[13];
+        assert!(script_logs_migration.contains("CREATE TABLE script_logs"));
+        assert!(script_logs_migration.contains("script_id"));
+        assert!(script_logs_migration.contains("user_id"));
+        assert!(script_logs_migration.contains("executed_at"));
+        assert!(script_logs_migration.contains("execution_ms"));
+        assert!(script_logs_migration.contains("success"));
+        assert!(script_logs_migration.contains("error_message"));
+        assert!(script_logs_migration.contains("idx_script_logs_script"));
+        assert!(script_logs_migration.contains("idx_script_logs_user"));
+        assert!(script_logs_migration.contains("idx_script_logs_executed_at"));
     }
 }

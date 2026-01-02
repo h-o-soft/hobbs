@@ -64,11 +64,8 @@ impl AdminScreen {
                 &format!("=== {} ===", ctx.i18n.t("admin.user_management")),
             )
             .await?;
-            ctx.send_line(
-                session,
-                &format!("  [6] {}", ctx.i18n.t("admin.user_list")),
-            )
-            .await?;
+            ctx.send_line(session, &format!("  [6] {}", ctx.i18n.t("admin.user_list")))
+                .await?;
             // SysOp only: change role
             if Self::is_sysop(ctx, session) {
                 ctx.send_line(
@@ -314,7 +311,8 @@ impl AdminScreen {
         };
 
         if boards.is_empty() {
-            ctx.send_line(session, ctx.i18n.t("board.no_boards")).await?;
+            ctx.send_line(session, ctx.i18n.t("board.no_boards"))
+                .await?;
             return Ok(());
         }
 
@@ -335,12 +333,7 @@ impl AdminScreen {
             };
             ctx.send_line(
                 session,
-                &format!(
-                    "  {}: {} [{}]",
-                    i + 1,
-                    board.name,
-                    status
-                ),
+                &format!("  {}: {} [{}]", i + 1, board.name, status),
             )
             .await?;
         }
@@ -402,11 +395,7 @@ impl AdminScreen {
 
             ctx.send_line(
                 session,
-                &format!(
-                    "  {}: {}",
-                    ctx.i18n.t("admin.board_name"),
-                    board.name
-                ),
+                &format!("  {}: {}", ctx.i18n.t("admin.board_name"), board.name),
             )
             .await?;
             ctx.send_line(
@@ -492,11 +481,8 @@ impl AdminScreen {
                 "q" | "" => break,
                 "1" => {
                     // Edit name
-                    ctx.send(
-                        session,
-                        &format!("{}: ", ctx.i18n.t("admin.new_name")),
-                    )
-                    .await?;
+                    ctx.send(session, &format!("{}: ", ctx.i18n.t("admin.new_name")))
+                        .await?;
                     let new_name = ctx.read_line(session).await?;
                     let new_name = new_name.trim();
                     if !new_name.is_empty() {
@@ -507,7 +493,8 @@ impl AdminScreen {
                         } else {
                             ctx.send_line(
                                 session,
-                                &ctx.i18n.t_with("admin.board_updated", &[("name", new_name)]),
+                                &ctx.i18n
+                                    .t_with("admin.board_updated", &[("name", new_name)]),
                             )
                             .await?;
                         }
@@ -533,7 +520,8 @@ impl AdminScreen {
                     } else {
                         ctx.send_line(
                             session,
-                            &ctx.i18n.t_with("admin.board_updated", &[("name", &board.name)]),
+                            &ctx.i18n
+                                .t_with("admin.board_updated", &[("name", &board.name)]),
                         )
                         .await?;
                     }
@@ -548,7 +536,8 @@ impl AdminScreen {
                         } else {
                             ctx.send_line(
                                 session,
-                                &ctx.i18n.t_with("admin.board_updated", &[("name", &board.name)]),
+                                &ctx.i18n
+                                    .t_with("admin.board_updated", &[("name", &board.name)]),
                             )
                             .await?;
                         }
@@ -564,7 +553,8 @@ impl AdminScreen {
                         } else {
                             ctx.send_line(
                                 session,
-                                &ctx.i18n.t_with("admin.board_updated", &[("name", &board.name)]),
+                                &ctx.i18n
+                                    .t_with("admin.board_updated", &[("name", &board.name)]),
                             )
                             .await?;
                         }
@@ -579,7 +569,8 @@ impl AdminScreen {
                     } else {
                         ctx.send_line(
                             session,
-                            &ctx.i18n.t_with("admin.board_updated", &[("name", &board.name)]),
+                            &ctx.i18n
+                                .t_with("admin.board_updated", &[("name", &board.name)]),
                         )
                         .await?;
                     }
@@ -809,7 +800,8 @@ impl AdminScreen {
             Ok(true) => {
                 ctx.send_line(
                     session,
-                    &ctx.i18n.t_with("admin.board_deleted", &[("name", &board.name)]),
+                    &ctx.i18n
+                        .t_with("admin.board_deleted", &[("name", &board.name)]),
                 )
                 .await?;
             }
@@ -872,10 +864,7 @@ impl AdminScreen {
     }
 
     /// Change user role (SysOp only).
-    async fn change_user_role(
-        ctx: &mut ScreenContext,
-        session: &mut TelnetSession,
-    ) -> Result<()> {
+    async fn change_user_role(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
         use crate::admin::{AdminError, UserAdminService};
         use crate::db::{Role, UserRepository};
 
@@ -1004,7 +993,11 @@ impl AdminScreen {
         ctx.send_line(session, "").await?;
         ctx.send(
             session,
-            &format!("{} [Q={}]: ", ctx.i18n.t("common.number"), ctx.i18n.t("common.cancel")),
+            &format!(
+                "{} [Q={}]: ",
+                ctx.i18n.t("common.number"),
+                ctx.i18n.t("common.cancel")
+            ),
         )
         .await?;
 
@@ -1052,11 +1045,8 @@ impl AdminScreen {
                     .await?;
             }
             Err(e) => {
-                ctx.send_line(
-                    session,
-                    &format!("{}: {}", ctx.i18n.t("common.error"), e),
-                )
-                .await?;
+                ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("common.error"), e))
+                    .await?;
             }
         }
 
@@ -1203,11 +1193,8 @@ impl AdminScreen {
                     .await?;
             }
             Err(e) => {
-                ctx.send_line(
-                    session,
-                    &format!("{}: {}", ctx.i18n.t("common.error"), e),
-                )
-                .await?;
+                ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("common.error"), e))
+                    .await?;
             }
         }
 
@@ -1346,11 +1333,8 @@ impl AdminScreen {
                     .await?;
             }
             Err(e) => {
-                ctx.send_line(
-                    session,
-                    &format!("{}: {}", ctx.i18n.t("common.error"), e),
-                )
-                .await?;
+                ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("common.error"), e))
+                    .await?;
             }
         }
 
@@ -1393,11 +1377,8 @@ impl AdminScreen {
         let sessions = match service.list_sessions(&current_user).await {
             Ok(s) => s,
             Err(e) => {
-                ctx.send_line(
-                    session,
-                    &format!("{}: {}", ctx.i18n.t("common.error"), e),
-                )
-                .await?;
+                ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("common.error"), e))
+                    .await?;
                 ctx.wait_for_enter(session).await?;
                 return Ok(());
             }
@@ -1489,15 +1470,13 @@ impl AdminScreen {
 
                 // Confirmation
                 ctx.send_line(session, "").await?;
-                let target_name = target_session
-                    .username
-                    .as_deref()
-                    .unwrap_or("Guest");
+                let target_name = target_session.username.as_deref().unwrap_or("Guest");
                 let confirm_msg = ctx
                     .i18n
                     .t("admin.confirm_disconnect")
                     .replace("{{name}}", target_name);
-                ctx.send(session, &format!("{} [Y/N]: ", confirm_msg)).await?;
+                ctx.send(session, &format!("{} [Y/N]: ", confirm_msg))
+                    .await?;
 
                 let confirm = ctx.read_line(session).await?;
                 if !confirm.trim().eq_ignore_ascii_case("y") {
@@ -1505,7 +1484,10 @@ impl AdminScreen {
                 }
 
                 // Force disconnect
-                match service.force_disconnect(target_session.id, &current_user).await {
+                match service
+                    .force_disconnect(target_session.id, &current_user)
+                    .await
+                {
                     Ok(_) => {
                         let msg = ctx
                             .i18n
@@ -1518,11 +1500,8 @@ impl AdminScreen {
                             .await?;
                     }
                     Err(e) => {
-                        ctx.send_line(
-                            session,
-                            &format!("{}: {}", ctx.i18n.t("common.error"), e),
-                        )
-                        .await?;
+                        ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("common.error"), e))
+                            .await?;
                     }
                 }
 
@@ -1542,7 +1521,9 @@ impl AdminScreen {
         match state {
             SessionState::Welcome => ctx.i18n.t("admin.session_state_welcome").to_string(),
             SessionState::Login => ctx.i18n.t("admin.session_state_login").to_string(),
-            SessionState::Registration => ctx.i18n.t("admin.session_state_registration").to_string(),
+            SessionState::Registration => {
+                ctx.i18n.t("admin.session_state_registration").to_string()
+            }
             SessionState::MainMenu => ctx.i18n.t("admin.session_state_mainmenu").to_string(),
             SessionState::Board => ctx.i18n.t("admin.session_state_board").to_string(),
             SessionState::Chat => ctx.i18n.t("admin.session_state_chat").to_string(),
@@ -1695,11 +1676,8 @@ impl AdminScreen {
                     .await?;
             }
             Err(e) => {
-                ctx.send_line(
-                    session,
-                    &format!("{}: {}", ctx.i18n.t("common.error"), e),
-                )
-                .await?;
+                ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("common.error"), e))
+                    .await?;
             }
         }
 
@@ -1773,17 +1751,17 @@ impl AdminScreen {
         if rooms.is_empty() {
             ctx.send_line(session, ctx.i18n.t("chat.no_rooms")).await?;
         } else {
-            ctx.send_line(
-                session,
-                &format!("{:<12} {:<20} {}", "ID", "Name", "Users"),
-            )
-            .await?;
+            ctx.send_line(session, &format!("{:<12} {:<20} {}", "ID", "Name", "Users"))
+                .await?;
             ctx.send_line(session, &"-".repeat(40)).await?;
 
             for room in &rooms {
                 ctx.send_line(
                     session,
-                    &format!("{:<12} {:<20} {}", room.id, room.name, room.participant_count),
+                    &format!(
+                        "{:<12} {:<20} {}",
+                        room.id, room.name, room.participant_count
+                    ),
                 )
                 .await?;
             }
@@ -1795,10 +1773,7 @@ impl AdminScreen {
     }
 
     /// Create a new chat room.
-    async fn create_chat_room(
-        ctx: &mut ScreenContext,
-        session: &mut TelnetSession,
-    ) -> Result<()> {
+    async fn create_chat_room(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
         ctx.send_line(session, "").await?;
         ctx.send_line(
             session,
@@ -1828,10 +1803,7 @@ impl AdminScreen {
         // Create the room
         match ctx.chat_manager.create_room(id, name).await {
             Some(_) => {
-                let msg = ctx
-                    .i18n
-                    .t("admin.room_created")
-                    .replace("{{name}}", name);
+                let msg = ctx.i18n.t("admin.room_created").replace("{{name}}", name);
                 ctx.send_line(session, &msg).await?;
             }
             None => {
@@ -1844,10 +1816,7 @@ impl AdminScreen {
     }
 
     /// Delete a chat room.
-    async fn delete_chat_room(
-        ctx: &mut ScreenContext,
-        session: &mut TelnetSession,
-    ) -> Result<()> {
+    async fn delete_chat_room(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
         // Show current rooms
         let rooms = ctx.chat_manager.list_rooms().await;
 
@@ -1905,10 +1874,7 @@ impl AdminScreen {
                 let room = &rooms[idx];
                 match ctx.chat_manager.delete_room(&room.id).await {
                     Ok(name) => {
-                        let msg = ctx
-                            .i18n
-                            .t("admin.room_deleted")
-                            .replace("{{name}}", &name);
+                        let msg = ctx.i18n.t("admin.room_deleted").replace("{{name}}", &name);
                         ctx.send_line(session, &msg).await?;
                     }
                     Err(DeleteRoomError::NotFound) => {
@@ -1941,7 +1907,8 @@ impl AdminScreen {
         ctx.send_line(session, "").await?;
 
         if folders.is_empty() {
-            ctx.send_line(session, ctx.i18n.t("file.no_folders")).await?;
+            ctx.send_line(session, ctx.i18n.t("file.no_folders"))
+                .await?;
         } else {
             ctx.send_line(
                 session,
@@ -2002,11 +1969,8 @@ impl AdminScreen {
         }
 
         // Get description
-        ctx.send(
-            session,
-            &format!("{}: ", ctx.i18n.t("file.description")),
-        )
-        .await?;
+        ctx.send(session, &format!("{}: ", ctx.i18n.t("file.description")))
+            .await?;
         let description = ctx.read_line(session).await?;
         let description = description.trim();
 
@@ -2104,7 +2068,8 @@ impl AdminScreen {
         ctx.send_line(session, "").await?;
 
         if folders.is_empty() {
-            ctx.send_line(session, ctx.i18n.t("file.no_folders")).await?;
+            ctx.send_line(session, ctx.i18n.t("file.no_folders"))
+                .await?;
             ctx.send_line(session, "").await?;
             ctx.wait_for_enter(session).await?;
             return Ok(());
@@ -2162,11 +2127,7 @@ impl AdminScreen {
             .await?;
         ctx.send_line(
             session,
-            &format!(
-                "  {}: {}",
-                ctx.i18n.t("admin.folder_name"),
-                folder.name
-            ),
+            &format!("  {}: {}", ctx.i18n.t("admin.folder_name"), folder.name),
         )
         .await?;
         ctx.send_line(
@@ -2291,26 +2252,14 @@ impl AdminScreen {
                 ctx.send_line(session, "").await?;
                 ctx.send_line(session, ctx.i18n.t("admin.select_permission"))
                     .await?;
-                ctx.send_line(
-                    session,
-                    &format!("  [1] {}", ctx.i18n.t("role.guest")),
-                )
-                .await?;
-                ctx.send_line(
-                    session,
-                    &format!("  [2] {}", ctx.i18n.t("role.member")),
-                )
-                .await?;
-                ctx.send_line(
-                    session,
-                    &format!("  [3] {}", ctx.i18n.t("role.subop")),
-                )
-                .await?;
-                ctx.send_line(
-                    session,
-                    &format!("  [4] {}", ctx.i18n.t("role.sysop")),
-                )
-                .await?;
+                ctx.send_line(session, &format!("  [1] {}", ctx.i18n.t("role.guest")))
+                    .await?;
+                ctx.send_line(session, &format!("  [2] {}", ctx.i18n.t("role.member")))
+                    .await?;
+                ctx.send_line(session, &format!("  [3] {}", ctx.i18n.t("role.subop")))
+                    .await?;
+                ctx.send_line(session, &format!("  [4] {}", ctx.i18n.t("role.sysop")))
+                    .await?;
                 ctx.send(
                     session,
                     &format!(
@@ -2337,26 +2286,14 @@ impl AdminScreen {
                 ctx.send_line(session, "").await?;
                 ctx.send_line(session, ctx.i18n.t("admin.select_permission"))
                     .await?;
-                ctx.send_line(
-                    session,
-                    &format!("  [1] {}", ctx.i18n.t("role.guest")),
-                )
-                .await?;
-                ctx.send_line(
-                    session,
-                    &format!("  [2] {}", ctx.i18n.t("role.member")),
-                )
-                .await?;
-                ctx.send_line(
-                    session,
-                    &format!("  [3] {}", ctx.i18n.t("role.subop")),
-                )
-                .await?;
-                ctx.send_line(
-                    session,
-                    &format!("  [4] {}", ctx.i18n.t("role.sysop")),
-                )
-                .await?;
+                ctx.send_line(session, &format!("  [1] {}", ctx.i18n.t("role.guest")))
+                    .await?;
+                ctx.send_line(session, &format!("  [2] {}", ctx.i18n.t("role.member")))
+                    .await?;
+                ctx.send_line(session, &format!("  [3] {}", ctx.i18n.t("role.subop")))
+                    .await?;
+                ctx.send_line(session, &format!("  [4] {}", ctx.i18n.t("role.sysop")))
+                    .await?;
                 ctx.send(
                     session,
                     &format!(
@@ -2397,11 +2334,8 @@ impl AdminScreen {
                 ctx.send_line(session, &msg).await?;
             }
             Err(e) => {
-                ctx.send_line(
-                    session,
-                    &format!("{}: {}", ctx.i18n.t("common.error"), e),
-                )
-                .await?;
+                ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("common.error"), e))
+                    .await?;
             }
         }
 
@@ -2423,7 +2357,8 @@ impl AdminScreen {
         ctx.send_line(session, "").await?;
 
         if folders.is_empty() {
-            ctx.send_line(session, ctx.i18n.t("file.no_folders")).await?;
+            ctx.send_line(session, ctx.i18n.t("file.no_folders"))
+                .await?;
             ctx.send_line(session, "").await?;
             ctx.wait_for_enter(session).await?;
             return Ok(());
@@ -2434,12 +2369,7 @@ impl AdminScreen {
             let file_count = FolderRepository::count_files(ctx.db.conn(), folder.id)?;
             ctx.send_line(
                 session,
-                &format!(
-                    "  [{}] {} ({} files)",
-                    i + 1,
-                    folder.name,
-                    file_count
-                ),
+                &format!("  [{}] {} ({} files)", i + 1, folder.name, file_count),
             )
             .await?;
         }
@@ -2476,8 +2406,11 @@ impl AdminScreen {
                             .replace("{{count}}", &file_count.to_string()),
                     )
                     .await?;
-                    ctx.send(session, &format!("{} [Y/N]: ", ctx.i18n.t("common.confirm")))
-                        .await?;
+                    ctx.send(
+                        session,
+                        &format!("{} [Y/N]: ", ctx.i18n.t("common.confirm")),
+                    )
+                    .await?;
                     let confirm = ctx.read_line(session).await?;
                     if !confirm.trim().eq_ignore_ascii_case("y") {
                         return Ok(());
@@ -2543,7 +2476,8 @@ impl AdminScreen {
             )
             .await?;
             ctx.send_line(session, "").await?;
-            ctx.send_line(session, ctx.i18n.t("admin.select_board")).await?;
+            ctx.send_line(session, ctx.i18n.t("admin.select_board"))
+                .await?;
             ctx.send_line(session, "").await?;
 
             if boards.is_empty() {
@@ -2651,7 +2585,8 @@ impl AdminScreen {
             )
             .await?;
             ctx.send_line(session, "").await?;
-            ctx.send_line(session, ctx.i18n.t("admin.select_post")).await?;
+            ctx.send_line(session, ctx.i18n.t("admin.select_post"))
+                .await?;
             ctx.send_line(session, "").await?;
 
             if posts.is_empty() {
@@ -2676,19 +2611,13 @@ impl AdminScreen {
                     post.body.clone()
                 };
                 let preview = preview.replace('\n', " ").replace('\r', "");
-                ctx.send_line(
-                    session,
-                    &format!("  [{}] #{}: {}", i + 1, post.id, preview),
-                )
-                .await?;
+                ctx.send_line(session, &format!("  [{}] #{}: {}", i + 1, post.id, preview))
+                    .await?;
             }
 
             ctx.send_line(session, "").await?;
-            ctx.send_line(
-                session,
-                &format!("[D] {}", ctx.i18n.t("admin.delete_post")),
-            )
-            .await?;
+            ctx.send_line(session, &format!("[D] {}", ctx.i18n.t("admin.delete_post")))
+                .await?;
             ctx.send_line(
                 session,
                 &format!("[Q] {}", ctx.i18n.t("admin.back_to_boards")),
@@ -2806,11 +2735,8 @@ impl AdminScreen {
                             .await?;
                     }
                     Err(e) => {
-                        ctx.send_line(
-                            session,
-                            &format!("{}: {}", ctx.i18n.t("common.error"), e),
-                        )
-                        .await?;
+                        ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("common.error"), e))
+                            .await?;
                     }
                 }
                 continue;
@@ -2861,11 +2787,8 @@ impl AdminScreen {
                     &format!("[Q] {}", ctx.i18n.t("admin.back_to_boards")),
                 )
                 .await?;
-                ctx.send(
-                    session,
-                    &format!("{}: ", ctx.i18n.t("menu.select_prompt")),
-                )
-                .await?;
+                ctx.send(session, &format!("{}: ", ctx.i18n.t("menu.select_prompt")))
+                    .await?;
                 let _ = ctx.read_line(session).await?;
                 return Ok(());
             }
@@ -2879,10 +2802,7 @@ impl AdminScreen {
                         "  [{}] {} ({} posts)",
                         i + 1,
                         if thread.title.chars().count() > 30 {
-                            format!(
-                                "{}...",
-                                thread.title.chars().take(27).collect::<String>()
-                            )
+                            format!("{}...", thread.title.chars().take(27).collect::<String>())
                         } else {
                             thread.title.clone()
                         },
@@ -2904,11 +2824,8 @@ impl AdminScreen {
             )
             .await?;
             ctx.send_line(session, "").await?;
-            ctx.send(
-                session,
-                &format!("{}: ", ctx.i18n.t("menu.select_prompt")),
-            )
-            .await?;
+            ctx.send(session, &format!("{}: ", ctx.i18n.t("menu.select_prompt")))
+                .await?;
 
             let input = ctx.read_line(session).await?;
             let input = input.trim();
@@ -2979,11 +2896,8 @@ impl AdminScreen {
                             .await?;
                     }
                     Err(e) => {
-                        ctx.send_line(
-                            session,
-                            &format!("{}: {}", ctx.i18n.t("common.error"), e),
-                        )
-                        .await?;
+                        ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("common.error"), e))
+                            .await?;
                     }
                 }
                 continue;
@@ -3044,11 +2958,8 @@ impl AdminScreen {
                     &format!("[Q] {}", ctx.i18n.t("admin.back_to_threads")),
                 )
                 .await?;
-                ctx.send(
-                    session,
-                    &format!("{}: ", ctx.i18n.t("menu.select_prompt")),
-                )
-                .await?;
+                ctx.send(session, &format!("{}: ", ctx.i18n.t("menu.select_prompt")))
+                    .await?;
                 let _ = ctx.read_line(session).await?;
                 return Ok(());
             }
@@ -3060,30 +2971,21 @@ impl AdminScreen {
                     post.body.clone()
                 };
                 let preview = preview.replace('\n', " ").replace('\r', "");
-                ctx.send_line(
-                    session,
-                    &format!("  [{}] #{}: {}", i + 1, post.id, preview),
-                )
-                .await?;
+                ctx.send_line(session, &format!("  [{}] #{}: {}", i + 1, post.id, preview))
+                    .await?;
             }
 
             ctx.send_line(session, "").await?;
-            ctx.send_line(
-                session,
-                &format!("[D] {}", ctx.i18n.t("admin.delete_post")),
-            )
-            .await?;
+            ctx.send_line(session, &format!("[D] {}", ctx.i18n.t("admin.delete_post")))
+                .await?;
             ctx.send_line(
                 session,
                 &format!("[Q] {}", ctx.i18n.t("admin.back_to_threads")),
             )
             .await?;
             ctx.send_line(session, "").await?;
-            ctx.send(
-                session,
-                &format!("{}: ", ctx.i18n.t("menu.select_prompt")),
-            )
-            .await?;
+            ctx.send(session, &format!("{}: ", ctx.i18n.t("menu.select_prompt")))
+                .await?;
 
             let input = ctx.read_line(session).await?;
             let input = input.trim();
@@ -3193,11 +3095,8 @@ impl AdminScreen {
                             .await?;
                     }
                     Err(e) => {
-                        ctx.send_line(
-                            session,
-                            &format!("{}: {}", ctx.i18n.t("common.error"), e),
-                        )
-                        .await?;
+                        ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("common.error"), e))
+                            .await?;
                     }
                 }
                 continue;

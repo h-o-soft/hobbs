@@ -151,11 +151,9 @@ impl LineBuffer {
                 if self.buffer.len() >= 2 {
                     let prev = self.buffer[self.buffer.len() - 2];
                     // Is prev a lead byte? (0x81-0x9F or 0xE0-0xFC)
-                    let is_lead =
-                        (0x81..=0x9F).contains(&prev) || (0xE0..=0xFC).contains(&prev);
+                    let is_lead = (0x81..=0x9F).contains(&prev) || (0xE0..=0xFC).contains(&prev);
                     // Is last a valid trail byte? (0x40-0x7E or 0x80-0xFC)
-                    let is_trail =
-                        (0x40..=0x7E).contains(&last) || (0x80..=0xFC).contains(&last);
+                    let is_trail = (0x40..=0x7E).contains(&last) || (0x80..=0xFC).contains(&last);
                     if is_lead && is_trail {
                         return 2;
                     }
@@ -761,7 +759,17 @@ mod tests {
         let (result, echo) = buffer.process_byte(control::BS);
         assert_eq!(result, InputResult::Buffering);
         // Echo should be 2-column width (full-width character)
-        assert_eq!(echo, vec![control::BS, control::BS, b' ', b' ', control::BS, control::BS]);
+        assert_eq!(
+            echo,
+            vec![
+                control::BS,
+                control::BS,
+                b' ',
+                b' ',
+                control::BS,
+                control::BS
+            ]
+        );
         assert_eq!(buffer.contents(), b"A");
         assert_eq!(buffer.len(), 1);
     }
@@ -800,7 +808,17 @@ mod tests {
         let (result, echo) = buffer.process_byte(control::BS);
         assert_eq!(result, InputResult::Buffering);
         // Echo should be 2-column width
-        assert_eq!(echo, vec![control::BS, control::BS, b' ', b' ', control::BS, control::BS]);
+        assert_eq!(
+            echo,
+            vec![
+                control::BS,
+                control::BS,
+                b' ',
+                b' ',
+                control::BS,
+                control::BS
+            ]
+        );
         assert_eq!(buffer.contents(), b"A");
         assert_eq!(buffer.len(), 1);
     }

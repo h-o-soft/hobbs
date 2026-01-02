@@ -41,7 +41,10 @@ impl ProfileScreen {
                 "user.email",
                 Value::string(user.email.as_deref().unwrap_or("-").to_string()),
             );
-            context.set("user.role_name", Value::string(Self::role_name(ctx, user.role)));
+            context.set(
+                "user.role_name",
+                Value::string(Self::role_name(ctx, user.role)),
+            );
             context.set("user.created_at", Value::string(user.created_at.clone()));
             context.set(
                 "user.last_login",
@@ -161,7 +164,7 @@ impl ProfileScreen {
         .await?;
         let new_profile = match ctx.read_multiline(session).await? {
             Some(text) if !text.is_empty() => Some(Some(text)),
-            Some(_) => None, // Empty input, no change
+            Some(_) => None,       // Empty input, no change
             None => return Ok(()), // Cancelled
         };
 
@@ -279,11 +282,8 @@ impl ProfileScreen {
         };
 
         ctx.send_line(session, "").await?;
-        ctx.send_line(
-            session,
-            &format!("=== {} ===", ctx.i18n.t("menu.settings")),
-        )
-        .await?;
+        ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("menu.settings")))
+            .await?;
         ctx.send_line(session, "").await?;
 
         // Show current settings
@@ -404,7 +404,11 @@ impl ProfileScreen {
         };
         ctx.send(
             session,
-            &format!("{} [{}]: ", ctx.i18n.t("common.number"), current_profile_num),
+            &format!(
+                "{} [{}]: ",
+                ctx.i18n.t("common.number"),
+                current_profile_num
+            ),
         )
         .await?;
 
@@ -420,13 +424,13 @@ impl ProfileScreen {
         };
 
         // Determine actual new terminal value
-        let actual_new_terminal = new_terminal.clone().unwrap_or_else(|| current_terminal.clone());
+        let actual_new_terminal = new_terminal
+            .clone()
+            .unwrap_or_else(|| current_terminal.clone());
 
         // Check if anything changed
         let terminal_changed = new_terminal.is_some() && actual_new_terminal != current_terminal;
-        if new_language == current_language
-            && new_encoding == current_encoding
-            && !terminal_changed
+        if new_language == current_language && new_encoding == current_encoding && !terminal_changed
         {
             ctx.send_line(session, "").await?;
             return Ok(None);

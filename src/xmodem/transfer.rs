@@ -112,9 +112,9 @@ pub async fn xmodem_send(stream: &mut TcpStream, data: &[u8]) -> TransferResult<
 }
 
 /// Telnet command bytes
-const IAC: u8 = 255;  // Interpret As Command
+const IAC: u8 = 255; // Interpret As Command
 const WILL: u8 = 251; // Will perform option
-const DO: u8 = 253;   // Request to perform option
+const DO: u8 = 253; // Request to perform option
 const TRANSMIT_BINARY: u8 = 0; // Binary Transmission option
 
 /// Enable Telnet binary mode to prevent CR+NUL expansion.
@@ -122,10 +122,7 @@ async fn enable_binary_mode(stream: &mut TcpStream) -> std::io::Result<()> {
     // Request binary mode in both directions
     // IAC WILL TRANSMIT-BINARY - we will send binary
     // IAC DO TRANSMIT-BINARY - please send us binary
-    let binary_request = [
-        IAC, WILL, TRANSMIT_BINARY,
-        IAC, DO, TRANSMIT_BINARY,
-    ];
+    let binary_request = [IAC, WILL, TRANSMIT_BINARY, IAC, DO, TRANSMIT_BINARY];
     stream.write_all(&binary_request).await?;
     stream.flush().await?;
 
@@ -164,7 +161,10 @@ pub async fn xmodem_receive(stream: &mut TcpStream, max_size: usize) -> Transfer
 
     // Wait for first block with retry loop (send 'C' repeatedly until sender responds)
     let first_header = wait_for_sender_start(stream).await?;
-    tracing::info!("XMODEM: Sender started, first header: 0x{:02X}", first_header);
+    tracing::info!(
+        "XMODEM: Sender started, first header: 0x{:02X}",
+        first_header
+    );
 
     // Process first header
     let mut header = first_header;
@@ -202,7 +202,11 @@ pub async fn xmodem_receive(stream: &mut TcpStream, max_size: usize) -> Transfer
                             total_blocks += 1;
                             retry_count = 0;
 
-                            tracing::debug!("XMODEM: Block {} OK, sending ACK, total bytes: {}", block_num, data.len());
+                            tracing::debug!(
+                                "XMODEM: Block {} OK, sending ACK, total bytes: {}",
+                                block_num,
+                                data.len()
+                            );
                             stream.write_all(&[ACK]).await?;
                             stream.flush().await?;
                         } else if block_num == expected_block.wrapping_sub(1) {
@@ -268,7 +272,10 @@ pub async fn xmodem_receive(stream: &mut TcpStream, max_size: usize) -> Transfer
                 return Err(e.into());
             }
             Err(_) => {
-                tracing::error!("XMODEM: Timeout waiting for next header after {} blocks", total_blocks);
+                tracing::error!(
+                    "XMODEM: Timeout waiting for next header after {} blocks",
+                    total_blocks
+                );
                 return Err(TransferError::Timeout);
             }
         };
@@ -279,7 +286,10 @@ pub async fn xmodem_receive(stream: &mut TcpStream, max_size: usize) -> Transfer
         data.pop();
     }
 
-    tracing::info!("XMODEM: Receive complete, {} bytes after padding removal", data.len());
+    tracing::info!(
+        "XMODEM: Receive complete, {} bytes after padding removal",
+        data.len()
+    );
     Ok(data)
 }
 
@@ -309,7 +319,6 @@ async fn read_next_header(stream: &mut TcpStream) -> std::io::Result<u8> {
 /// Wait for sender to start by sending 'C' repeatedly.
 /// Returns the first valid header byte (SOH or EOT).
 async fn wait_for_sender_start(stream: &mut TcpStream) -> TransferResult<u8> {
-
     for retry in 0..START_RETRIES {
         // Send 'C' for CRC mode
         stream.write_all(&[b'C']).await?;
@@ -325,7 +334,8 @@ async fn wait_for_sender_start(stream: &mut TcpStream) -> TransferResult<u8> {
                 Ok(Ok(CAN)) => return Err(TransferError::Cancelled),
                 Ok(Ok(IAC)) => {
                     // Telnet IAC sequence - read and skip the next 1-2 bytes
-                    if let Ok(Ok(cmd)) = timeout(Duration::from_millis(100), read_byte(stream)).await
+                    if let Ok(Ok(cmd)) =
+                        timeout(Duration::from_millis(100), read_byte(stream)).await
                     {
                         // If it's WILL/WONT/DO/DONT (0xFB-0xFE), read one more byte
                         if (0xFB..=0xFE).contains(&cmd) {
@@ -407,7 +417,7 @@ async fn send_block(
             Ok(Ok(ACK)) => return Ok(()),
             Ok(Ok(NAK)) => continue, // Retry
             Ok(Ok(CAN)) => return Err(TransferError::Cancelled),
-            Ok(Ok(_)) => continue,   // Unknown response, retry
+            Ok(Ok(_)) => continue, // Unknown response, retry
             Ok(Err(e)) => return Err(e.into()),
             Err(_) => continue, // Timeout, retry
         }
@@ -510,7 +520,7 @@ async fn send_eot(stream: &mut TcpStream) -> TransferResult<()> {
         match timeout(RESPONSE_TIMEOUT, read_byte(stream)).await {
             Ok(Ok(ACK)) => return Ok(()),
             Ok(Ok(NAK)) => continue,
-            Ok(Ok(_)) => continue,  // Unknown response, retry
+            Ok(Ok(_)) => continue, // Unknown response, retry
             Ok(Err(e)) => return Err(e.into()),
             Err(_) => continue,
         }

@@ -4,9 +4,9 @@ use super::common::{Pagination, ScreenContext};
 use super::ScreenResult;
 use crate::db::UserRepository;
 use crate::error::Result;
+use crate::file::UploadRequest;
 use crate::file::{FileRepository, FileService, FileStorage, FolderRepository};
 use crate::server::TelnetSession;
-use crate::file::UploadRequest;
 use crate::xmodem::{xmodem_receive, xmodem_send, TransferError};
 
 /// File screen handler.
@@ -257,10 +257,7 @@ impl FileScreen {
         // Ask if user wants to download
         ctx.send(
             session,
-            &format!(
-                "{} [Y/N]: ",
-                ctx.i18n.t("file.download_confirm")
-            ),
+            &format!("{} [Y/N]: ", ctx.i18n.t("file.download_confirm")),
         )
         .await?;
 
@@ -402,11 +399,8 @@ impl FileScreen {
 
         // Get filename from user
         ctx.send_line(session, "").await?;
-        ctx.send(
-            session,
-            &format!("{}: ", ctx.i18n.t("file.upload_prompt")),
-        )
-        .await?;
+        ctx.send(session, &format!("{}: ", ctx.i18n.t("file.upload_prompt")))
+            .await?;
         let filename = ctx.read_line(session).await?;
         let filename = filename.trim();
 
@@ -432,11 +426,8 @@ impl FileScreen {
         ctx.send_line(session, "").await?;
         ctx.send_line(session, ctx.i18n.t("file.xmodem_start_upload"))
             .await?;
-        ctx.send_line(
-            session,
-            &format!("({})", ctx.i18n.t("file.xmodem_waiting")),
-        )
-        .await?;
+        ctx.send_line(session, &format!("({})", ctx.i18n.t("file.xmodem_waiting")))
+            .await?;
 
         // Small delay to let user start their XMODEM sender
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;

@@ -248,7 +248,10 @@ impl BoardScreen {
 
                     ctx.send_line(
                         session,
-                        &format!("{} {:<4} {:<30} {:>6}", unread_mark, num, title, thread.post_count),
+                        &format!(
+                            "{} {:<4} {:<30} {:>6}",
+                            unread_mark, num, title, thread.post_count
+                        ),
                     )
                     .await?;
                 }
@@ -849,7 +852,8 @@ impl BoardScreen {
 
         if unread_posts.is_empty() {
             ctx.send_line(session, "").await?;
-            ctx.send_line(session, ctx.i18n.t("board.no_unread")).await?;
+            ctx.send_line(session, ctx.i18n.t("board.no_unread"))
+                .await?;
             ctx.wait_for_enter(session).await?;
             return Ok(ScreenResult::Back);
         }
@@ -858,7 +862,8 @@ impl BoardScreen {
         ctx.send_line(session, "").await?;
         ctx.send_line(
             session,
-            &ctx.i18n.t_with("board.unread_count", &[("count", &total.to_string())]),
+            &ctx.i18n
+                .t_with("board.unread_count", &[("count", &total.to_string())]),
         )
         .await?;
         ctx.send_line(session, "").await?;
@@ -875,8 +880,11 @@ impl BoardScreen {
 
             let title = post.title.as_deref().unwrap_or("(no title)");
 
-            ctx.send_line(session, &format!("=== [{}/{}] {} ===", index + 1, total, title))
-                .await?;
+            ctx.send_line(
+                session,
+                &format!("=== [{}/{}] {} ===", index + 1, total, title),
+            )
+            .await?;
             ctx.send_line(
                 session,
                 &format!(
@@ -948,7 +956,8 @@ impl BoardScreen {
 
         // Show confirmation prompt
         ctx.send_line(session, "").await?;
-        ctx.send(session, ctx.i18n.t("board.mark_all_read_confirm")).await?;
+        ctx.send(session, ctx.i18n.t("board.mark_all_read_confirm"))
+            .await?;
 
         let input = ctx.read_line(session).await?;
         let input = input.trim().to_ascii_lowercase();
@@ -1009,7 +1018,8 @@ impl BoardScreen {
         ctx.send_line(session, "").await?;
         ctx.send_line(
             session,
-            &ctx.i18n.t_with("board.unread_all_count", &[("count", &total.to_string())]),
+            &ctx.i18n
+                .t_with("board.unread_all_count", &[("count", &total.to_string())]),
         )
         .await?;
         ctx.send_line(session, "").await?;

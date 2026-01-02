@@ -321,10 +321,7 @@ bbs.println("Hello")
 
     #[test]
     fn test_generate_slug() {
-        assert_eq!(
-            ScriptLoader::generate_slug(Path::new("test.lua")),
-            "test"
-        );
+        assert_eq!(ScriptLoader::generate_slug(Path::new("test.lua")), "test");
         assert_eq!(
             ScriptLoader::generate_slug(Path::new("My Script.lua")),
             "my_script"

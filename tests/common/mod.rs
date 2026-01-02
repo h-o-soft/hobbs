@@ -247,7 +247,8 @@ impl TestClient {
         _language_choice: &str,
     ) -> Result<bool, std::io::Error> {
         // Wait for welcome screen (ASCII) - choose login
-        self.recv_until_timeout("Select:", Duration::from_secs(3)).await?;
+        self.recv_until_timeout("Select:", Duration::from_secs(3))
+            .await?;
         self.send_line("L").await?;
 
         // Wait for username prompt

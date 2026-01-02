@@ -159,8 +159,10 @@ impl<'a> ScriptDataRepository<'a> {
     /// Delete all data for a script.
     pub fn delete_all_for_script(&self, script_id: i64) -> Result<usize> {
         let conn = self.db.conn();
-        let affected =
-            conn.execute("DELETE FROM script_data WHERE script_id = ?", params![script_id])?;
+        let affected = conn.execute(
+            "DELETE FROM script_data WHERE script_id = ?",
+            params![script_id],
+        )?;
 
         Ok(affected)
     }
@@ -168,8 +170,10 @@ impl<'a> ScriptDataRepository<'a> {
     /// Delete all data for a user across all scripts.
     pub fn delete_all_for_user(&self, user_id: i64) -> Result<usize> {
         let conn = self.db.conn();
-        let affected =
-            conn.execute("DELETE FROM script_data WHERE user_id = ?", params![user_id])?;
+        let affected = conn.execute(
+            "DELETE FROM script_data WHERE user_id = ?",
+            params![user_id],
+        )?;
 
         Ok(affected)
     }
