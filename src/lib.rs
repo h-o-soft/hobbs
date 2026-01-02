@@ -16,6 +16,7 @@ pub mod i18n;
 pub mod logging;
 pub mod mail;
 pub mod screen;
+pub mod script;
 pub mod server;
 pub mod template;
 pub mod terminal;
@@ -79,4 +80,5 @@ pub use template::{
 };
 
 pub use app::{Application, MenuAction, MenuError, SessionHandler};
+pub use script::{Script, ScriptMetadata, ScriptRepository, SyncResult};
 pub use xmodem::{xmodem_receive, xmodem_send, TransferError, TransferResult};
