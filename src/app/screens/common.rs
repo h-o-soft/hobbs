@@ -12,7 +12,8 @@ use crate::db::Database;
 use crate::error::{HobbsError, Result};
 use crate::i18n::I18n;
 use crate::server::{
-    encode_for_client, CharacterEncoding, EchoMode, InputResult, LineBuffer, TelnetSession,
+    encode_for_client, CharacterEncoding, EchoMode, InputResult, LineBuffer, SessionManager,
+    TelnetSession,
 };
 use crate::template::{create_system_context, TemplateContext, TemplateLoader, Value};
 use crate::terminal::TerminalProfile;
@@ -36,6 +37,8 @@ pub struct ScreenContext {
     pub line_buffer: LineBuffer,
     /// Chat room manager.
     pub chat_manager: Arc<ChatRoomManager>,
+    /// Session manager.
+    pub session_manager: Arc<SessionManager>,
 }
 
 impl ScreenContext {
@@ -48,6 +51,7 @@ impl ScreenContext {
         i18n: Arc<I18n>,
         encoding: CharacterEncoding,
         chat_manager: Arc<ChatRoomManager>,
+        session_manager: Arc<SessionManager>,
     ) -> Self {
         Self {
             db,
@@ -57,6 +61,7 @@ impl ScreenContext {
             i18n,
             line_buffer: LineBuffer::with_encoding(1024, encoding),
             chat_manager,
+            session_manager,
         }
     }
 

@@ -877,6 +877,7 @@ Select language / Gengo sentaku:
             Arc::clone(&self.i18n),
             self.line_buffer.encoding(),
             Arc::clone(&self.chat_manager),
+            Arc::clone(&self.session_manager),
         )
     }
 
