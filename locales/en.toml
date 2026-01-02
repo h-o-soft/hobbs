@@ -32,6 +32,7 @@ people = ""
 only = " only"
 end_with_dot = "End with . on a new line, /c to cancel"
 input_cancelled = "Input cancelled"
+too_many_lines = "Too many lines (max {{max}})"
 
 [system]
 name = "HOBBS"
