@@ -198,6 +198,23 @@ CREATE INDEX idx_scripts_min_role ON scripts(min_role);
 CREATE INDEX idx_scripts_file_path ON scripts(file_path);
 CREATE INDEX idx_scripts_slug ON scripts(slug);
 "#,
+    // v13: Script data table for persistent storage
+    r#"
+-- Script data table for persistent key-value storage
+CREATE TABLE script_data (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    script_id   INTEGER NOT NULL REFERENCES scripts(id) ON DELETE CASCADE,
+    user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,  -- NULL = global data, non-NULL = per-user data
+    key         TEXT NOT NULL,
+    value       TEXT NOT NULL,      -- JSON-encoded value
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(script_id, user_id, key)
+);
+
+CREATE INDEX idx_script_data_script ON script_data(script_id);
+CREATE INDEX idx_script_data_user ON script_data(user_id);
+CREATE INDEX idx_script_data_script_user ON script_data(script_id, user_id);
+"#,
 ];
 
 #[cfg(test)]
@@ -350,5 +367,20 @@ mod tests {
         assert!(scripts_migration.contains("idx_scripts_min_role"));
         assert!(scripts_migration.contains("idx_scripts_file_path"));
         assert!(scripts_migration.contains("idx_scripts_slug"));
+    }
+
+    #[test]
+    fn test_script_data_migration_contains_script_data_table() {
+        let script_data_migration = MIGRATIONS[12];
+        assert!(script_data_migration.contains("CREATE TABLE script_data"));
+        assert!(script_data_migration.contains("script_id"));
+        assert!(script_data_migration.contains("user_id"));
+        assert!(script_data_migration.contains("key"));
+        assert!(script_data_migration.contains("value"));
+        assert!(script_data_migration.contains("updated_at"));
+        assert!(script_data_migration.contains("UNIQUE(script_id, user_id, key)"));
+        assert!(script_data_migration.contains("idx_script_data_script"));
+        assert!(script_data_migration.contains("idx_script_data_user"));
+        assert!(script_data_migration.contains("idx_script_data_script_user"));
     }
 }

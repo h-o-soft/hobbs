@@ -1,6 +1,13 @@
 //! Script service for managing and executing scripts.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
+use mlua::Table;
+
 use super::api::BbsApi;
+use super::data_repository::ScriptDataRepository;
 use super::engine::{ResourceLimits, ScriptContext, ScriptEngine};
 use super::loader::ScriptLoader;
 use super::repository::ScriptRepository;
@@ -68,7 +75,7 @@ impl<'a> ScriptService<'a> {
     /// Execute a script with the given context.
     ///
     /// Returns the execution result containing output and status.
-    pub fn execute(&self, script: &Script, context: ScriptContext) -> Result<ExecutionResult> {
+    pub fn execute(&self, script: &Script, mut context: ScriptContext) -> Result<ExecutionResult> {
         // Check if script is enabled
         if !script.enabled {
             return Err(HobbsError::Script("Script is disabled".to_string()));
@@ -82,6 +89,9 @@ impl<'a> ScriptService<'a> {
             )));
         }
 
+        // Set script_id in context
+        context.script_id = Some(script.id);
+
         // Load source code
         let source = self.load_script_source(&script.file_path)?;
 
@@ -94,23 +104,34 @@ impl<'a> ScriptService<'a> {
 
         let engine = ScriptEngine::with_limits(limits)?;
 
+        // Load existing data from database
+        let data_repo = ScriptDataRepository::new(self.db);
+        let global_data = Rc::new(RefCell::new(self.load_global_data(&data_repo, script.id)?));
+        let user_data = Rc::new(RefCell::new(
+            self.load_user_data(&data_repo, script.id, context.user_id)?,
+        ));
+
         // Register BBS API
-        let api = BbsApi::new(context);
+        let api = BbsApi::new(context.clone());
         let output_buffer = api.get_output();
         api.register(engine.lua())
             .map_err(|e| HobbsError::Script(format!("Failed to register BBS API: {}", e)))?;
 
+        // Register data API
+        self.register_data_api(engine.lua(), script.id, context.user_id, &global_data, &user_data)
+            .map_err(|e| HobbsError::Script(format!("Failed to register data API: {}", e)))?;
+
         // Execute the script
         let result = engine.execute(&source);
 
+        // Save data changes back to database
+        self.save_global_data(&data_repo, script.id, &global_data.borrow())?;
+        if let Some(user_id) = context.user_id {
+            self.save_user_data(&data_repo, script.id, user_id, &user_data.borrow())?;
+        }
+
         // Get output regardless of success/failure
-        let output = {
-            // The output buffer reference was moved into the Lua state,
-            // so we need to get it from the registered API
-            // For now, we'll return an empty vec and fix this later
-            // This is a design issue - we need to share the output buffer
-            output_buffer
-        };
+        let output = output_buffer;
 
         match result {
             Ok(()) => Ok(ExecutionResult {
@@ -126,6 +147,180 @@ impl<'a> ScriptService<'a> {
                 error: Some(e.to_string()),
             }),
         }
+    }
+
+    /// Load global data for a script.
+    fn load_global_data(
+        &self,
+        repo: &ScriptDataRepository,
+        script_id: i64,
+    ) -> Result<HashMap<String, String>> {
+        let keys = repo.list_global_keys(script_id)?;
+        let mut data = HashMap::new();
+        for key in keys {
+            if let Some(value) = repo.get_global(script_id, &key)? {
+                data.insert(key, value);
+            }
+        }
+        Ok(data)
+    }
+
+    /// Load user-specific data for a script.
+    fn load_user_data(
+        &self,
+        repo: &ScriptDataRepository,
+        script_id: i64,
+        user_id: Option<i64>,
+    ) -> Result<HashMap<String, String>> {
+        let Some(user_id) = user_id else {
+            return Ok(HashMap::new());
+        };
+        let keys = repo.list_user_keys(script_id, user_id)?;
+        let mut data = HashMap::new();
+        for key in keys {
+            if let Some(value) = repo.get_user(script_id, user_id, &key)? {
+                data.insert(key, value);
+            }
+        }
+        Ok(data)
+    }
+
+    /// Save global data for a script.
+    fn save_global_data(
+        &self,
+        repo: &ScriptDataRepository,
+        script_id: i64,
+        data: &HashMap<String, String>,
+    ) -> Result<()> {
+        for (key, value) in data {
+            repo.set_global(script_id, key, value)?;
+        }
+        Ok(())
+    }
+
+    /// Save user-specific data for a script.
+    fn save_user_data(
+        &self,
+        repo: &ScriptDataRepository,
+        script_id: i64,
+        user_id: i64,
+        data: &HashMap<String, String>,
+    ) -> Result<()> {
+        for (key, value) in data {
+            repo.set_user(script_id, user_id, key, value)?;
+        }
+        Ok(())
+    }
+
+    /// Register data API functions in Lua.
+    fn register_data_api(
+        &self,
+        lua: &mlua::Lua,
+        script_id: i64,
+        user_id: Option<i64>,
+        global_data: &Rc<RefCell<HashMap<String, String>>>,
+        user_data: &Rc<RefCell<HashMap<String, String>>>,
+    ) -> mlua::Result<()> {
+        let bbs: Table = lua.globals().get("bbs")?;
+
+        // bbs.data table for global data
+        let data_table = lua.create_table()?;
+        self.register_global_data_functions(lua, &data_table, global_data)?;
+        bbs.set("data", data_table)?;
+
+        // bbs.user_data table for user-specific data
+        let user_data_table = lua.create_table()?;
+        self.register_user_data_functions(lua, &user_data_table, user_id, user_data)?;
+        bbs.set("user_data", user_data_table)?;
+
+        Ok(())
+    }
+
+    /// Register global data functions (bbs.data.get/set/delete).
+    fn register_global_data_functions(
+        &self,
+        lua: &mlua::Lua,
+        table: &Table,
+        data: &Rc<RefCell<HashMap<String, String>>>,
+    ) -> mlua::Result<()> {
+        // bbs.data.get(key) -> value or nil
+        let data_get = Rc::clone(data);
+        let get_fn = lua.create_function(move |_, key: String| {
+            let data = data_get.borrow();
+            match data.get(&key) {
+                Some(v) => Ok(Some(v.clone())),
+                None => Ok(None),
+            }
+        })?;
+        table.set("get", get_fn)?;
+
+        // bbs.data.set(key, value)
+        let data_set = Rc::clone(data);
+        let set_fn = lua.create_function(move |_, (key, value): (String, String)| {
+            data_set.borrow_mut().insert(key, value);
+            Ok(())
+        })?;
+        table.set("set", set_fn)?;
+
+        // bbs.data.delete(key) -> bool
+        let data_delete = Rc::clone(data);
+        let delete_fn = lua.create_function(move |_, key: String| {
+            Ok(data_delete.borrow_mut().remove(&key).is_some())
+        })?;
+        table.set("delete", delete_fn)?;
+
+        Ok(())
+    }
+
+    /// Register user data functions (bbs.user_data.get/set/delete).
+    fn register_user_data_functions(
+        &self,
+        lua: &mlua::Lua,
+        table: &Table,
+        user_id: Option<i64>,
+        data: &Rc<RefCell<HashMap<String, String>>>,
+    ) -> mlua::Result<()> {
+        // If no user (guest), all operations return nil/false
+        if user_id.is_none() {
+            let get_fn = lua.create_function(|_, _key: String| Ok(None::<String>))?;
+            table.set("get", get_fn)?;
+
+            let set_fn = lua.create_function(|_, (_key, _value): (String, String)| Ok(()))?;
+            table.set("set", set_fn)?;
+
+            let delete_fn = lua.create_function(|_, _key: String| Ok(false))?;
+            table.set("delete", delete_fn)?;
+
+            return Ok(());
+        }
+
+        // bbs.user_data.get(key) -> value or nil
+        let data_get = Rc::clone(data);
+        let get_fn = lua.create_function(move |_, key: String| {
+            let data = data_get.borrow();
+            match data.get(&key) {
+                Some(v) => Ok(Some(v.clone())),
+                None => Ok(None),
+            }
+        })?;
+        table.set("get", get_fn)?;
+
+        // bbs.user_data.set(key, value)
+        let data_set = Rc::clone(data);
+        let set_fn = lua.create_function(move |_, (key, value): (String, String)| {
+            data_set.borrow_mut().insert(key, value);
+            Ok(())
+        })?;
+        table.set("set", set_fn)?;
+
+        // bbs.user_data.delete(key) -> bool
+        let data_delete = Rc::clone(data);
+        let delete_fn = lua.create_function(move |_, key: String| {
+            Ok(data_delete.borrow_mut().remove(&key).is_some())
+        })?;
+        table.set("delete", delete_fn)?;
+
+        Ok(())
     }
 
     /// Load script source code from the file system.
@@ -256,6 +451,7 @@ bbs.println("member only")
         let service = ScriptService::new(&db).with_scripts_dir(dir.path());
 
         let context = ScriptContext {
+            script_id: None, // Set by execute()
             user_id: Some(1),
             username: "testuser".to_string(),
             nickname: "Tester".to_string(),
@@ -380,5 +576,138 @@ error("Intentional error")
         assert!(!result.success);
         assert!(result.error.is_some());
         assert!(result.error.unwrap().contains("Intentional error"));
+    }
+
+    #[test]
+    fn test_execute_script_with_global_data() {
+        let db = create_test_db();
+        let dir = tempdir().unwrap();
+
+        // Create a script that uses global data
+        let script_content = r#"-- @name Data Test
+-- @min_role 0
+
+-- Get or initialize counter
+local count = bbs.data.get("counter") or "0"
+count = tonumber(count) + 1
+bbs.data.set("counter", tostring(count))
+bbs.println("Counter: " .. count)
+"#;
+        fs::write(dir.path().join("data_test.lua"), script_content).unwrap();
+
+        let loader = ScriptLoader::new(dir.path());
+        loader.sync(&db).unwrap();
+
+        let repo = ScriptRepository::new(&db);
+        let script = repo.get_by_slug("data_test").unwrap().unwrap();
+
+        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
+        let context = ScriptContext::default();
+
+        // First execution - counter should be 1
+        let result = service.execute(&script, context.clone()).unwrap();
+        assert!(result.success);
+
+        // Second execution - counter should be 2
+        let result = service.execute(&script, context.clone()).unwrap();
+        assert!(result.success);
+
+        // Verify data was persisted
+        let data_repo = ScriptDataRepository::new(&db);
+        let counter = data_repo.get_global(script.id, "counter").unwrap();
+        assert_eq!(counter, Some("2".to_string()));
+    }
+
+    #[test]
+    fn test_execute_script_with_user_data() {
+        let db = create_test_db();
+        let dir = tempdir().unwrap();
+
+        // Create a user
+        db.conn()
+            .execute(
+                "INSERT INTO users (username, password, nickname, role) VALUES ('testuser', 'hash', 'Test', 'member')",
+                [],
+            )
+            .unwrap();
+        let user_id = db.conn().last_insert_rowid();
+
+        // Create a script that uses user data
+        let script_content = r#"-- @name User Data Test
+-- @min_role 0
+
+if not bbs.is_guest() then
+    local wins = bbs.user_data.get("wins") or "0"
+    wins = tonumber(wins) + 1
+    bbs.user_data.set("wins", tostring(wins))
+    bbs.println("Wins: " .. wins)
+end
+"#;
+        fs::write(dir.path().join("user_data_test.lua"), script_content).unwrap();
+
+        let loader = ScriptLoader::new(dir.path());
+        loader.sync(&db).unwrap();
+
+        let repo = ScriptRepository::new(&db);
+        let script = repo.get_by_slug("user_data_test").unwrap().unwrap();
+
+        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
+
+        // Execute as logged-in user
+        let context = ScriptContext {
+            script_id: None,
+            user_id: Some(user_id),
+            username: "testuser".to_string(),
+            nickname: "Test".to_string(),
+            user_role: 1,
+            ..Default::default()
+        };
+
+        // First execution
+        let result = service.execute(&script, context.clone()).unwrap();
+        assert!(result.success);
+
+        // Second execution
+        let result = service.execute(&script, context).unwrap();
+        assert!(result.success);
+
+        // Verify user data was persisted
+        let data_repo = ScriptDataRepository::new(&db);
+        let wins = data_repo.get_user(script.id, user_id, "wins").unwrap();
+        assert_eq!(wins, Some("2".to_string()));
+    }
+
+    #[test]
+    fn test_execute_script_guest_user_data() {
+        let db = create_test_db();
+        let dir = tempdir().unwrap();
+
+        // Create a script that tries to use user data as guest
+        let script_content = r#"-- @name Guest Data Test
+-- @min_role 0
+
+bbs.user_data.set("test", "value")
+local val = bbs.user_data.get("test")
+if val == nil then
+    bbs.println("Guest data not saved (expected)")
+else
+    bbs.println("Guest data saved: " .. val)
+end
+"#;
+        fs::write(dir.path().join("guest_data_test.lua"), script_content).unwrap();
+
+        let loader = ScriptLoader::new(dir.path());
+        loader.sync(&db).unwrap();
+
+        let repo = ScriptRepository::new(&db);
+        let script = repo.get_by_slug("guest_data_test").unwrap().unwrap();
+
+        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
+
+        // Execute as guest
+        let context = ScriptContext::default();
+        let result = service.execute(&script, context).unwrap();
+        assert!(result.success);
+        // For guest, user_data operations should be no-ops
     }
 }

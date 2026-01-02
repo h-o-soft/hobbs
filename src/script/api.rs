@@ -204,6 +204,7 @@ mod tests {
     fn create_test_engine_with_api() -> (ScriptEngine, Rc<RefCell<Vec<String>>>) {
         let engine = ScriptEngine::new().unwrap();
         let context = ScriptContext {
+            script_id: Some(1),
             user_id: Some(42),
             username: "testuser".to_string(),
             nickname: "Test User".to_string(),

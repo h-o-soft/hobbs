@@ -29,7 +29,10 @@ impl Default for ResourceLimits {
 }
 
 /// Script execution context.
+#[derive(Clone)]
 pub struct ScriptContext {
+    /// Script ID for data storage.
+    pub script_id: Option<i64>,
     /// User information.
     pub user_id: Option<i64>,
     pub username: String,
@@ -44,6 +47,7 @@ pub struct ScriptContext {
 impl Default for ScriptContext {
     fn default() -> Self {
         Self {
+            script_id: None,
             user_id: None,
             username: "guest".to_string(),
             nickname: "Guest".to_string(),
