@@ -1,13 +1,15 @@
 //! Common utilities for screen handlers.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::time::timeout;
 
 use crate::chat::ChatRoomManager;
 use crate::config::Config;
 use crate::db::Database;
-use crate::error::Result;
+use crate::error::{HobbsError, Result};
 use crate::i18n::I18n;
 use crate::server::{
     encode_for_client, CharacterEncoding, EchoMode, InputResult, LineBuffer, TelnetSession,
@@ -91,13 +93,28 @@ impl ScreenContext {
         self.line_buffer.clear();
         let mut buf = [0u8; 1];
 
+        // Determine timeout based on session state
+        let timeout_secs = if session.is_logged_in() {
+            // Logged-in users get the full idle timeout
+            self.config.server.idle_timeout_secs
+        } else if session.is_guest() {
+            // Guest users get a medium timeout
+            self.config.server.guest_timeout_secs
+        } else {
+            // Unauthenticated connections get a short timeout (DoS protection)
+            self.config.server.read_timeout_secs
+        };
+        let read_timeout = Duration::from_secs(timeout_secs);
+
         loop {
-            match session.stream_mut().read(&mut buf).await {
-                Ok(0) => {
+            let read_result = timeout(read_timeout, session.stream_mut().read(&mut buf)).await;
+
+            match read_result {
+                Ok(Ok(0)) => {
                     // Connection closed
                     return Ok(String::new());
                 }
-                Ok(_) => {
+                Ok(Ok(_)) => {
                     let (result, echo) = self.line_buffer.process_byte(buf[0]);
 
                     // Handle echo based on mode
@@ -142,8 +159,15 @@ impl ScreenContext {
                         }
                     }
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     return Err(e.into());
+                }
+                Err(_) => {
+                    // Timeout elapsed
+                    return Err(HobbsError::Io(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "Read timeout",
+                    )));
                 }
             }
         }
@@ -152,16 +176,35 @@ impl ScreenContext {
     /// Read a single character.
     pub async fn read_char(&self, session: &mut TelnetSession) -> Result<char> {
         let mut buf = [0u8; 1];
+
+        // Determine timeout based on session state
+        let timeout_secs = if session.is_logged_in() {
+            self.config.server.idle_timeout_secs
+        } else if session.is_guest() {
+            self.config.server.guest_timeout_secs
+        } else {
+            self.config.server.read_timeout_secs
+        };
+        let read_timeout = Duration::from_secs(timeout_secs);
+
         loop {
-            match session.stream_mut().read(&mut buf).await {
-                Ok(0) => return Ok('\0'),
-                Ok(_) => {
+            let read_result = timeout(read_timeout, session.stream_mut().read(&mut buf)).await;
+
+            match read_result {
+                Ok(Ok(0)) => return Ok('\0'),
+                Ok(Ok(_)) => {
                     let ch = buf[0] as char;
                     if ch.is_ascii_graphic() || ch == '\r' || ch == '\n' {
                         return Ok(ch);
                     }
                 }
-                Err(e) => return Err(e.into()),
+                Ok(Err(e)) => return Err(e.into()),
+                Err(_) => {
+                    return Err(HobbsError::Io(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "Read timeout",
+                    )));
+                }
             }
         }
     }
@@ -171,15 +214,34 @@ impl ScreenContext {
         self.send(session, self.i18n.t("common.press_enter"))
             .await?;
         let mut buf = [0u8; 1];
+
+        // Determine timeout based on session state
+        let timeout_secs = if session.is_logged_in() {
+            self.config.server.idle_timeout_secs
+        } else if session.is_guest() {
+            self.config.server.guest_timeout_secs
+        } else {
+            self.config.server.read_timeout_secs
+        };
+        let read_timeout = Duration::from_secs(timeout_secs);
+
         loop {
-            match session.stream_mut().read(&mut buf).await {
-                Ok(0) => break,
-                Ok(_) => {
+            let read_result = timeout(read_timeout, session.stream_mut().read(&mut buf)).await;
+
+            match read_result {
+                Ok(Ok(0)) => break,
+                Ok(Ok(_)) => {
                     if buf[0] == b'\r' || buf[0] == b'\n' {
                         break;
                     }
                 }
-                Err(_) => break,
+                Ok(Err(_)) => break,
+                Err(_) => {
+                    return Err(HobbsError::Io(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "Read timeout",
+                    )));
+                }
             }
         }
         Ok(())

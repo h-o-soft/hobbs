@@ -20,6 +20,12 @@ pub struct ServerConfig {
     /// Idle timeout in seconds.
     #[serde(default = "default_idle_timeout")]
     pub idle_timeout_secs: u64,
+    /// Read timeout in seconds for unauthenticated connections (DoS protection).
+    #[serde(default = "default_read_timeout")]
+    pub read_timeout_secs: u64,
+    /// Read timeout in seconds for guest users.
+    #[serde(default = "default_guest_timeout")]
+    pub guest_timeout_secs: u64,
     /// Timezone for displaying dates (e.g., "Asia/Tokyo", "UTC").
     #[serde(default = "default_timezone")]
     pub timezone: String,
@@ -41,6 +47,14 @@ fn default_idle_timeout() -> u64 {
     300
 }
 
+fn default_read_timeout() -> u64 {
+    30
+}
+
+fn default_guest_timeout() -> u64 {
+    120
+}
+
 fn default_timezone() -> String {
     "Asia/Tokyo".to_string()
 }
@@ -52,6 +66,8 @@ impl Default for ServerConfig {
             port: default_port(),
             max_connections: default_max_connections(),
             idle_timeout_secs: default_idle_timeout(),
+            read_timeout_secs: default_read_timeout(),
+            guest_timeout_secs: default_guest_timeout(),
             timezone: default_timezone(),
         }
     }
@@ -283,6 +299,8 @@ mod tests {
         assert_eq!(config.server.port, 2323);
         assert_eq!(config.server.max_connections, 20);
         assert_eq!(config.server.idle_timeout_secs, 300);
+        assert_eq!(config.server.read_timeout_secs, 30);
+        assert_eq!(config.server.guest_timeout_secs, 120);
         assert_eq!(config.server.timezone, "Asia/Tokyo");
 
         assert_eq!(config.database.path, "data/hobbs.db");

@@ -61,6 +61,8 @@ pub struct TelnetSession {
     username: Option<String>,
     /// Character encoding for this session.
     encoding: CharacterEncoding,
+    /// Whether this is a guest session (not logged in but accessing menu).
+    is_guest: bool,
 }
 
 impl TelnetSession {
@@ -78,6 +80,7 @@ impl TelnetSession {
             user_id: None,
             username: None,
             encoding: CharacterEncoding::default(),
+            is_guest: false,
         }
     }
 
@@ -102,6 +105,7 @@ impl TelnetSession {
             user_id: None,
             username: None,
             encoding,
+            is_guest: false,
         }
     }
 
@@ -168,6 +172,20 @@ impl TelnetSession {
     /// Check if the session is logged in.
     pub fn is_logged_in(&self) -> bool {
         self.user_id.is_some()
+    }
+
+    /// Check if this is a guest session.
+    pub fn is_guest(&self) -> bool {
+        self.is_guest
+    }
+
+    /// Set this session as a guest session.
+    pub fn set_guest(&mut self, is_guest: bool) {
+        self.is_guest = is_guest;
+        if is_guest {
+            debug!("Session {} set as guest", self.id);
+        }
+        self.touch();
     }
 
     /// Set the logged-in user.
