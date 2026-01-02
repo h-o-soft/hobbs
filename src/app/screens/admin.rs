@@ -44,7 +44,12 @@ impl AdminScreen {
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [3] {}", ctx.i18n.t("admin.delete_board")),
+                &format!("  [3] {}", ctx.i18n.t("admin.edit_board")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [4] {}", ctx.i18n.t("admin.delete_board")),
             )
             .await?;
             ctx.send_line(session, "").await?;
@@ -56,12 +61,12 @@ impl AdminScreen {
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [4] {}", ctx.i18n.t("admin.user_list")),
+                &format!("  [5] {}", ctx.i18n.t("admin.user_list")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [5] {}", ctx.i18n.t("admin.session_list")),
+                &format!("  [6] {}", ctx.i18n.t("admin.session_list")),
             )
             .await?;
             ctx.send_line(session, "").await?;
@@ -73,17 +78,17 @@ impl AdminScreen {
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [6] {}", ctx.i18n.t("admin.chat_room_list")),
+                &format!("  [7] {}", ctx.i18n.t("admin.chat_room_list")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [7] {}", ctx.i18n.t("admin.create_chat_room")),
+                &format!("  [8] {}", ctx.i18n.t("admin.create_chat_room")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [8] {}", ctx.i18n.t("admin.delete_chat_room")),
+                &format!("  [9] {}", ctx.i18n.t("admin.delete_chat_room")),
             )
             .await?;
             ctx.send_line(session, "").await?;
@@ -95,17 +100,17 @@ impl AdminScreen {
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [9] {}", ctx.i18n.t("admin.folder_list")),
+                &format!("  [10] {}", ctx.i18n.t("admin.folder_list")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [10] {}", ctx.i18n.t("admin.create_folder")),
+                &format!("  [11] {}", ctx.i18n.t("admin.create_folder")),
             )
             .await?;
             ctx.send_line(
                 session,
-                &format!("  [11] {}", ctx.i18n.t("admin.delete_folder")),
+                &format!("  [12] {}", ctx.i18n.t("admin.delete_folder")),
             )
             .await?;
             ctx.send_line(session, "").await?;
@@ -115,7 +120,7 @@ impl AdminScreen {
                 &format!("=== {} ===", ctx.i18n.t("admin.system_status")),
             )
             .await?;
-            ctx.send_line(session, "  [12] System Status").await?;
+            ctx.send_line(session, "  [13] System Status").await?;
             ctx.send_line(session, "").await?;
 
             ctx.send(
@@ -135,16 +140,17 @@ impl AdminScreen {
                 "q" | "" => return Ok(ScreenResult::Back),
                 "1" => Self::show_board_list(ctx, session).await?,
                 "2" => Self::create_board(ctx, session).await?,
-                "3" => Self::delete_board(ctx, session).await?,
-                "4" => Self::show_user_list(ctx, session).await?,
-                "5" => Self::show_sessions(ctx, session).await?,
-                "6" => Self::show_chat_rooms(ctx, session).await?,
-                "7" => Self::create_chat_room(ctx, session).await?,
-                "8" => Self::delete_chat_room(ctx, session).await?,
-                "9" => Self::show_folders(ctx, session).await?,
-                "10" => Self::create_folder(ctx, session).await?,
-                "11" => Self::delete_folder(ctx, session).await?,
-                "12" => Self::show_system_status(ctx, session).await?,
+                "3" => Self::edit_board(ctx, session).await?,
+                "4" => Self::delete_board(ctx, session).await?,
+                "5" => Self::show_user_list(ctx, session).await?,
+                "6" => Self::show_sessions(ctx, session).await?,
+                "7" => Self::show_chat_rooms(ctx, session).await?,
+                "8" => Self::create_chat_room(ctx, session).await?,
+                "9" => Self::delete_chat_room(ctx, session).await?,
+                "10" => Self::show_folders(ctx, session).await?,
+                "11" => Self::create_folder(ctx, session).await?,
+                "12" => Self::delete_folder(ctx, session).await?,
+                "13" => Self::show_system_status(ctx, session).await?,
                 _ => {}
             }
         }
@@ -256,6 +262,359 @@ impl AdminScreen {
         }
 
         Ok(())
+    }
+
+    /// Edit a board (permissions, name, description, etc.).
+    async fn edit_board(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
+        use crate::board::{BoardRepository, BoardUpdate};
+
+        // Get board list
+        let boards = {
+            let board_repo = BoardRepository::new(&ctx.db);
+            board_repo.list_all()?
+        };
+
+        if boards.is_empty() {
+            ctx.send_line(session, ctx.i18n.t("board.no_boards")).await?;
+            return Ok(());
+        }
+
+        // Show board list
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("admin.edit_board")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        for (i, board) in boards.iter().enumerate() {
+            let status = if board.is_active {
+                ctx.i18n.t("admin.board_active")
+            } else {
+                ctx.i18n.t("admin.board_inactive")
+            };
+            ctx.send_line(
+                session,
+                &format!(
+                    "  {}: {} [{}]",
+                    i + 1,
+                    board.name,
+                    status
+                ),
+            )
+            .await?;
+        }
+
+        ctx.send_line(session, "").await?;
+        ctx.send(
+            session,
+            &format!("{}: ", ctx.i18n.t("admin.board_number_to_edit")),
+        )
+        .await?;
+
+        let input = ctx.read_line(session).await?;
+        let input = input.trim();
+
+        if input.is_empty() {
+            return Ok(());
+        }
+
+        let idx: usize = match input.parse::<usize>() {
+            Ok(n) if n >= 1 && n <= boards.len() => n - 1,
+            _ => {
+                ctx.send_line(session, ctx.i18n.t("common.invalid_input"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        let board_id = boards[idx].id;
+
+        // Show current settings and edit menu
+        loop {
+            // Reload board to get latest data
+            let board = {
+                let board_repo = BoardRepository::new(&ctx.db);
+                match board_repo.get_by_id(board_id)? {
+                    Some(b) => b,
+                    None => {
+                        ctx.send_line(session, ctx.i18n.t("admin.board_not_found"))
+                            .await?;
+                        return Ok(());
+                    }
+                }
+            };
+
+            ctx.send_line(session, "").await?;
+            ctx.send_line(
+                session,
+                &format!("=== {} ===", ctx.i18n.t("admin.board_current_settings")),
+            )
+            .await?;
+
+            let read_role_name = Self::role_to_string(&board.min_read_role, ctx);
+            let write_role_name = Self::role_to_string(&board.min_write_role, ctx);
+            let status = if board.is_active {
+                ctx.i18n.t("admin.board_active")
+            } else {
+                ctx.i18n.t("admin.board_inactive")
+            };
+
+            ctx.send_line(
+                session,
+                &format!(
+                    "  {}: {}",
+                    ctx.i18n.t("admin.board_name"),
+                    board.name
+                ),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!(
+                    "  {}: {}",
+                    ctx.i18n.t("admin.board_description"),
+                    board.description.as_deref().unwrap_or("-")
+                ),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!(
+                    "  {}: {}",
+                    ctx.i18n.t("admin.board_read_permission"),
+                    read_role_name
+                ),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!(
+                    "  {}: {}",
+                    ctx.i18n.t("admin.board_write_permission"),
+                    write_role_name
+                ),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  {}: {}", ctx.i18n.t("admin.board_active"), status),
+            )
+            .await?;
+
+            ctx.send_line(session, "").await?;
+            ctx.send_line(
+                session,
+                &format!("=== {} ===", ctx.i18n.t("admin.board_select_item")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [1] {}", ctx.i18n.t("admin.board_edit_name")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [2] {}", ctx.i18n.t("admin.board_edit_description")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [3] {}", ctx.i18n.t("admin.board_edit_read_permission")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [4] {}", ctx.i18n.t("admin.board_edit_write_permission")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [5] {}", ctx.i18n.t("admin.board_edit_active")),
+            )
+            .await?;
+            ctx.send_line(session, "").await?;
+
+            ctx.send(
+                session,
+                &format!(
+                    "{} [Q={}]: ",
+                    ctx.i18n.t("menu.select_prompt"),
+                    ctx.i18n.t("common.back")
+                ),
+            )
+            .await?;
+
+            let choice = ctx.read_line(session).await?;
+            let choice = choice.trim();
+
+            match choice.to_ascii_lowercase().as_str() {
+                "q" | "" => break,
+                "1" => {
+                    // Edit name
+                    ctx.send(
+                        session,
+                        &format!("{}: ", ctx.i18n.t("admin.new_name")),
+                    )
+                    .await?;
+                    let new_name = ctx.read_line(session).await?;
+                    let new_name = new_name.trim();
+                    if !new_name.is_empty() {
+                        let update = BoardUpdate::new().name(new_name);
+                        let board_repo = BoardRepository::new(&ctx.db);
+                        if let Err(e) = board_repo.update(board_id, &update) {
+                            ctx.send_line(session, &format!("Error: {}", e)).await?;
+                        } else {
+                            ctx.send_line(
+                                session,
+                                &ctx.i18n.t_with("admin.board_updated", &[("name", new_name)]),
+                            )
+                            .await?;
+                        }
+                    }
+                }
+                "2" => {
+                    // Edit description
+                    ctx.send(
+                        session,
+                        &format!("{}: ", ctx.i18n.t("admin.new_description")),
+                    )
+                    .await?;
+                    let new_desc = ctx.read_line(session).await?;
+                    let new_desc = new_desc.trim();
+                    let update = if new_desc.is_empty() {
+                        BoardUpdate::new().description(None)
+                    } else {
+                        BoardUpdate::new().description(Some(new_desc.to_string()))
+                    };
+                    let board_repo = BoardRepository::new(&ctx.db);
+                    if let Err(e) = board_repo.update(board_id, &update) {
+                        ctx.send_line(session, &format!("Error: {}", e)).await?;
+                    } else {
+                        ctx.send_line(
+                            session,
+                            &ctx.i18n.t_with("admin.board_updated", &[("name", &board.name)]),
+                        )
+                        .await?;
+                    }
+                }
+                "3" => {
+                    // Edit read permission
+                    if let Some(role) = Self::select_role(ctx, session).await? {
+                        let update = BoardUpdate::new().min_read_role(role);
+                        let board_repo = BoardRepository::new(&ctx.db);
+                        if let Err(e) = board_repo.update(board_id, &update) {
+                            ctx.send_line(session, &format!("Error: {}", e)).await?;
+                        } else {
+                            ctx.send_line(
+                                session,
+                                &ctx.i18n.t_with("admin.board_updated", &[("name", &board.name)]),
+                            )
+                            .await?;
+                        }
+                    }
+                }
+                "4" => {
+                    // Edit write permission
+                    if let Some(role) = Self::select_role(ctx, session).await? {
+                        let update = BoardUpdate::new().min_write_role(role);
+                        let board_repo = BoardRepository::new(&ctx.db);
+                        if let Err(e) = board_repo.update(board_id, &update) {
+                            ctx.send_line(session, &format!("Error: {}", e)).await?;
+                        } else {
+                            ctx.send_line(
+                                session,
+                                &ctx.i18n.t_with("admin.board_updated", &[("name", &board.name)]),
+                            )
+                            .await?;
+                        }
+                    }
+                }
+                "5" => {
+                    // Toggle active status
+                    let update = BoardUpdate::new().is_active(!board.is_active);
+                    let board_repo = BoardRepository::new(&ctx.db);
+                    if let Err(e) = board_repo.update(board_id, &update) {
+                        ctx.send_line(session, &format!("Error: {}", e)).await?;
+                    } else {
+                        ctx.send_line(
+                            session,
+                            &ctx.i18n.t_with("admin.board_updated", &[("name", &board.name)]),
+                        )
+                        .await?;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Convert Role to localized string.
+    fn role_to_string(role: &crate::db::Role, ctx: &ScreenContext) -> String {
+        match role {
+            crate::db::Role::Guest => ctx.i18n.t("role.guest").to_string(),
+            crate::db::Role::Member => ctx.i18n.t("role.member").to_string(),
+            crate::db::Role::SubOp => ctx.i18n.t("role.subop").to_string(),
+            crate::db::Role::SysOp => ctx.i18n.t("role.sysop").to_string(),
+        }
+    }
+
+    /// Show role selection menu and return selected role.
+    async fn select_role(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+    ) -> Result<Option<crate::db::Role>> {
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("admin.select_permission")),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!("  [1] {} ({})", ctx.i18n.t("role.guest"), "Guest"),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!("  [2] {} ({})", ctx.i18n.t("role.member"), "Member"),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!("  [3] {} ({})", ctx.i18n.t("role.subop"), "SubOp"),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!("  [4] {} ({})", ctx.i18n.t("role.sysop"), "SysOp"),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        ctx.send(
+            session,
+            &format!(
+                "{} [Q={}]: ",
+                ctx.i18n.t("menu.select_prompt"),
+                ctx.i18n.t("common.cancel")
+            ),
+        )
+        .await?;
+
+        let input = ctx.read_line(session).await?;
+        let input = input.trim();
+
+        match input.to_ascii_lowercase().as_str() {
+            "1" => Ok(Some(crate::db::Role::Guest)),
+            "2" => Ok(Some(crate::db::Role::Member)),
+            "3" => Ok(Some(crate::db::Role::SubOp)),
+            "4" => Ok(Some(crate::db::Role::SysOp)),
+            _ => Ok(None),
+        }
     }
 
     /// Delete a board.
