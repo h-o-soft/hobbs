@@ -80,5 +80,8 @@ pub use template::{
 };
 
 pub use app::{Application, MenuAction, MenuError, SessionHandler};
-pub use script::{Script, ScriptLoader, ScriptMetadata, ScriptRepository, SyncResult};
+pub use script::{
+    ResourceLimits, Script, ScriptContext, ScriptEngine, ScriptLoader, ScriptMetadata,
+    ScriptRepository, SyncResult,
+};
 pub use xmodem::{xmodem_receive, xmodem_send, TransferError, TransferResult};
