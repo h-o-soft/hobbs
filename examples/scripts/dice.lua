@@ -1,5 +1,7 @@
 -- @name Dice Roller
+-- @name.ja サイコロ
 -- @description Roll dice with customizable sides
+-- @description.ja 様々な面数のサイコロを振ろう
 -- @author HOBBS Sample
 -- @min_role 0
 

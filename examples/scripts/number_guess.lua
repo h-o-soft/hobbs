@@ -1,5 +1,7 @@
 -- @name Number Guess
+-- @name.ja 数当てゲーム
 -- @description Guess a number between 1-100. High score tracking included.
+-- @description.ja 1〜100の数を当てよう（ハイスコア記録付き）
 -- @author HOBBS Sample
 -- @min_role 0
 

@@ -232,6 +232,13 @@ CREATE INDEX idx_script_logs_script ON script_logs(script_id);
 CREATE INDEX idx_script_logs_user ON script_logs(user_id);
 CREATE INDEX idx_script_logs_executed_at ON script_logs(executed_at);
 "#,
+    // v15: Script metadata localization
+    r#"
+-- Add i18n columns for script metadata localization
+-- Stored as JSON: {"ja": "日本語名", "de": "Deutscher Name"}
+ALTER TABLE scripts ADD COLUMN name_i18n TEXT;
+ALTER TABLE scripts ADD COLUMN description_i18n TEXT;
+"#,
 ];
 
 #[cfg(test)]

@@ -1,5 +1,7 @@
 -- @name Janken
+-- @name.ja じゃんけん
 -- @description Rock-Paper-Scissors game with win/loss tracking
+-- @description.ja じゃんけんゲーム（勝敗記録付き）
 -- @author HOBBS Sample
 -- @min_role 0
 

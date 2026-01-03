@@ -140,6 +140,8 @@ impl ScriptLoader {
             slug,
             description: metadata.description,
             author: metadata.author,
+            name_i18n: metadata.name_i18n,
+            description_i18n: metadata.description_i18n,
             file_hash: Some(file_hash),
             synced_at: Some(Utc::now()),
             min_role: metadata.min_role.unwrap_or(0),
@@ -168,7 +170,9 @@ impl ScriptLoader {
     /// Looks for comments like:
     /// ```lua
     /// -- @name Script Name
+    /// -- @name.ja スクリプト名
     /// -- @description Description text
+    /// -- @description.ja 説明文
     /// -- @author Author Name
     /// -- @min_role 0
     /// -- @enabled true
@@ -188,7 +192,16 @@ impl ScriptLoader {
 
             let comment = line.trim_start_matches("--").trim();
 
-            if let Some(value) = comment.strip_prefix("@name ") {
+            // Try to parse localized metadata first (e.g., @name.ja, @description.en)
+            if let Some(rest) = comment.strip_prefix("@name.") {
+                if let Some((lang, value)) = Self::parse_localized_value(rest) {
+                    metadata.name_i18n.insert(lang, value);
+                }
+            } else if let Some(rest) = comment.strip_prefix("@description.") {
+                if let Some((lang, value)) = Self::parse_localized_value(rest) {
+                    metadata.description_i18n.insert(lang, value);
+                }
+            } else if let Some(value) = comment.strip_prefix("@name ") {
                 metadata.name = Some(value.trim().to_string());
             } else if let Some(value) = comment.strip_prefix("@description ") {
                 metadata.description = Some(value.trim().to_string());
@@ -202,6 +215,29 @@ impl ScriptLoader {
         }
 
         metadata
+    }
+
+    /// Parse a localized value like "ja スクリプト名" into ("ja", "スクリプト名").
+    fn parse_localized_value(s: &str) -> Option<(String, String)> {
+        let s = s.trim();
+        // Find the first space to separate language code from value
+        let space_pos = s.find(' ')?;
+        let lang = &s[..space_pos];
+        let value = s[space_pos + 1..].trim();
+
+        // Validate language code (2-10 chars: alphanumeric, underscore, hyphen)
+        // Examples: "ja", "en", "zh_CN", "pt-BR"
+        if lang.len() >= 2
+            && lang.len() <= 10
+            && lang
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+            && !value.is_empty()
+        {
+            Some((lang.to_string(), value.to_string()))
+        } else {
+            None
+        }
     }
 
     /// Calculate a simple hash of the file content.
@@ -305,6 +341,90 @@ bbs.println("Hello")
         assert!(metadata.description.is_none());
         assert!(metadata.min_role.is_none());
         assert!(metadata.enabled.is_none());
+    }
+
+    #[test]
+    fn test_parse_metadata_i18n() {
+        let content = r#"-- @name Rock-Paper-Scissors
+-- @name.ja じゃんけん
+-- @name.de Schere-Stein-Papier
+-- @description Play rock-paper-scissors game
+-- @description.ja じゃんけんゲームで遊ぼう
+-- @author SysOp
+-- @min_role 0
+
+bbs.println("Hello")
+"#;
+
+        let metadata = ScriptLoader::parse_metadata(content);
+        assert_eq!(metadata.name, Some("Rock-Paper-Scissors".to_string()));
+        assert_eq!(metadata.name_i18n.get("ja"), Some(&"じゃんけん".to_string()));
+        assert_eq!(
+            metadata.name_i18n.get("de"),
+            Some(&"Schere-Stein-Papier".to_string())
+        );
+        assert_eq!(
+            metadata.description,
+            Some("Play rock-paper-scissors game".to_string())
+        );
+        assert_eq!(
+            metadata.description_i18n.get("ja"),
+            Some(&"じゃんけんゲームで遊ぼう".to_string())
+        );
+        assert_eq!(metadata.author, Some("SysOp".to_string()));
+        assert_eq!(metadata.min_role, Some(0));
+    }
+
+    #[test]
+    fn test_parse_metadata_i18n_only() {
+        // Test with only localized versions (no default)
+        let content = r#"-- @name.en English Name
+-- @name.ja 日本語名
+-- @description.en English description
+-- @description.ja 日本語説明
+
+bbs.println("Hello")
+"#;
+
+        let metadata = ScriptLoader::parse_metadata(content);
+        assert!(metadata.name.is_none()); // No default name
+        assert_eq!(metadata.name_i18n.get("en"), Some(&"English Name".to_string()));
+        assert_eq!(metadata.name_i18n.get("ja"), Some(&"日本語名".to_string()));
+        assert!(metadata.description.is_none()); // No default description
+        assert_eq!(
+            metadata.description_i18n.get("en"),
+            Some(&"English description".to_string())
+        );
+        assert_eq!(
+            metadata.description_i18n.get("ja"),
+            Some(&"日本語説明".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_localized_value() {
+        // Valid cases
+        assert_eq!(
+            ScriptLoader::parse_localized_value("ja テスト"),
+            Some(("ja".to_string(), "テスト".to_string()))
+        );
+        assert_eq!(
+            ScriptLoader::parse_localized_value("en Test Value"),
+            Some(("en".to_string(), "Test Value".to_string()))
+        );
+        assert_eq!(
+            ScriptLoader::parse_localized_value("zh_CN 中文"),
+            Some(("zh_CN".to_string(), "中文".to_string()))
+        );
+
+        // Invalid cases
+        assert_eq!(ScriptLoader::parse_localized_value("j テスト"), None); // Too short lang
+        assert_eq!(
+            ScriptLoader::parse_localized_value("waytoolong1 テスト"),
+            None
+        ); // Too long lang (11 chars)
+        assert_eq!(ScriptLoader::parse_localized_value("ja "), None); // Empty value
+        assert_eq!(ScriptLoader::parse_localized_value("ja"), None); // No space/value
     }
 
     #[test]

@@ -1,5 +1,7 @@
 -- @name Quiz Game
+-- @name.ja クイズゲーム
 -- @description Test your knowledge with trivia questions
+-- @description.ja トリビアクイズに挑戦
 -- @author HOBBS Sample
 -- @min_role 0
 
