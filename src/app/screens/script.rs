@@ -63,7 +63,7 @@ impl ScriptScreen {
 
             // Show admin options for SubOp/SysOp
             if user_role >= 2 {
-                ctx.send_line(session, &format!("  [R] {}", ctx.i18n.t("script.resync")))
+                ctx.send_line(session, &format!("  [A] {}", ctx.i18n.t("script.admin")))
                     .await?;
                 ctx.send_line(session, "").await?;
             }
@@ -89,8 +89,8 @@ impl ScriptScreen {
 
             match input.to_ascii_lowercase().as_str() {
                 "q" | "" => return Ok(ScreenResult::Back),
-                "r" if user_role >= 2 => {
-                    Self::resync_scripts(ctx, session, &scripts_dir).await?;
+                "a" if user_role >= 2 => {
+                    Self::admin_menu(ctx, session, &scripts_dir).await?;
                 }
                 _ => {
                     // Try to parse as script number
@@ -131,8 +131,7 @@ impl ScriptScreen {
         let name = script.get_name(lang);
 
         ctx.send_line(session, "").await?;
-        ctx.send_line(session, &format!("--- {} ---", name))
-            .await?;
+        ctx.send_line(session, &format!("--- {} ---", name)).await?;
         ctx.send_line(session, "").await?;
 
         // Execute script with interactive message loop
@@ -253,6 +252,59 @@ impl ScriptScreen {
         Ok(result)
     }
 
+    /// Admin menu for SubOp/SysOp.
+    async fn admin_menu(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        scripts_dir: &PathBuf,
+    ) -> Result<()> {
+        loop {
+            ctx.send_line(session, "").await?;
+            ctx.send_line(
+                session,
+                &format!("=== {} ===", ctx.i18n.t("script.admin_title")),
+            )
+            .await?;
+            ctx.send_line(session, "").await?;
+            ctx.send_line(
+                session,
+                &format!("  [1] {}", ctx.i18n.t("script.admin_resync")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [2] {}", ctx.i18n.t("script.admin_toggle")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [3] {}", ctx.i18n.t("script.admin_guide")),
+            )
+            .await?;
+            ctx.send_line(session, "").await?;
+            ctx.send(
+                session,
+                &format!(
+                    "{} [Q={}]: ",
+                    ctx.i18n.t("menu.select_prompt"),
+                    ctx.i18n.t("common.back")
+                ),
+            )
+            .await?;
+
+            let input = ctx.read_line(session).await?;
+            let input = input.trim();
+
+            match input.to_ascii_lowercase().as_str() {
+                "q" | "" => return Ok(()),
+                "1" => Self::resync_scripts(ctx, session, scripts_dir).await?,
+                "2" => Self::toggle_scripts(ctx, session, scripts_dir).await?,
+                "3" => Self::show_guide(ctx, session).await?,
+                _ => {}
+            }
+        }
+    }
+
     /// Resync scripts from file system.
     async fn resync_scripts(
         ctx: &mut ScreenContext,
@@ -301,6 +353,116 @@ impl ScriptScreen {
             }
         }
 
+        ctx.send_line(session, "").await?;
+        ctx.wait_for_enter(session).await?;
+
+        Ok(())
+    }
+
+    /// Toggle script enabled/disabled status.
+    async fn toggle_scripts(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        scripts_dir: &PathBuf,
+    ) -> Result<()> {
+        // Get scripts first, then drop service to release borrow
+        let scripts = {
+            let service = ScriptService::new(&ctx.db).with_scripts_dir(scripts_dir);
+            service.list_all_scripts()?
+        };
+
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("script.toggle_title")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        if scripts.is_empty() {
+            ctx.send_line(session, &ctx.i18n.t("script.no_scripts"))
+                .await?;
+            ctx.wait_for_enter(session).await?;
+            return Ok(());
+        }
+
+        // Display all scripts with enabled/disabled status
+        let lang = ctx.i18n.locale().to_string();
+        for (i, script) in scripts.iter().enumerate() {
+            let name = script.get_name(&lang);
+            let status = if script.enabled {
+                ctx.i18n.t("script.toggle_enabled")
+            } else {
+                ctx.i18n.t("script.toggle_disabled")
+            };
+            ctx.send_line(session, &format!("  [{:>2}] [{}] {}", i + 1, status, name))
+                .await?;
+        }
+
+        ctx.send_line(session, "").await?;
+        ctx.send(
+            session,
+            &format!(
+                "{} [Q={}]: ",
+                ctx.i18n.t("script.toggle_prompt"),
+                ctx.i18n.t("common.back")
+            ),
+        )
+        .await?;
+
+        let input = ctx.read_line(session).await?;
+        let input = input.trim();
+
+        if input.to_ascii_lowercase() == "q" || input.is_empty() {
+            return Ok(());
+        }
+
+        if let Ok(num) = input.parse::<usize>() {
+            if num > 0 && num <= scripts.len() {
+                let script = &scripts[num - 1];
+                let new_enabled = !script.enabled;
+
+                // Create new service for set_enabled
+                let service = ScriptService::new(&ctx.db).with_scripts_dir(scripts_dir);
+                service.set_enabled(script.id, new_enabled)?;
+
+                let name = script.get_name(&lang);
+                let message = if new_enabled {
+                    ctx.i18n.t_with("script.toggled_on", &[("name", &name)])
+                } else {
+                    ctx.i18n.t_with("script.toggled_off", &[("name", &name)])
+                };
+                ctx.send_line(session, "").await?;
+                ctx.send_line(session, &message).await?;
+                ctx.wait_for_enter(session).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Show script placement guide.
+    async fn show_guide(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("script.guide_title")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+        ctx.send_line(session, &ctx.i18n.t("script.guide_step1"))
+            .await?;
+        ctx.send_line(session, "").await?;
+        ctx.send_line(session, &ctx.i18n.t("script.guide_step2"))
+            .await?;
+        ctx.send_line(session, "").await?;
+        ctx.send_line(session, &ctx.i18n.t("script.guide_metadata"))
+            .await?;
+        ctx.send_line(session, "").await?;
+        ctx.send_line(session, &ctx.i18n.t("script.guide_step3"))
+            .await?;
+        ctx.send_line(session, &ctx.i18n.t("script.guide_step4"))
+            .await?;
         ctx.send_line(session, "").await?;
         ctx.wait_for_enter(session).await?;
 

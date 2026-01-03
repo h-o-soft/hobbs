@@ -458,16 +458,28 @@ mod tests {
         let mut script = create_test_script("i18n_test.lua");
         script.name = "Test Script".to_string();
         script.description = Some("A test script".to_string());
-        script.name_i18n.insert("ja".to_string(), "テストスクリプト".to_string());
-        script.name_i18n.insert("de".to_string(), "Testskript".to_string());
-        script.description_i18n.insert("ja".to_string(), "これはテストです".to_string());
+        script
+            .name_i18n
+            .insert("ja".to_string(), "テストスクリプト".to_string());
+        script
+            .name_i18n
+            .insert("de".to_string(), "Testskript".to_string());
+        script
+            .description_i18n
+            .insert("ja".to_string(), "これはテストです".to_string());
 
         let created = repo.upsert(&script).unwrap();
 
         // Verify i18n data was saved
-        assert_eq!(created.name_i18n.get("ja"), Some(&"テストスクリプト".to_string()));
+        assert_eq!(
+            created.name_i18n.get("ja"),
+            Some(&"テストスクリプト".to_string())
+        );
         assert_eq!(created.name_i18n.get("de"), Some(&"Testskript".to_string()));
-        assert_eq!(created.description_i18n.get("ja"), Some(&"これはテストです".to_string()));
+        assert_eq!(
+            created.description_i18n.get("ja"),
+            Some(&"これはテストです".to_string())
+        );
 
         // Verify get_name() and get_description() work correctly
         assert_eq!(created.get_name("ja"), "テストスクリプト");

@@ -354,7 +354,9 @@ impl BbsApi {
 
             // Second argument: default (optional)
             let default = match iter.next() {
-                Some(Value::String(s)) => Some(s.to_str().map(|s| s.to_string()).unwrap_or_default()),
+                Some(Value::String(s)) => {
+                    Some(s.to_str().map(|s| s.to_string()).unwrap_or_default())
+                }
                 _ => None,
             };
 
@@ -795,7 +797,9 @@ mod tests {
             let api = BbsApi::new(context).with_script_handle(handle_clone);
             api.register(engine.lua()).unwrap();
 
-            engine.execute(r#"result = bbs.input("Enter name: ")"#).unwrap();
+            engine
+                .execute(r#"result = bbs.input("Enter name: ")"#)
+                .unwrap();
             engine.get_global::<String>("result").unwrap()
         });
 

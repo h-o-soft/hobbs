@@ -478,3 +478,27 @@ sync_added = "Added"
 sync_updated = "Updated"
 sync_removed = "Removed"
 sync_errors = "Errors:"
+admin = "Admin"
+admin_title = "Script Administration"
+admin_resync = "Re-sync scripts"
+admin_toggle = "Enable/Disable"
+admin_guide = "Placement guide"
+toggle_title = "Enable/Disable Scripts"
+toggle_prompt = "Enter script number to toggle"
+toggle_enabled = "Enabled"
+toggle_disabled = "Disabled"
+toggled_on = "{{name}} has been enabled"
+toggled_off = "{{name}} has been disabled"
+guide_title = "Script Placement Guide"
+guide_step1 = "1. Place Lua files (.lua) in the scripts/ directory"
+guide_step2 = "2. Add metadata comments at the beginning of the file:"
+guide_step3 = "3. Scripts are automatically scanned at server startup"
+guide_step4 = "4. You can also manually re-sync from the admin menu"
+guide_metadata = """
+   -- @name Script Name
+   -- @name.ja Japanese Name
+   -- @description Description
+   -- @description.ja Japanese Description
+   -- @author Author
+   -- @min_role 0
+   -- @enabled true"""

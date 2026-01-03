@@ -52,7 +52,10 @@ impl Script {
     ///
     /// Falls back to the default name if no localization is available.
     pub fn get_name(&self, lang: &str) -> &str {
-        self.name_i18n.get(lang).map(|s| s.as_str()).unwrap_or(&self.name)
+        self.name_i18n
+            .get(lang)
+            .map(|s| s.as_str())
+            .unwrap_or(&self.name)
     }
 
     /// Get the localized description for the given language.
