@@ -259,11 +259,33 @@ pub fn decode_shiftjis(bytes: &[u8]) -> DecodeResult {
 /// assert!(!result.had_errors);
 /// ```
 pub fn encode_shiftjis(text: &str) -> EncodeResult {
-    let (cow, _encoding, had_errors) = SHIFT_JIS.encode(text);
+    // Normalize problematic Unicode characters before encoding
+    let normalized = normalize_for_shiftjis(text);
+    let (cow, _encoding, had_errors) = SHIFT_JIS.encode(&normalized);
     EncodeResult {
         bytes: cow.into_owned(),
         had_errors,
     }
+}
+
+/// Normalize Unicode characters that cause issues with ShiftJIS encoding.
+///
+/// This handles the famous "wave dash problem" and other character mapping
+/// issues between Unicode and ShiftJIS.
+///
+/// # Mappings
+/// - U+301C (Wave Dash) → U+FF5E (Fullwidth Tilde)
+/// - U+2212 (Minus Sign) → U+FF0D (Fullwidth Hyphen-Minus)
+/// - U+2014 (Em Dash) → U+2015 (Horizontal Bar)
+fn normalize_for_shiftjis(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            '\u{301C}' => '\u{FF5E}', // Wave Dash → Fullwidth Tilde
+            '\u{2212}' => '\u{FF0D}', // Minus Sign → Fullwidth Hyphen-Minus
+            '\u{2014}' => '\u{2015}', // Em Dash → Horizontal Bar
+            _ => c,
+        })
+        .collect()
 }
 
 /// Decode ShiftJIS bytes to UTF-8 string, returning None on error.
@@ -501,6 +523,43 @@ mod tests {
     fn test_encode_kanji() {
         let result = encode_shiftjis("漢字");
         assert_eq!(result.bytes, vec![0x8A, 0xBF, 0x8E, 0x9A]);
+        assert!(!result.had_errors);
+    }
+
+    // Wave dash normalization tests
+    #[test]
+    fn test_encode_wave_dash() {
+        // U+301C (Wave Dash) should be converted to U+FF5E (Fullwidth Tilde)
+        // which can be encoded in ShiftJIS
+        let text_with_wave_dash = "1〜100"; // Uses U+301C
+        let result = encode_shiftjis(text_with_wave_dash);
+        // Should succeed without errors
+        assert!(!result.had_errors);
+        // Verify the encoded bytes don't contain HTML entity
+        let decoded = decode_shiftjis(&result.bytes);
+        assert!(!decoded.text.contains("&#"));
+    }
+
+    #[test]
+    fn test_normalize_wave_dash() {
+        let text = "数字は1〜100の範囲です"; // Uses U+301C
+        let result = encode_shiftjis(text);
+        assert!(!result.had_errors);
+    }
+
+    #[test]
+    fn test_normalize_minus_sign() {
+        // U+2212 (Minus Sign) should be converted to U+FF0D (Fullwidth Hyphen-Minus)
+        let text = "−5"; // Uses U+2212
+        let result = encode_shiftjis(text);
+        assert!(!result.had_errors);
+    }
+
+    #[test]
+    fn test_normalize_em_dash() {
+        // U+2014 (Em Dash) should be converted to U+2015 (Horizontal Bar)
+        let text = "これ—あれ"; // Uses U+2014
+        let result = encode_shiftjis(text);
         assert!(!result.had_errors);
     }
 

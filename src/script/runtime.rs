@@ -59,7 +59,11 @@ impl ScriptHandle {
     /// This will block until the host provides an input response.
     pub fn request_input(&self, prompt: Option<String>) -> Option<String> {
         // Send the input request
-        if self.script_tx.send(ScriptMessage::InputRequest { prompt }).is_err() {
+        if self
+            .script_tx
+            .send(ScriptMessage::InputRequest { prompt })
+            .is_err()
+        {
             return None;
         }
 
@@ -147,7 +151,13 @@ mod tests {
         assert!(matches!(msg, ScriptMessage::Output(text) if text == "Hello, World!"));
 
         let msg = runtime.recv().unwrap();
-        assert!(matches!(msg, ScriptMessage::Done { success: true, error: None }));
+        assert!(matches!(
+            msg,
+            ScriptMessage::Done {
+                success: true,
+                error: None
+            }
+        ));
     }
 
     #[test]
@@ -162,7 +172,9 @@ mod tests {
 
         // Receive input request
         let msg = runtime.recv().unwrap();
-        assert!(matches!(msg, ScriptMessage::InputRequest { prompt: Some(p) } if p == "Enter name: "));
+        assert!(
+            matches!(msg, ScriptMessage::InputRequest { prompt: Some(p) } if p == "Enter name: ")
+        );
 
         // Send response
         runtime.send_input(Some("TestUser".to_string()));

@@ -56,6 +56,12 @@ impl<'a> ScriptService<'a> {
         repo.list(user_role)
     }
 
+    /// List all scripts (including disabled) for admin.
+    pub fn list_all_scripts(&self) -> Result<Vec<Script>> {
+        let repo = ScriptRepository::new(self.db);
+        repo.list_all()
+    }
+
     /// Get a script by its slug.
     pub fn get_script(&self, slug: &str) -> Result<Option<Script>> {
         let repo = ScriptRepository::new(self.db);
@@ -608,6 +614,46 @@ bbs.println("admin only")
         service.set_enabled(script.id, true).unwrap();
         let updated = service.get_script_by_id(script.id).unwrap().unwrap();
         assert!(updated.enabled);
+    }
+
+    #[test]
+    fn test_list_all_scripts_includes_disabled() {
+        let db = create_test_db();
+        let dir = tempdir().unwrap();
+
+        // Create two scripts
+        let script1 = r#"-- @name Enabled Script
+-- @min_role 0
+bbs.println("enabled")
+"#;
+        let script2 = r#"-- @name Disabled Script
+-- @min_role 0
+-- @enabled false
+bbs.println("disabled")
+"#;
+        fs::write(dir.path().join("enabled.lua"), script1).unwrap();
+        fs::write(dir.path().join("disabled.lua"), script2).unwrap();
+
+        // Sync
+        let loader = ScriptLoader::new(dir.path());
+        loader.sync(&db).unwrap();
+
+        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
+
+        // list_scripts should only show enabled scripts
+        let enabled_scripts = service.list_scripts(3).unwrap();
+        assert_eq!(enabled_scripts.len(), 1);
+        assert_eq!(enabled_scripts[0].name, "Enabled Script");
+
+        // list_all_scripts should show all scripts including disabled
+        let all_scripts = service.list_all_scripts().unwrap();
+        assert_eq!(all_scripts.len(), 2);
+
+        // Verify one is enabled and one is disabled
+        let enabled_count = all_scripts.iter().filter(|s| s.enabled).count();
+        let disabled_count = all_scripts.iter().filter(|s| !s.enabled).count();
+        assert_eq!(enabled_count, 1);
+        assert_eq!(disabled_count, 1);
     }
 
     #[test]

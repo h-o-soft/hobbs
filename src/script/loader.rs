@@ -429,7 +429,10 @@ bbs.println("Hello")
 
         let metadata = ScriptLoader::parse_metadata(content);
         assert_eq!(metadata.name, Some("Rock-Paper-Scissors".to_string()));
-        assert_eq!(metadata.name_i18n.get("ja"), Some(&"じゃんけん".to_string()));
+        assert_eq!(
+            metadata.name_i18n.get("ja"),
+            Some(&"じゃんけん".to_string())
+        );
         assert_eq!(
             metadata.name_i18n.get("de"),
             Some(&"Schere-Stein-Papier".to_string())
@@ -459,7 +462,10 @@ bbs.println("Hello")
 
         let metadata = ScriptLoader::parse_metadata(content);
         assert!(metadata.name.is_none()); // No default name
-        assert_eq!(metadata.name_i18n.get("en"), Some(&"English Name".to_string()));
+        assert_eq!(
+            metadata.name_i18n.get("en"),
+            Some(&"English Name".to_string())
+        );
         assert_eq!(metadata.name_i18n.get("ja"), Some(&"日本語名".to_string()));
         assert!(metadata.description.is_none()); // No default description
         assert_eq!(

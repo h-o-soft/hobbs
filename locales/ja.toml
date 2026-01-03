@@ -482,3 +482,27 @@ sync_added = "追加"
 sync_updated = "更新"
 sync_removed = "削除"
 sync_errors = "エラー:"
+admin = "管理"
+admin_title = "スクリプト管理"
+admin_resync = "スクリプト再同期"
+admin_toggle = "有効/無効切替"
+admin_guide = "配置ガイド表示"
+toggle_title = "有効/無効切替"
+toggle_prompt = "切り替えるスクリプトの番号を入力"
+toggle_enabled = "有効"
+toggle_disabled = "無効"
+toggled_on = "{{name}} を有効にしました"
+toggled_off = "{{name}} を無効にしました"
+guide_title = "スクリプト配置ガイド"
+guide_step1 = "1. scripts/ ディレクトリにLuaファイル(.lua)を配置します"
+guide_step2 = "2. ファイルの先頭にメタデータをコメントで記述します:"
+guide_step3 = "3. サーバー起動時に自動的にスキャンされます"
+guide_step4 = "4. 管理画面から手動で再同期することもできます"
+guide_metadata = """
+   -- @name スクリプト名
+   -- @name.ja 日本語名
+   -- @description 説明文
+   -- @description.ja 日本語説明
+   -- @author 作成者
+   -- @min_role 0
+   -- @enabled true"""
