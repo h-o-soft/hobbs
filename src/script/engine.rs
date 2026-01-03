@@ -1,5 +1,6 @@
 //! Lua script engine with sandboxing.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -42,6 +43,11 @@ pub struct ScriptContext {
     pub terminal_width: u16,
     pub terminal_height: u16,
     pub has_ansi: bool,
+    /// User's language code (e.g., "ja", "en").
+    pub lang: String,
+    /// Translations loaded from sidecar .i18n.toml file.
+    /// Structure: language_code -> key -> translated_value
+    pub translations: HashMap<String, HashMap<String, String>>,
 }
 
 impl Default for ScriptContext {
@@ -55,6 +61,8 @@ impl Default for ScriptContext {
             terminal_width: 80,
             terminal_height: 24,
             has_ansi: true,
+            lang: "en".to_string(),
+            translations: HashMap::new(),
         }
     }
 }
