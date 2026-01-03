@@ -57,7 +57,7 @@ impl MenuAction {
             "C" | "2" => MenuAction::Chat,
             "M" | "3" if is_logged_in => MenuAction::Mail,
             "F" | "4" => MenuAction::File,
-            "S" | "5" => MenuAction::Script,
+            "D" | "5" => MenuAction::Script,
             "P" | "6" if is_logged_in => MenuAction::Profile,
             "W" | "8" => MenuAction::MemberList,
             "A" | "7" if is_admin => MenuAction::Admin,
@@ -101,7 +101,7 @@ impl MenuAction {
             MenuAction::Chat => "C",
             MenuAction::Mail => "M",
             MenuAction::File => "F",
-            MenuAction::Script => "S",
+            MenuAction::Script => "D",
             MenuAction::Profile => "P",
             MenuAction::MemberList => "W",
             MenuAction::Admin => "A",
@@ -244,10 +244,10 @@ mod tests {
 
     #[test]
     fn test_parse_script() {
-        assert_eq!(MenuAction::parse("S", true, false), MenuAction::Script);
+        assert_eq!(MenuAction::parse("D", true, false), MenuAction::Script);
         assert_eq!(MenuAction::parse("5", true, false), MenuAction::Script);
-        // Script is also available to guests
-        assert_eq!(MenuAction::parse("S", false, false), MenuAction::Script);
+        // Script (Door) is also available to guests
+        assert_eq!(MenuAction::parse("D", false, false), MenuAction::Script);
     }
 
     #[test]

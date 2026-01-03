@@ -147,8 +147,8 @@ file_desc = "ファイルのダウンロード"
 profile_desc = "プロフィールの表示・編集"
 user_list_desc = "登録会員の一覧"
 admin_desc = "システム管理"
-script = "スクリプト"
-script_desc = "スクリプト/ゲーム"
+door = "ドア"
+door_desc = "ドアゲーム"
 
 [board]
 list = "掲示板一覧"

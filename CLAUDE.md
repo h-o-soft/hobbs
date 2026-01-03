@@ -177,6 +177,7 @@ hobbs/
 ├── data/                 # ランタイムデータ
 │   ├── hobbs.db
 │   └── files/
+├── scripts/              # Luaスクリプト（ドアゲーム等）
 ├── src/
 │   ├── main.rs
 │   ├── lib.rs
@@ -192,6 +193,8 @@ hobbs/
 │   ├── file/             # ファイル管理
 │   ├── admin/            # 管理機能
 │   ├── template/         # テンプレートエンジン
+│   ├── script/           # スクリプトプラグイン（Lua）
+│   ├── xmodem/           # XMODEMファイル転送
 │   └── db/               # データベース
 └── tests/                # 統合テスト
 ```
@@ -206,11 +209,14 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 argon2 = "0.5"
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 thiserror = "1"
+mlua = { version = "0.10", features = ["lua54", "async", "serialize"] }
+rand = "0.8"
 ```
 
 ## 開発ワークフロー

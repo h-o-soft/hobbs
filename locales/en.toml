@@ -143,8 +143,8 @@ file_desc = "Download files"
 profile_desc = "View/edit profile"
 user_list_desc = "Member directory"
 admin_desc = "System administration"
-script = "Scripts"
-script_desc = "Scripts/Games"
+door = "Doors"
+door_desc = "Door Games"
 
 [board]
 list = "Board List"

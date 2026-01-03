@@ -32,7 +32,8 @@
 | 10.8 | 端末プロファイル選択 | 40/80カラム切り替え、ログイン時適用 | Phase 10 | ✅ |
 | 10.9 | 掲示板未読管理UI | 未読数表示、一気読み、既読マーク | Phase 4, 10 | ✅ |
 | 10.10 | XMODEMファイル転送 | アップロード/ダウンロード対応 | Phase 7 | ✅ |
-| 11+ | 将来拡張 | SSH対応, WebSocket等 | Phase 10.10 |
+| 10.11 | スクリプトプラグイン | Luaスクリプト実行、ドアゲーム | Phase 10 | ✅ |
+| 11+ | 将来拡張 | SSH対応, WebSocket等 | Phase 10.11 |
 
 ---
 
@@ -1261,6 +1262,208 @@ Select language / 言語選択:
 - `src/app/screens/admin.rs`
 - `locales/ja.toml`
 - `locales/en.toml`
+
+---
+
+## Phase 10.11: スクリプトプラグイン ✅
+
+### 10.11-1. mlua クレート追加 ✅
+
+**概要**: Lua 5.4 組み込みのための mlua クレートを追加する
+
+**完了条件**:
+- [x] Cargo.toml に mlua 追加（lua54, async, serialize features）
+- [x] ビルド確認
+- [x] 基本的なLua実行テスト
+
+**関連ファイル**:
+- `Cargo.toml`
+
+---
+
+### 10.11-2. scripts テーブル追加 ✅
+
+**概要**: スクリプトメタデータを保存するテーブルを追加する
+
+**完了条件**:
+- [x] マイグレーション追加（scripts テーブル）
+- [x] Script, NewScript 型定義
+- [x] ScriptRepository 実装（CRUD）
+- [x] 単体テスト
+
+**関連ファイル**:
+- `src/db/schema.rs`
+- `src/script/types.rs`
+- `src/script/repository.rs`
+
+---
+
+### 10.11-3. ScriptEngine 基本実装 ✅
+
+**概要**: Lua実行環境とサンドボックスを実装する
+
+**完了条件**:
+- [x] `src/script/engine.rs` 作成
+- [x] サンドボックス設定（os, io, loadfile 等無効化）
+- [x] 命令数制限、メモリ制限
+- [x] 単体テスト
+
+**関連ファイル**:
+- `src/script/engine.rs`
+- `src/script/sandbox.rs`
+
+---
+
+### 10.11-4. 基本 BBS API 実装 ✅
+
+**概要**: Luaスクリプトから呼び出せるBBS APIを実装する
+
+**完了条件**:
+- [x] bbs.print(), bbs.println() - テキスト出力
+- [x] bbs.input() - ユーザー入力
+- [x] bbs.get_user() - ユーザー情報取得
+- [x] bbs.random() - 乱数生成
+- [x] bbs.sleep() - 待機
+- [x] 単体テスト
+
+**関連ファイル**:
+- `src/script/api.rs`
+
+---
+
+### 10.11-5. script_data テーブル追加 ✅
+
+**概要**: スクリプト固有データを保存するテーブルを追加する
+
+**完了条件**:
+- [x] マイグレーション追加（script_data テーブル）
+- [x] ScriptData 型定義
+- [x] ScriptDataRepository 実装
+- [x] 単体テスト
+
+**関連ファイル**:
+- `src/db/schema.rs`
+- `src/script/data_repository.rs`
+
+---
+
+### 10.11-6. データ永続化 API 実装 ✅
+
+**概要**: スクリプトデータの保存・読み込みAPIを実装する
+
+**完了条件**:
+- [x] bbs.data.get(), bbs.data.set(), bbs.data.delete() - 全体データ
+- [x] bbs.user_data.get(), bbs.user_data.set() - ユーザー固有データ
+- [x] 単体テスト
+
+**関連ファイル**:
+- `src/script/api.rs`
+
+---
+
+### 10.11-7. ScriptService 実装 ✅
+
+**概要**: スクリプト管理のビジネスロジックを実装する
+
+**完了条件**:
+- [x] list_scripts() - 利用可能なスクリプト一覧
+- [x] get_script() - スクリプト取得
+- [x] 権限チェック（min_role）
+- [x] サイドカー方式でのスクリプト読み込み
+- [x] 単体テスト
+
+**関連ファイル**:
+- `src/script/service.rs`
+
+---
+
+### 10.11-8. ScriptScreen 実装 ✅
+
+**概要**: スクリプト選択・実行画面を実装する
+
+**完了条件**:
+- [x] スクリプト一覧表示
+- [x] スクリプト選択・実行
+- [x] 実行結果表示
+- [x] ローカライズメッセージ追加
+- [x] 統合テスト
+
+**関連ファイル**:
+- `src/app/screens/script.rs`
+- `locales/ja.toml`
+- `locales/en.toml`
+
+---
+
+### 10.11-9. メインメニュー統合 ✅
+
+**概要**: メインメニューにスクリプトメニューを追加する
+
+**完了条件**:
+- [x] メインメニューに [S] Scripts 追加
+- [x] ScriptScreen への遷移
+- [x] ローカライズメッセージ追加
+- [x] 動作確認
+
+**関連ファイル**:
+- `src/app/session_handler.rs`
+- `templates/80/main_menu.txt`
+- `templates/40/main_menu.txt`
+
+---
+
+### 10.11-10. サンプルスクリプト作成 ✅
+
+**概要**: 動作確認用のサンプルスクリプトを作成する
+
+**完了条件**:
+- [x] hello.lua - Hello World
+- [x] janken.lua - じゃんけんゲーム
+- [x] guess_number.lua - 数当てゲーム
+- [x] omikuji.lua - おみくじ
+- [x] 各スクリプトのメタデータファイル（.toml）
+
+**関連ファイル**:
+- `scripts/hello.lua`, `scripts/hello.toml`
+- `scripts/janken.lua`, `scripts/janken.toml`
+- `scripts/guess_number.lua`, `scripts/guess_number.toml`
+- `scripts/omikuji.lua`, `scripts/omikuji.toml`
+
+---
+
+### 10.11-11. スクリプト管理画面 ✅
+
+**概要**: SubOp/SysOp向けのスクリプト管理機能を実装する
+
+**完了条件**:
+- [x] スクリプト再同期機能
+- [x] 有効/無効切替機能
+- [x] 配置ガイド表示
+- [x] ローカライズメッセージ追加
+- [x] 単体テスト
+
+**関連ファイル**:
+- `src/app/screens/script.rs`
+- `src/script/service.rs`
+- `locales/ja.toml`
+- `locales/en.toml`
+
+---
+
+### 10.11-12. Wave Dash 問題修正 ✅
+
+**概要**: ShiftJIS変換時のWave Dash問題を修正する
+
+**背景**: U+301C（波ダッシュ）がShiftJISで正しくエンコードできず文字化けする
+
+**完了条件**:
+- [x] normalize_for_shiftjis() 関数追加
+- [x] U+301C → U+FF5E 変換
+- [x] その他の問題文字（U+2212, U+2014）も対応
+- [x] 単体テスト
+
+**関連ファイル**:
+- `src/server/encoding.rs`
 
 ---
 
