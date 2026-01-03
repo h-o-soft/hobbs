@@ -11,6 +11,7 @@ pub mod input_bridge;
 pub mod loader;
 pub mod log_repository;
 pub mod repository;
+pub mod runtime;
 pub mod service;
 pub mod types;
 
@@ -21,5 +22,6 @@ pub use input_bridge::{create_input_bridge, AsyncInputHandle, InputRequest, Scri
 pub use loader::ScriptLoader;
 pub use log_repository::{ScriptLog, ScriptLogRepository};
 pub use repository::ScriptRepository;
+pub use runtime::{create_script_runtime, HostMessage, ScriptHandle, ScriptMessage, ScriptRuntime};
 pub use service::{ExecutionResult, ScriptService};
 pub use types::{Script, ScriptMetadata, SyncResult};

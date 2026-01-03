@@ -1,13 +1,21 @@
 //! Script screen handler.
 
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
 
 use super::common::ScreenContext;
 use super::ScreenResult;
-use crate::db::{Role, UserRepository};
+use crate::db::{Database, Role, UserRepository};
 use crate::error::Result;
-use crate::script::{ScriptContext, ScriptService};
+use crate::script::{create_script_runtime, Script, ScriptContext, ScriptMessage, ScriptService};
 use crate::server::TelnetSession;
+
+/// Simple result for script execution in the screen context.
+struct ExecutionResult {
+    success: bool,
+    error: Option<String>,
+}
 
 /// Script screen handler.
 pub struct ScriptScreen;
@@ -121,20 +129,17 @@ impl ScriptScreen {
             .await?;
         ctx.send_line(session, "").await?;
 
-        // Execute the script (synchronously for now - interactive input not yet supported)
-        let result = service.execute(&script, script_context)?;
-
-        // Display output
-        for line in &result.output {
-            ctx.send(session, line).await?;
-        }
+        // Execute script with interactive message loop
+        let result =
+            Self::execute_with_message_loop(ctx, session, scripts_dir, &script, script_context)
+                .await?;
 
         if !result.success {
             ctx.send_line(session, "").await?;
             if let Some(error) = &result.error {
                 ctx.send_line(
                     session,
-                    &format!("{}:{}", ctx.i18n.t("script.error"), error),
+                    &format!("{}: {}", ctx.i18n.t("script.error"), error),
                 )
                 .await?;
             }
@@ -145,6 +150,101 @@ impl ScriptScreen {
         ctx.wait_for_enter(session).await?;
 
         Ok(())
+    }
+
+    /// Execute a script with an async message loop for I/O.
+    ///
+    /// This runs the Lua script in a blocking thread while handling
+    /// output and input requests asynchronously through message passing.
+    async fn execute_with_message_loop(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        scripts_dir: &PathBuf,
+        script: &Script,
+        script_context: ScriptContext,
+    ) -> Result<ExecutionResult> {
+        // Create runtime and handle for message passing
+        let (runtime, handle) = create_script_runtime();
+        let handle = Arc::new(handle);
+
+        // Clone data needed for the blocking task
+        let db_path = PathBuf::from(&ctx.config.database.path);
+        let scripts_dir = scripts_dir.clone();
+        let script_clone = script.clone();
+
+        // Spawn the script execution in a blocking thread
+        let script_handle = Arc::clone(&handle);
+        let task_handle = tokio::task::spawn_blocking(move || {
+            // Create a new database connection for this thread
+            let db = match Database::open(&db_path) {
+                Ok(db) => db,
+                Err(e) => {
+                    return ExecutionResult {
+                        success: false,
+                        error: Some(format!("Database error: {}", e)),
+                    };
+                }
+            };
+
+            let service = ScriptService::new(&db).with_scripts_dir(&scripts_dir);
+
+            // Execute with runtime for interactive I/O
+            match service.execute_with_runtime(&script_clone, script_context, Some(script_handle)) {
+                Ok(result) => ExecutionResult {
+                    success: result.success,
+                    error: result.error,
+                },
+                Err(e) => ExecutionResult {
+                    success: false,
+                    error: Some(e.to_string()),
+                },
+            }
+        });
+
+        // Message loop: handle output and input requests
+        let result = loop {
+            // Poll for messages with a timeout
+            match runtime.recv_timeout(Duration::from_millis(50)) {
+                Some(ScriptMessage::Output(text)) => {
+                    // Send output to the terminal
+                    ctx.send(session, &text).await?;
+                }
+                Some(ScriptMessage::InputRequest { prompt }) => {
+                    // Display prompt if provided
+                    if let Some(p) = prompt {
+                        ctx.send(session, &p).await?;
+                    }
+
+                    // Read input from the user
+                    let input = ctx.read_line(session).await?;
+
+                    // Send the response back to the script
+                    runtime.send_input(Some(input));
+                }
+                Some(ScriptMessage::Done { success, error }) => {
+                    // Script finished
+                    break ExecutionResult { success, error };
+                }
+                None => {
+                    // Timeout - check if the task is still running
+                    if task_handle.is_finished() {
+                        // Task finished without sending Done message
+                        // This might happen if the script panicked
+                        match task_handle.await {
+                            Ok(result) => break result,
+                            Err(e) => {
+                                break ExecutionResult {
+                                    success: false,
+                                    error: Some(format!("Script execution failed: {}", e)),
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        Ok(result)
     }
 
     /// Resync scripts from file system.
