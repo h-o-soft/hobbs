@@ -2,74 +2,65 @@
 //!
 //! Provides the `bbs` global table with functions for script interaction.
 
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use mlua::{Lua, Result as LuaResult, Table, Value};
 use rand::Rng;
 
 use super::engine::ScriptContext;
-use super::input_bridge::ScriptInputHandle;
+use super::runtime::ScriptHandle;
 
 /// Maximum sleep duration in seconds.
 const MAX_SLEEP_SECONDS: f64 = 5.0;
 
-/// Output callback type for print/println.
-pub type OutputCallback = Box<dyn Fn(&str) + 'static>;
-
-/// Input callback type for input functions.
-pub type InputCallback = Box<dyn Fn(&str) -> Option<String> + 'static>;
-
 /// BBS API builder for registering functions with Lua.
+///
+/// This API supports two modes:
+/// 1. **Runtime mode**: Uses `ScriptHandle` for real-time I/O through message passing
+/// 2. **Buffer mode**: Uses internal buffers for testing or non-interactive scripts
 pub struct BbsApi {
     context: ScriptContext,
-    output_buffer: Rc<RefCell<Vec<String>>>,
-    input_handler: Rc<RefCell<Option<InputCallback>>>,
-    input_bridge: Option<Arc<ScriptInputHandle>>,
+    /// Script handle for runtime mode (message passing)
+    script_handle: Option<Arc<ScriptHandle>>,
+    /// Output buffer for buffer mode (testing)
+    output_buffer: Arc<Mutex<Vec<String>>>,
 }
 
 impl BbsApi {
     /// Create a new BbsApi with the given context.
+    ///
+    /// By default, uses buffer mode. Call `with_script_handle` to enable runtime mode.
     pub fn new(context: ScriptContext) -> Self {
         Self {
             context,
-            output_buffer: Rc::new(RefCell::new(Vec::new())),
-            input_handler: Rc::new(RefCell::new(None)),
-            input_bridge: None,
+            script_handle: None,
+            output_buffer: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
-    /// Set the input handler callback.
-    pub fn with_input_handler<F>(self, handler: F) -> Self
-    where
-        F: Fn(&str) -> Option<String> + 'static,
-    {
-        *self.input_handler.borrow_mut() = Some(Box::new(handler));
+    /// Set the script handle for runtime mode (message passing).
+    ///
+    /// When a script handle is set, output is sent in real-time through the
+    /// message channel, and input requests are handled asynchronously.
+    pub fn with_script_handle(mut self, handle: Arc<ScriptHandle>) -> Self {
+        self.script_handle = Some(handle);
         self
     }
 
-    /// Set the input bridge for async input handling.
-    pub fn with_input_bridge(mut self, bridge: Arc<ScriptInputHandle>) -> Self {
-        self.input_bridge = Some(bridge);
-        self
-    }
-
-    /// Get the output buffer contents.
+    /// Get the output buffer contents (for buffer mode).
     pub fn get_output(&self) -> Vec<String> {
-        self.output_buffer.borrow().clone()
+        self.output_buffer.lock().unwrap().clone()
     }
 
     /// Get a shared reference to the output buffer.
-    /// Use this before calling register() to retain access to output after registration.
-    pub fn output_buffer_ref(&self) -> Rc<RefCell<Vec<String>>> {
-        Rc::clone(&self.output_buffer)
+    pub fn output_buffer_ref(&self) -> Arc<Mutex<Vec<String>>> {
+        Arc::clone(&self.output_buffer)
     }
 
     /// Clear the output buffer.
     pub fn clear_output(&self) {
-        self.output_buffer.borrow_mut().clear();
+        self.output_buffer.lock().unwrap().clear();
     }
 
     /// Register the BBS API with the Lua environment.
@@ -99,22 +90,37 @@ impl BbsApi {
 
     /// Register print/println functions.
     fn register_print_functions(&self, lua: &Lua, bbs: &Table) -> LuaResult<()> {
-        let output = Rc::clone(&self.output_buffer);
+        let handle = self.script_handle.clone();
+        let buffer = Arc::clone(&self.output_buffer);
 
         // bbs.print(text) - output without newline
-        let print_output = Rc::clone(&output);
+        let print_handle = handle.clone();
+        let print_buffer = Arc::clone(&buffer);
         let print_fn = lua.create_function(move |_, text: Value| {
             let text_str = value_to_string(&text);
-            print_output.borrow_mut().push(text_str);
+            if let Some(ref h) = print_handle {
+                // Runtime mode: send through channel
+                h.send_output(text_str);
+            } else {
+                // Buffer mode: store in buffer
+                print_buffer.lock().unwrap().push(text_str);
+            }
             Ok(())
         })?;
         bbs.set("print", print_fn)?;
 
         // bbs.println(text) - output with newline
-        let println_output = Rc::clone(&output);
+        let println_handle = handle.clone();
+        let println_buffer = Arc::clone(&buffer);
         let println_fn = lua.create_function(move |_, text: Value| {
-            let text_str = value_to_string(&text);
-            println_output.borrow_mut().push(format!("{}\n", text_str));
+            let text_str = format!("{}\n", value_to_string(&text));
+            if let Some(ref h) = println_handle {
+                // Runtime mode: send through channel
+                h.send_output(text_str);
+            } else {
+                // Buffer mode: store in buffer
+                println_buffer.lock().unwrap().push(text_str);
+            }
             Ok(())
         })?;
         bbs.set("println", println_fn)?;
@@ -124,127 +130,85 @@ impl BbsApi {
 
     /// Register input functions.
     fn register_input_functions(&self, lua: &Lua, bbs: &Table) -> LuaResult<()> {
-        let output = Rc::clone(&self.output_buffer);
-        let input_handler = Rc::clone(&self.input_handler);
-        let input_bridge = self.input_bridge.clone();
-
-        // Helper to get input - tries bridge first, then callback
-        fn get_input(
-            bridge: &Option<Arc<ScriptInputHandle>>,
-            handler: &Rc<RefCell<Option<InputCallback>>>,
-            prompt: Option<String>,
-        ) -> Result<Option<String>, mlua::Error> {
-            // Try bridge first
-            if let Some(ref b) = bridge {
-                return Ok(b.request_input(prompt));
-            }
-
-            // Try callback handler
-            let handler = handler.borrow();
-            if let Some(ref h) = *handler {
-                return Ok(h(""));
-            }
-
-            // No input available
-            Err(mlua::Error::RuntimeError(
-                "Input not available: interactive input is not supported in this context"
-                    .to_string(),
-            ))
-        }
+        let handle = self.script_handle.clone();
 
         // bbs.input(prompt) - get user input
-        let input_output = Rc::clone(&output);
-        let input_handler_clone = Rc::clone(&input_handler);
-        let input_bridge_clone = input_bridge.clone();
+        let input_handle = handle.clone();
         let input_fn = lua.create_function(move |_, prompt: Option<String>| {
-            // Output prompt if provided (only if not using bridge, since bridge outputs it)
-            if input_bridge_clone.is_none() {
-                if let Some(p) = &prompt {
-                    input_output.borrow_mut().push(p.clone());
-                }
+            if let Some(ref h) = input_handle {
+                // Runtime mode: request input through channel
+                Ok(h.request_input(prompt))
+            } else {
+                // Buffer mode: no input available
+                Err(mlua::Error::RuntimeError(
+                    "Input not available: interactive input is not supported in this context"
+                        .to_string(),
+                ))
             }
-
-            get_input(&input_bridge_clone, &input_handler_clone, prompt)
         })?;
         bbs.set("input", input_fn)?;
 
         // bbs.input_number(prompt) - get numeric input
-        let input_number_output = Rc::clone(&output);
-        let input_number_handler = Rc::clone(&input_handler);
-        let input_number_bridge = input_bridge.clone();
+        let input_number_handle = handle.clone();
         let input_number_fn = lua.create_function(move |_, prompt: Option<String>| {
-            // Output prompt if provided (only if not using bridge)
-            if input_number_bridge.is_none() {
-                if let Some(p) = &prompt {
-                    input_number_output.borrow_mut().push(p.clone());
-                }
-            }
-
-            match get_input(&input_number_bridge, &input_number_handler, prompt) {
-                Ok(Some(input)) => {
-                    // Try to parse as number
-                    if let Ok(n) = input.trim().parse::<f64>() {
-                        Ok(Some(n))
-                    } else {
-                        Ok(None)
+            if let Some(ref h) = input_number_handle {
+                // Runtime mode: request input through channel
+                match h.request_input(prompt) {
+                    Some(input) => {
+                        if let Ok(n) = input.trim().parse::<f64>() {
+                            Ok(Some(n))
+                        } else {
+                            Ok(None)
+                        }
                     }
+                    None => Ok(None),
                 }
-                Ok(None) => Ok(None),
-                Err(e) => Err(e),
+            } else {
+                // Buffer mode: no input available
+                Err(mlua::Error::RuntimeError(
+                    "Input not available: interactive input is not supported in this context"
+                        .to_string(),
+                ))
             }
         })?;
         bbs.set("input_number", input_number_fn)?;
 
-        // bbs.input_yn(prompt) - get Y/N input (returns true for Y, false for N, nil otherwise)
-        let input_yn_output = Rc::clone(&output);
-        let input_yn_handler = Rc::clone(&input_handler);
-        let input_yn_bridge = input_bridge.clone();
+        // bbs.input_yn(prompt) - get Y/N input
+        let input_yn_handle = handle.clone();
         let input_yn_fn = lua.create_function(move |_, prompt: Option<String>| {
-            // Output prompt if provided (only if not using bridge)
-            if input_yn_bridge.is_none() {
-                if let Some(p) = &prompt {
-                    input_yn_output.borrow_mut().push(p.clone());
-                }
-            }
-
-            match get_input(&input_yn_bridge, &input_yn_handler, prompt) {
-                Ok(Some(input)) => {
-                    let input = input.trim().to_ascii_lowercase();
-                    if input == "y" || input == "yes" {
-                        Ok(Some(true))
-                    } else if input == "n" || input == "no" {
-                        Ok(Some(false))
-                    } else {
-                        Ok(None)
+            if let Some(ref h) = input_yn_handle {
+                // Runtime mode: request input through channel
+                match h.request_input(prompt) {
+                    Some(input) => {
+                        let input = input.trim().to_ascii_lowercase();
+                        if input == "y" || input == "yes" {
+                            Ok(Some(true))
+                        } else if input == "n" || input == "no" {
+                            Ok(Some(false))
+                        } else {
+                            Ok(None)
+                        }
                     }
+                    None => Ok(None),
                 }
-                Ok(None) => Ok(None),
-                Err(e) => Err(e),
+            } else {
+                // Buffer mode: no input available
+                Err(mlua::Error::RuntimeError(
+                    "Input not available: interactive input is not supported in this context"
+                        .to_string(),
+                ))
             }
         })?;
         bbs.set("input_yn", input_yn_fn)?;
 
         // bbs.pause() - wait for user to press Enter
-        let pause_output = Rc::clone(&output);
-        let pause_handler = Rc::clone(&input_handler);
-        let pause_bridge = input_bridge.clone();
+        let pause_handle = handle.clone();
         let pause_fn = lua.create_function(move |_, ()| {
-            // Output default prompt (only if not using bridge)
-            if pause_bridge.is_none() {
-                pause_output
-                    .borrow_mut()
-                    .push("Press Enter to continue...".to_string());
+            if let Some(ref h) = pause_handle {
+                // Runtime mode: request input with default prompt
+                let _ = h.request_input(Some("Press Enter to continue...".to_string()));
             }
-
-            // Wait for input - pause doesn't need to return anything
-            if let Some(ref b) = pause_bridge {
-                let _ = b.request_input(Some("Press Enter to continue...".to_string()));
-            } else {
-                let handler = pause_handler.borrow();
-                if let Some(ref h) = *handler {
-                    let _ = h("");
-                }
-            }
+            // Buffer mode: just continue (no-op)
             Ok(())
         })?;
         bbs.set("pause", pause_fn)?;
@@ -288,7 +252,8 @@ impl BbsApi {
 
     /// Register utility functions.
     fn register_utility_functions(&self, lua: &Lua, bbs: &Table) -> LuaResult<()> {
-        let output = Rc::clone(&self.output_buffer);
+        let handle = self.script_handle.clone();
+        let buffer = Arc::clone(&self.output_buffer);
         let has_ansi = self.context.has_ansi;
 
         // bbs.random(min, max) - generate random number
@@ -317,11 +282,16 @@ impl BbsApi {
         bbs.set("sleep", sleep_fn)?;
 
         // bbs.clear() - clear screen (ANSI terminals only)
-        let clear_output = Rc::clone(&output);
+        let clear_handle = handle.clone();
+        let clear_buffer = Arc::clone(&buffer);
         let clear_fn = lua.create_function(move |_, ()| {
             if has_ansi {
-                // ANSI escape: clear screen and move cursor to home
-                clear_output.borrow_mut().push("\x1b[2J\x1b[H".to_string());
+                let clear_seq = "\x1b[2J\x1b[H".to_string();
+                if let Some(ref h) = clear_handle {
+                    h.send_output(clear_seq);
+                } else {
+                    clear_buffer.lock().unwrap().push(clear_seq);
+                }
             }
             Ok(())
         })?;
@@ -379,9 +349,11 @@ fn value_to_string(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::script::ScriptEngine;
+    use crate::script::{create_script_runtime, ScriptEngine};
+    use std::sync::Arc;
+    use std::thread;
 
-    fn create_test_engine_with_api() -> (ScriptEngine, Rc<RefCell<Vec<String>>>) {
+    fn create_test_engine_with_api() -> (ScriptEngine, Arc<Mutex<Vec<String>>>) {
         let engine = ScriptEngine::new().unwrap();
         let context = ScriptContext {
             script_id: Some(1),
@@ -394,7 +366,7 @@ mod tests {
             has_ansi: true,
         };
         let api = BbsApi::new(context);
-        let output = Rc::clone(&api.output_buffer);
+        let output = api.output_buffer_ref();
         api.register(engine.lua()).unwrap();
         (engine, output)
     }
@@ -405,7 +377,7 @@ mod tests {
 
         engine.execute(r#"bbs.print("Hello")"#).unwrap();
 
-        let out = output.borrow();
+        let out = output.lock().unwrap();
         assert_eq!(out.len(), 1);
         assert_eq!(out[0], "Hello");
     }
@@ -416,7 +388,7 @@ mod tests {
 
         engine.execute(r#"bbs.println("Hello")"#).unwrap();
 
-        let out = output.borrow();
+        let out = output.lock().unwrap();
         assert_eq!(out.len(), 1);
         assert_eq!(out[0], "Hello\n");
     }
@@ -435,7 +407,7 @@ mod tests {
             )
             .unwrap();
 
-        let out = output.borrow();
+        let out = output.lock().unwrap();
         assert_eq!(out.len(), 3);
         assert_eq!(out[0], "A");
         assert_eq!(out[1], "B");
@@ -448,7 +420,7 @@ mod tests {
 
         engine.execute(r#"bbs.println(42)"#).unwrap();
 
-        let out = output.borrow();
+        let out = output.lock().unwrap();
         assert_eq!(out[0], "42\n");
     }
 
@@ -458,7 +430,7 @@ mod tests {
 
         engine.execute(r#"bbs.println(nil)"#).unwrap();
 
-        let out = output.borrow();
+        let out = output.lock().unwrap();
         assert_eq!(out[0], "nil\n");
     }
 
@@ -561,7 +533,6 @@ mod tests {
     fn test_bbs_random() {
         let (engine, _) = create_test_engine_with_api();
 
-        // Test that random is within bounds
         engine
             .execute(
                 r#"
@@ -653,7 +624,7 @@ mod tests {
             )
             .unwrap();
 
-        let out = output.borrow();
+        let out = output.lock().unwrap();
         assert_eq!(out.len(), 4);
         assert_eq!(out[0], "=== Welcome ===\n");
         assert_eq!(out[1], "Hello, Test User!\n");
@@ -703,7 +674,7 @@ mod tests {
 
         engine.execute("bbs.clear()").unwrap();
 
-        let out = output.borrow();
+        let out = output.lock().unwrap();
         assert_eq!(out.len(), 1);
         assert_eq!(out[0], "\x1b[2J\x1b[H");
     }
@@ -717,20 +688,34 @@ mod tests {
             ..Default::default()
         };
         let api = BbsApi::new(context);
-        let output = Rc::clone(&api.output_buffer);
+        let output = api.output_buffer_ref();
         api.register(engine.lua()).unwrap();
 
         engine.execute("bbs.clear()").unwrap();
 
-        let out = output.borrow();
+        let out = output.lock().unwrap();
         // No output when ANSI is disabled
         assert!(out.is_empty());
     }
 
-    fn create_test_engine_with_input(
-        input_responses: Vec<String>,
-    ) -> (ScriptEngine, Rc<RefCell<Vec<String>>>) {
-        let engine = ScriptEngine::new().unwrap();
+    #[test]
+    fn test_bbs_input_no_handler() {
+        let (engine, _) = create_test_engine_with_api();
+
+        // Should error when no script handle is available
+        let result = engine.execute("result = bbs.input()");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Input not available"));
+    }
+
+    #[test]
+    fn test_bbs_input_with_runtime() {
+        let (runtime, handle) = create_script_runtime();
+        let handle = Arc::new(handle);
+
         let context = ScriptContext {
             script_id: Some(1),
             user_id: Some(42),
@@ -742,131 +727,147 @@ mod tests {
             has_ansi: true,
         };
 
-        let responses = Rc::new(RefCell::new(input_responses));
-        let response_index = Rc::new(RefCell::new(0usize));
+        let handle_clone = Arc::clone(&handle);
 
-        let responses_clone = Rc::clone(&responses);
-        let index_clone = Rc::clone(&response_index);
+        // Run script in a separate thread
+        let script_thread = thread::spawn(move || {
+            let engine = ScriptEngine::new().unwrap();
+            let api = BbsApi::new(context).with_script_handle(handle_clone);
+            api.register(engine.lua()).unwrap();
 
-        let api = BbsApi::new(context).with_input_handler(move |_| {
-            let mut idx = index_clone.borrow_mut();
-            let resps = responses_clone.borrow();
-            if *idx < resps.len() {
-                let result = resps[*idx].clone();
-                *idx += 1;
-                Some(result)
-            } else {
-                None
-            }
+            engine.execute(r#"result = bbs.input("Enter name: ")"#).unwrap();
+            engine.get_global::<String>("result").unwrap()
         });
 
-        let output = Rc::clone(&api.output_buffer);
-        api.register(engine.lua()).unwrap();
-        (engine, output)
+        // Handle the input request
+        match runtime.recv() {
+            Some(crate::script::ScriptMessage::InputRequest { prompt }) => {
+                assert_eq!(prompt, Some("Enter name: ".to_string()));
+                runtime.send_input(Some("TestUser".to_string()));
+            }
+            _ => panic!("Expected InputRequest"),
+        }
+
+        let result = script_thread.join().unwrap();
+        assert_eq!(result, "TestUser");
     }
 
     #[test]
-    fn test_bbs_input() {
-        let (engine, output) = create_test_engine_with_input(vec!["hello".to_string()]);
+    fn test_bbs_input_number_with_runtime() {
+        let (runtime, handle) = create_script_runtime();
+        let handle = Arc::new(handle);
 
-        engine.execute(r#"result = bbs.input("Enter: ")"#).unwrap();
+        let context = ScriptContext::default();
+        let handle_clone = Arc::clone(&handle);
 
-        let result: String = engine.get_global("result").unwrap();
-        assert_eq!(result, "hello");
+        let script_thread = thread::spawn(move || {
+            let engine = ScriptEngine::new().unwrap();
+            let api = BbsApi::new(context).with_script_handle(handle_clone);
+            api.register(engine.lua()).unwrap();
 
-        let out = output.borrow();
-        assert_eq!(out[0], "Enter: ");
+            engine.execute("result = bbs.input_number()").unwrap();
+            engine.get_global::<f64>("result").unwrap()
+        });
+
+        // Handle the input request
+        if let Some(crate::script::ScriptMessage::InputRequest { .. }) = runtime.recv() {
+            runtime.send_input(Some("42.5".to_string()));
+        }
+
+        let result = script_thread.join().unwrap();
+        assert!((result - 42.5).abs() < 0.001);
     }
 
     #[test]
-    fn test_bbs_input_no_handler() {
-        let (engine, _) = create_test_engine_with_api();
+    fn test_bbs_input_yn_with_runtime() {
+        let (runtime, handle) = create_script_runtime();
+        let handle = Arc::new(handle);
 
-        // Should error when no input handler is available
-        let result = engine.execute("result = bbs.input()");
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Input not available"));
+        let context = ScriptContext::default();
+        let handle_clone = Arc::clone(&handle);
+
+        let script_thread = thread::spawn(move || {
+            let engine = ScriptEngine::new().unwrap();
+            let api = BbsApi::new(context).with_script_handle(handle_clone);
+            api.register(engine.lua()).unwrap();
+
+            engine.execute("result = bbs.input_yn()").unwrap();
+            engine.get_global::<bool>("result").unwrap()
+        });
+
+        // Handle the input request
+        if let Some(crate::script::ScriptMessage::InputRequest { .. }) = runtime.recv() {
+            runtime.send_input(Some("yes".to_string()));
+        }
+
+        let result = script_thread.join().unwrap();
+        assert!(result);
     }
 
     #[test]
-    fn test_bbs_input_number() {
-        let (engine, _) = create_test_engine_with_input(vec!["42".to_string()]);
+    fn test_bbs_pause_with_runtime() {
+        let (runtime, handle) = create_script_runtime();
+        let handle = Arc::new(handle);
 
-        engine.execute("result = bbs.input_number()").unwrap();
+        let context = ScriptContext::default();
+        let handle_clone = Arc::clone(&handle);
 
-        let result: f64 = engine.get_global("result").unwrap();
-        assert!((result - 42.0).abs() < 0.001);
+        let script_thread = thread::spawn(move || {
+            let engine = ScriptEngine::new().unwrap();
+            let api = BbsApi::new(context).with_script_handle(handle_clone);
+            api.register(engine.lua()).unwrap();
+
+            engine.execute("bbs.pause()").unwrap();
+        });
+
+        // Handle the pause request
+        match runtime.recv() {
+            Some(crate::script::ScriptMessage::InputRequest { prompt }) => {
+                assert_eq!(prompt, Some("Press Enter to continue...".to_string()));
+                runtime.send_input(Some(String::new()));
+            }
+            _ => panic!("Expected InputRequest for pause"),
+        }
+
+        script_thread.join().unwrap();
     }
 
     #[test]
-    fn test_bbs_input_number_float() {
-        let (engine, _) = create_test_engine_with_input(vec!["3.14".to_string()]);
+    fn test_output_through_runtime() {
+        let (runtime, handle) = create_script_runtime();
+        let handle = Arc::new(handle);
 
-        engine.execute("result = bbs.input_number()").unwrap();
+        let context = ScriptContext::default();
+        let handle_clone = Arc::clone(&handle);
 
-        let result: f64 = engine.get_global("result").unwrap();
-        assert!((result - 3.14).abs() < 0.001);
-    }
+        let script_thread = thread::spawn(move || {
+            let engine = ScriptEngine::new().unwrap();
+            let api = BbsApi::new(context).with_script_handle(handle_clone);
+            api.register(engine.lua()).unwrap();
 
-    #[test]
-    fn test_bbs_input_number_invalid() {
-        let (engine, _) = create_test_engine_with_input(vec!["not a number".to_string()]);
+            engine
+                .execute(
+                    r#"
+                bbs.println("Hello")
+                bbs.println("World")
+            "#,
+                )
+                .unwrap();
+        });
 
-        engine.execute("result = bbs.input_number()").unwrap();
+        // Collect output messages
+        let mut outputs = Vec::new();
+        loop {
+            match runtime.recv_timeout(std::time::Duration::from_millis(100)) {
+                Some(crate::script::ScriptMessage::Output(text)) => outputs.push(text),
+                _ => break,
+            }
+        }
 
-        // Should return nil for invalid input
-        engine.execute("is_nil = result == nil").unwrap();
-        assert!(engine.get_global::<bool>("is_nil").unwrap());
-    }
+        script_thread.join().unwrap();
 
-    #[test]
-    fn test_bbs_input_yn_yes() {
-        let (engine, _) = create_test_engine_with_input(vec!["y".to_string()]);
-
-        engine.execute("result = bbs.input_yn()").unwrap();
-
-        assert!(engine.get_global::<bool>("result").unwrap());
-    }
-
-    #[test]
-    fn test_bbs_input_yn_yes_full() {
-        let (engine, _) = create_test_engine_with_input(vec!["YES".to_string()]);
-
-        engine.execute("result = bbs.input_yn()").unwrap();
-
-        assert!(engine.get_global::<bool>("result").unwrap());
-    }
-
-    #[test]
-    fn test_bbs_input_yn_no() {
-        let (engine, _) = create_test_engine_with_input(vec!["n".to_string()]);
-
-        engine.execute("result = bbs.input_yn()").unwrap();
-
-        assert!(!engine.get_global::<bool>("result").unwrap());
-    }
-
-    #[test]
-    fn test_bbs_input_yn_invalid() {
-        let (engine, _) = create_test_engine_with_input(vec!["maybe".to_string()]);
-
-        engine.execute("result = bbs.input_yn()").unwrap();
-
-        // Should return nil for invalid input
-        engine.execute("is_nil = result == nil").unwrap();
-        assert!(engine.get_global::<bool>("is_nil").unwrap());
-    }
-
-    #[test]
-    fn test_bbs_pause() {
-        let (engine, output) = create_test_engine_with_input(vec!["".to_string()]);
-
-        engine.execute("bbs.pause()").unwrap();
-
-        let out = output.borrow();
-        assert_eq!(out[0], "Press Enter to continue...");
+        assert_eq!(outputs.len(), 2);
+        assert_eq!(outputs[0], "Hello\n");
+        assert_eq!(outputs[1], "World\n");
     }
 }

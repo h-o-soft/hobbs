@@ -1,8 +1,7 @@
 //! Script service for managing and executing scripts.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use mlua::Table;
@@ -77,21 +76,22 @@ impl<'a> ScriptService<'a> {
     /// Execute a script with the given context.
     ///
     /// Returns the execution result containing output and status.
-    /// Note: This method does not support interactive input. Use `execute_with_input`
+    /// Note: This method does not support interactive input. Use `execute_with_runtime`
     /// for scripts that require user input.
     pub fn execute(&self, script: &Script, context: ScriptContext) -> Result<ExecutionResult> {
-        self.execute_with_input(script, context, None)
+        self.execute_with_runtime(script, context, None)
     }
 
-    /// Execute a script with the given context and optional input bridge.
+    /// Execute a script with the given context and optional script handle.
     ///
     /// Returns the execution result containing output and status.
-    /// If an input bridge is provided, scripts can request interactive input.
-    pub fn execute_with_input(
+    /// If a script handle is provided, scripts can request interactive input
+    /// through the message-passing runtime.
+    pub fn execute_with_runtime(
         &self,
         script: &Script,
         mut context: ScriptContext,
-        input_bridge: Option<std::sync::Arc<super::input_bridge::ScriptInputHandle>>,
+        script_handle: Option<Arc<super::runtime::ScriptHandle>>,
     ) -> Result<ExecutionResult> {
         // Check if script is enabled
         if !script.enabled {
@@ -123,17 +123,17 @@ impl<'a> ScriptService<'a> {
 
         // Load existing data from database
         let data_repo = ScriptDataRepository::new(self.db);
-        let global_data = Rc::new(RefCell::new(self.load_global_data(&data_repo, script.id)?));
-        let user_data = Rc::new(RefCell::new(self.load_user_data(
+        let global_data = Arc::new(Mutex::new(self.load_global_data(&data_repo, script.id)?));
+        let user_data = Arc::new(Mutex::new(self.load_user_data(
             &data_repo,
             script.id,
             context.user_id,
         )?));
 
-        // Register BBS API with optional input bridge
+        // Register BBS API with optional script handle
         let mut api = BbsApi::new(context.clone());
-        if let Some(bridge) = input_bridge {
-            api = api.with_input_bridge(bridge);
+        if let Some(handle) = script_handle {
+            api = api.with_script_handle(handle);
         }
         let output_buffer = api.output_buffer_ref(); // Get shared reference before register consumes api
         api.register(engine.lua())
@@ -159,13 +159,13 @@ impl<'a> ScriptService<'a> {
         let execution_ms = start_time.elapsed().as_millis() as i64;
 
         // Save data changes back to database
-        self.save_global_data(&data_repo, script.id, &global_data.borrow())?;
+        self.save_global_data(&data_repo, script.id, &global_data.lock().unwrap())?;
         if let Some(user_id) = context.user_id {
-            self.save_user_data(&data_repo, script.id, user_id, &user_data.borrow())?;
+            self.save_user_data(&data_repo, script.id, user_id, &user_data.lock().unwrap())?;
         }
 
         // Get output regardless of success/failure
-        let output = output_buffer.borrow().clone();
+        let output = output_buffer.lock().unwrap().clone();
 
         // Build execution result
         let exec_result = match &result {
@@ -265,8 +265,8 @@ impl<'a> ScriptService<'a> {
         lua: &mlua::Lua,
         script_id: i64,
         user_id: Option<i64>,
-        global_data: &Rc<RefCell<HashMap<String, String>>>,
-        user_data: &Rc<RefCell<HashMap<String, String>>>,
+        global_data: &Arc<Mutex<HashMap<String, String>>>,
+        user_data: &Arc<Mutex<HashMap<String, String>>>,
     ) -> mlua::Result<()> {
         let bbs: Table = lua.globals().get("bbs")?;
 
@@ -288,12 +288,12 @@ impl<'a> ScriptService<'a> {
         &self,
         lua: &mlua::Lua,
         table: &Table,
-        data: &Rc<RefCell<HashMap<String, String>>>,
+        data: &Arc<Mutex<HashMap<String, String>>>,
     ) -> mlua::Result<()> {
         // bbs.data.get(key) -> value or nil
-        let data_get = Rc::clone(data);
+        let data_get = Arc::clone(data);
         let get_fn = lua.create_function(move |_, key: String| {
-            let data = data_get.borrow();
+            let data = data_get.lock().unwrap();
             match data.get(&key) {
                 Some(v) => Ok(Some(v.clone())),
                 None => Ok(None),
@@ -302,17 +302,17 @@ impl<'a> ScriptService<'a> {
         table.set("get", get_fn)?;
 
         // bbs.data.set(key, value)
-        let data_set = Rc::clone(data);
+        let data_set = Arc::clone(data);
         let set_fn = lua.create_function(move |_, (key, value): (String, String)| {
-            data_set.borrow_mut().insert(key, value);
+            data_set.lock().unwrap().insert(key, value);
             Ok(())
         })?;
         table.set("set", set_fn)?;
 
         // bbs.data.delete(key) -> bool
-        let data_delete = Rc::clone(data);
+        let data_delete = Arc::clone(data);
         let delete_fn = lua.create_function(move |_, key: String| {
-            Ok(data_delete.borrow_mut().remove(&key).is_some())
+            Ok(data_delete.lock().unwrap().remove(&key).is_some())
         })?;
         table.set("delete", delete_fn)?;
 
@@ -325,7 +325,7 @@ impl<'a> ScriptService<'a> {
         lua: &mlua::Lua,
         table: &Table,
         user_id: Option<i64>,
-        data: &Rc<RefCell<HashMap<String, String>>>,
+        data: &Arc<Mutex<HashMap<String, String>>>,
     ) -> mlua::Result<()> {
         // If no user (guest), all operations return nil/false
         if user_id.is_none() {
@@ -342,9 +342,9 @@ impl<'a> ScriptService<'a> {
         }
 
         // bbs.user_data.get(key) -> value or nil
-        let data_get = Rc::clone(data);
+        let data_get = Arc::clone(data);
         let get_fn = lua.create_function(move |_, key: String| {
-            let data = data_get.borrow();
+            let data = data_get.lock().unwrap();
             match data.get(&key) {
                 Some(v) => Ok(Some(v.clone())),
                 None => Ok(None),
@@ -353,17 +353,17 @@ impl<'a> ScriptService<'a> {
         table.set("get", get_fn)?;
 
         // bbs.user_data.set(key, value)
-        let data_set = Rc::clone(data);
+        let data_set = Arc::clone(data);
         let set_fn = lua.create_function(move |_, (key, value): (String, String)| {
-            data_set.borrow_mut().insert(key, value);
+            data_set.lock().unwrap().insert(key, value);
             Ok(())
         })?;
         table.set("set", set_fn)?;
 
         // bbs.user_data.delete(key) -> bool
-        let data_delete = Rc::clone(data);
+        let data_delete = Arc::clone(data);
         let delete_fn = lua.create_function(move |_, key: String| {
-            Ok(data_delete.borrow_mut().remove(&key).is_some())
+            Ok(data_delete.lock().unwrap().remove(&key).is_some())
         })?;
         table.set("delete", delete_fn)?;
 
