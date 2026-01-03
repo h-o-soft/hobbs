@@ -1,5 +1,7 @@
 -- @name Daily Fortune
+-- @name.ja 今日の運勢
 -- @description Get a random fortune message
+-- @description.ja ランダムな運勢メッセージ
 -- @author HOBBS Sample
 -- @min_role 0
 

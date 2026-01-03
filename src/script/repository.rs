@@ -1,5 +1,7 @@
 //! Script repository for database operations.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Row};
 
@@ -23,7 +25,7 @@ impl<'a> ScriptRepository<'a> {
         let mut stmt = self.db.conn().prepare(
             "SELECT id, file_path, name, slug, description, author, file_hash,
                     synced_at, min_role, enabled, max_instructions, max_memory_mb,
-                    max_execution_seconds
+                    max_execution_seconds, name_i18n, description_i18n
              FROM scripts
              WHERE enabled = 1 AND min_role <= ?
              ORDER BY name",
@@ -41,7 +43,7 @@ impl<'a> ScriptRepository<'a> {
         let mut stmt = self.db.conn().prepare(
             "SELECT id, file_path, name, slug, description, author, file_hash,
                     synced_at, min_role, enabled, max_instructions, max_memory_mb,
-                    max_execution_seconds
+                    max_execution_seconds, name_i18n, description_i18n
              FROM scripts
              ORDER BY name",
         )?;
@@ -58,7 +60,7 @@ impl<'a> ScriptRepository<'a> {
         let result = self.db.conn().query_row(
             "SELECT id, file_path, name, slug, description, author, file_hash,
                     synced_at, min_role, enabled, max_instructions, max_memory_mb,
-                    max_execution_seconds
+                    max_execution_seconds, name_i18n, description_i18n
              FROM scripts WHERE id = ?",
             [id],
             Self::row_to_script,
@@ -76,7 +78,7 @@ impl<'a> ScriptRepository<'a> {
         let result = self.db.conn().query_row(
             "SELECT id, file_path, name, slug, description, author, file_hash,
                     synced_at, min_role, enabled, max_instructions, max_memory_mb,
-                    max_execution_seconds
+                    max_execution_seconds, name_i18n, description_i18n
              FROM scripts WHERE slug = ?",
             [slug],
             Self::row_to_script,
@@ -94,7 +96,7 @@ impl<'a> ScriptRepository<'a> {
         let result = self.db.conn().query_row(
             "SELECT id, file_path, name, slug, description, author, file_hash,
                     synced_at, min_role, enabled, max_instructions, max_memory_mb,
-                    max_execution_seconds
+                    max_execution_seconds, name_i18n, description_i18n
              FROM scripts WHERE file_path = ?",
             [file_path],
             Self::row_to_script,
@@ -113,11 +115,24 @@ impl<'a> ScriptRepository<'a> {
             .synced_at
             .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string());
 
+        // Serialize i18n data to JSON (None if empty)
+        let name_i18n_json = if script.name_i18n.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_string(&script.name_i18n).unwrap_or_default())
+        };
+
+        let description_i18n_json = if script.description_i18n.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_string(&script.description_i18n).unwrap_or_default())
+        };
+
         self.db.conn().execute(
             "INSERT INTO scripts (file_path, name, slug, description, author, file_hash,
                                   synced_at, min_role, enabled, max_instructions,
-                                  max_memory_mb, max_execution_seconds)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                                  max_memory_mb, max_execution_seconds, name_i18n, description_i18n)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
              ON CONFLICT(file_path) DO UPDATE SET
                 name = ?2,
                 slug = ?3,
@@ -128,7 +143,9 @@ impl<'a> ScriptRepository<'a> {
                 min_role = ?8,
                 max_instructions = ?10,
                 max_memory_mb = ?11,
-                max_execution_seconds = ?12",
+                max_execution_seconds = ?12,
+                name_i18n = ?13,
+                description_i18n = ?14",
             params![
                 &script.file_path,
                 &script.name,
@@ -142,6 +159,8 @@ impl<'a> ScriptRepository<'a> {
                 script.max_instructions,
                 script.max_memory_mb,
                 script.max_execution_seconds,
+                &name_i18n_json,
+                &description_i18n_json,
             ],
         )?;
 
@@ -211,6 +230,17 @@ impl<'a> ScriptRepository<'a> {
                 .map(|dt| DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc))
         });
 
+        // Parse i18n JSON columns
+        let name_i18n: HashMap<String, String> = row
+            .get::<_, Option<String>>(13)?
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+
+        let description_i18n: HashMap<String, String> = row
+            .get::<_, Option<String>>(14)?
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+
         Ok(Script {
             id: row.get(0)?,
             file_path: row.get(1)?,
@@ -225,6 +255,8 @@ impl<'a> ScriptRepository<'a> {
             max_instructions: row.get(10)?,
             max_memory_mb: row.get(11)?,
             max_execution_seconds: row.get(12)?,
+            name_i18n,
+            description_i18n,
         })
     }
 }
@@ -248,6 +280,8 @@ mod tests {
             slug: file_path.replace(".lua", "").replace('/', "_"),
             description: Some("A test script".to_string()),
             author: Some("TestAuthor".to_string()),
+            name_i18n: HashMap::new(),
+            description_i18n: HashMap::new(),
             file_hash: Some("abc123".to_string()),
             synced_at: Some(Utc::now()),
             min_role: 0,
@@ -413,5 +447,57 @@ mod tests {
         // But list_all should include disabled
         let all = repo.list_all().unwrap();
         assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn test_i18n_metadata_persistence() {
+        let db = create_test_db();
+        let repo = ScriptRepository::new(&db);
+
+        // Create script with i18n metadata
+        let mut script = create_test_script("i18n_test.lua");
+        script.name = "Test Script".to_string();
+        script.description = Some("A test script".to_string());
+        script.name_i18n.insert("ja".to_string(), "テストスクリプト".to_string());
+        script.name_i18n.insert("de".to_string(), "Testskript".to_string());
+        script.description_i18n.insert("ja".to_string(), "これはテストです".to_string());
+
+        let created = repo.upsert(&script).unwrap();
+
+        // Verify i18n data was saved
+        assert_eq!(created.name_i18n.get("ja"), Some(&"テストスクリプト".to_string()));
+        assert_eq!(created.name_i18n.get("de"), Some(&"Testskript".to_string()));
+        assert_eq!(created.description_i18n.get("ja"), Some(&"これはテストです".to_string()));
+
+        // Verify get_name() and get_description() work correctly
+        assert_eq!(created.get_name("ja"), "テストスクリプト");
+        assert_eq!(created.get_name("de"), "Testskript");
+        assert_eq!(created.get_name("en"), "Test Script"); // Falls back to default
+        assert_eq!(created.get_description("ja"), Some("これはテストです"));
+        assert_eq!(created.get_description("en"), Some("A test script")); // Falls back to default
+
+        // Verify data persists when fetched
+        let fetched = repo.get_by_id(created.id).unwrap().unwrap();
+        assert_eq!(fetched.name_i18n.len(), 2);
+        assert_eq!(fetched.description_i18n.len(), 1);
+        assert_eq!(fetched.get_name("ja"), "テストスクリプト");
+    }
+
+    #[test]
+    fn test_i18n_empty_maps() {
+        let db = create_test_db();
+        let repo = ScriptRepository::new(&db);
+
+        // Create script without i18n metadata
+        let script = create_test_script("no_i18n.lua");
+        let created = repo.upsert(&script).unwrap();
+
+        // Should have empty i18n maps
+        assert!(created.name_i18n.is_empty());
+        assert!(created.description_i18n.is_empty());
+
+        // get_name() should fall back to default
+        assert_eq!(created.get_name("ja"), "Test Script");
+        assert_eq!(created.get_name("en"), "Test Script");
     }
 }

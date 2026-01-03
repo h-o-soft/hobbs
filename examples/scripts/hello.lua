@@ -1,5 +1,7 @@
 -- @name Hello World
+-- @name.ja ハローワールド
 -- @description Simple greeting script that demonstrates BBS API
+-- @description.ja BBS APIのデモンストレーション
 -- @author HOBBS Sample
 -- @min_role 0
 

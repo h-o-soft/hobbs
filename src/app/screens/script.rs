@@ -36,17 +36,19 @@ impl ScriptScreen {
             let service = ScriptService::new(&ctx.db).with_scripts_dir(&scripts_dir);
             let scripts = service.list_scripts(user_role)?;
 
-            // Display scripts
+            // Display scripts with localized names/descriptions
+            let lang = ctx.i18n.locale();
             if scripts.is_empty() {
                 ctx.send_line(session, &ctx.i18n.t("script.no_scripts"))
                     .await?;
             } else {
                 for (i, script) in scripts.iter().enumerate() {
-                    let description = script.description.as_deref().unwrap_or("");
+                    let name = script.get_name(lang);
+                    let description = script.get_description(lang).unwrap_or("");
                     let line = format!(
                         "  [{:>2}] {}{}",
                         i + 1,
-                        script.name,
+                        name,
                         if description.is_empty() {
                             String::new()
                         } else {
@@ -124,8 +126,12 @@ impl ScriptScreen {
         // Create script context
         let script_context = Self::create_script_context(ctx, session);
 
+        // Display script header with localized name
+        let lang = ctx.i18n.locale();
+        let name = script.get_name(lang);
+
         ctx.send_line(session, "").await?;
-        ctx.send_line(session, &format!("--- {} ---", script.name))
+        ctx.send_line(session, &format!("--- {} ---", name))
             .await?;
         ctx.send_line(session, "").await?;
 

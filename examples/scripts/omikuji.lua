@@ -1,5 +1,7 @@
 -- @name Omikuji
+-- @name.ja おみくじ
 -- @description Daily fortune drawing. Can only draw once per day.
+-- @description.ja 一日一回のおみくじ
 -- @author HOBBS Sample
 -- @min_role 0
 
