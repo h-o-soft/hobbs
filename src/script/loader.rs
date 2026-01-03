@@ -1,6 +1,6 @@
 //! Script loader for scanning and syncing Lua scripts from the file system.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -291,6 +291,77 @@ impl ScriptLoader {
     pub fn read_script_source(&self, file_path: &str) -> Result<String> {
         let full_path = self.scripts_dir.join(file_path);
         Ok(fs::read_to_string(full_path)?)
+    }
+
+    /// Load translations from a sidecar .i18n.toml file.
+    ///
+    /// Given a script file path like "game.lua", this looks for "game.i18n.toml"
+    /// in the same directory and parses it.
+    ///
+    /// # Returns
+    ///
+    /// A HashMap where keys are language codes (e.g., "ja", "en") and values are
+    /// HashMaps of translation keys to translated strings.
+    ///
+    /// Returns an empty HashMap if the file doesn't exist or can't be parsed.
+    pub fn load_translations(&self, script_path: &str) -> HashMap<String, HashMap<String, String>> {
+        let script_full_path = self.scripts_dir.join(script_path);
+
+        // Build the i18n file path by replacing .lua with .i18n.toml
+        let i18n_path = if let Some(stem) = script_full_path.file_stem() {
+            script_full_path.with_file_name(format!("{}.i18n.toml", stem.to_string_lossy()))
+        } else {
+            return HashMap::new();
+        };
+
+        Self::parse_translations_file(&i18n_path)
+    }
+
+    /// Parse a translations file.
+    ///
+    /// # Format
+    ///
+    /// ```toml
+    /// [ja]
+    /// title = "じゃんけん"
+    /// rock = "グー"
+    ///
+    /// [en]
+    /// title = "Rock-Paper-Scissors"
+    /// rock = "Rock"
+    /// ```
+    fn parse_translations_file(path: &Path) -> HashMap<String, HashMap<String, String>> {
+        if !path.exists() {
+            return HashMap::new();
+        }
+
+        let content = match fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(_) => return HashMap::new(),
+        };
+
+        let table: toml::Table = match toml::from_str(&content) {
+            Ok(t) => t,
+            Err(_) => return HashMap::new(),
+        };
+
+        let mut translations = HashMap::new();
+
+        for (lang, value) in table {
+            if let toml::Value::Table(lang_table) = value {
+                let mut lang_translations = HashMap::new();
+                for (key, val) in lang_table {
+                    if let toml::Value::String(s) = val {
+                        lang_translations.insert(key, s);
+                    }
+                }
+                if !lang_translations.is_empty() {
+                    translations.insert(lang, lang_translations);
+                }
+            }
+        }
+
+        translations
     }
 }
 
@@ -637,5 +708,71 @@ bbs.println("v2")
 
         loader.ensure_scripts_dir().unwrap();
         assert!(loader.scripts_dir_exists());
+    }
+
+    #[test]
+    fn test_load_translations() {
+        let dir = tempdir().unwrap();
+
+        // Create script
+        fs::write(dir.path().join("game.lua"), "bbs.println('hello')").unwrap();
+
+        // Create translation file
+        let i18n_content = r#"
+[ja]
+title = "じゃんけん"
+rock = "グー"
+
+[en]
+title = "Rock-Paper-Scissors"
+rock = "Rock"
+"#;
+        fs::write(dir.path().join("game.i18n.toml"), i18n_content).unwrap();
+
+        let loader = ScriptLoader::new(dir.path());
+        let translations = loader.load_translations("game.lua");
+
+        // Check Japanese translations
+        assert!(translations.contains_key("ja"));
+        let ja = translations.get("ja").unwrap();
+        assert_eq!(ja.get("title"), Some(&"じゃんけん".to_string()));
+        assert_eq!(ja.get("rock"), Some(&"グー".to_string()));
+
+        // Check English translations
+        assert!(translations.contains_key("en"));
+        let en = translations.get("en").unwrap();
+        assert_eq!(en.get("title"), Some(&"Rock-Paper-Scissors".to_string()));
+        assert_eq!(en.get("rock"), Some(&"Rock".to_string()));
+    }
+
+    #[test]
+    fn test_load_translations_no_file() {
+        let dir = tempdir().unwrap();
+
+        // Create script without translation file
+        fs::write(dir.path().join("game.lua"), "bbs.println('hello')").unwrap();
+
+        let loader = ScriptLoader::new(dir.path());
+        let translations = loader.load_translations("game.lua");
+
+        // Should return empty HashMap
+        assert!(translations.is_empty());
+    }
+
+    #[test]
+    fn test_load_translations_invalid_file() {
+        let dir = tempdir().unwrap();
+
+        // Create script
+        fs::write(dir.path().join("game.lua"), "bbs.println('hello')").unwrap();
+
+        // Create invalid translation file
+        fs::write(dir.path().join("game.i18n.toml"), "not valid toml {{{").unwrap();
+
+        let loader = ScriptLoader::new(dir.path());
+        let translations = loader.load_translations("game.lua");
+
+        // Should return empty HashMap on parse error
+        assert!(translations.is_empty());
     }
 }

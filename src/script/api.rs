@@ -82,6 +82,9 @@ impl BbsApi {
         // === Terminal table ===
         self.register_terminal_table(lua, &bbs)?;
 
+        // === i18n functions ===
+        self.register_i18n_functions(lua, &bbs)?;
+
         // Set bbs as global
         lua.globals().set("bbs", bbs)?;
 
@@ -326,6 +329,59 @@ impl BbsApi {
 
         Ok(())
     }
+
+    /// Register i18n (internationalization) functions.
+    fn register_i18n_functions(&self, lua: &Lua, bbs: &Table) -> LuaResult<()> {
+        let lang = self.context.lang.clone();
+        let translations = self.context.translations.clone();
+
+        // bbs.get_lang() - get current user language
+        let get_lang_fn = lua.create_function(move |_, ()| Ok(lang.clone()))?;
+        bbs.set("get_lang", get_lang_fn)?;
+
+        // bbs.t(key) or bbs.t(key, default) - get translated text
+        // Fallback order: translations[lang][key] -> translations["en"][key] -> default -> key
+        let t_lang = self.context.lang.clone();
+        let t_translations = translations.clone();
+        let t_fn = lua.create_function(move |_, args: mlua::MultiValue| {
+            let mut iter = args.into_iter();
+
+            // First argument: key (required)
+            let key = match iter.next() {
+                Some(Value::String(s)) => s.to_str().map(|s| s.to_string()).unwrap_or_default(),
+                _ => return Ok(String::new()),
+            };
+
+            // Second argument: default (optional)
+            let default = match iter.next() {
+                Some(Value::String(s)) => Some(s.to_str().map(|s| s.to_string()).unwrap_or_default()),
+                _ => None,
+            };
+
+            // Try to find translation
+            // 1. Try current language
+            if let Some(lang_map) = t_translations.get(&t_lang) {
+                if let Some(translated) = lang_map.get(&key) {
+                    return Ok(translated.clone());
+                }
+            }
+
+            // 2. Try English as fallback
+            if t_lang != "en" {
+                if let Some(lang_map) = t_translations.get("en") {
+                    if let Some(translated) = lang_map.get(&key) {
+                        return Ok(translated.clone());
+                    }
+                }
+            }
+
+            // 3. Return default or key
+            Ok(default.unwrap_or(key))
+        })?;
+        bbs.set("t", t_fn)?;
+
+        Ok(())
+    }
 }
 
 /// Convert a Lua Value to a string for output.
@@ -364,6 +420,8 @@ mod tests {
             terminal_width: 80,
             terminal_height: 24,
             has_ansi: true,
+            lang: "en".to_string(),
+            translations: std::collections::HashMap::new(),
         };
         let api = BbsApi::new(context);
         let output = api.output_buffer_ref();
@@ -725,6 +783,8 @@ mod tests {
             terminal_width: 80,
             terminal_height: 24,
             has_ansi: true,
+            lang: "en".to_string(),
+            translations: std::collections::HashMap::new(),
         };
 
         let handle_clone = Arc::clone(&handle);
@@ -869,5 +929,117 @@ mod tests {
         assert_eq!(outputs.len(), 2);
         assert_eq!(outputs[0], "Hello\n");
         assert_eq!(outputs[1], "World\n");
+    }
+
+    #[test]
+    fn test_bbs_get_lang() {
+        let engine = ScriptEngine::new().unwrap();
+        let context = ScriptContext {
+            lang: "ja".to_string(),
+            ..Default::default()
+        };
+        let api = BbsApi::new(context);
+        api.register(engine.lua()).unwrap();
+
+        engine.execute("result = bbs.get_lang()").unwrap();
+        let result: String = engine.get_global("result").unwrap();
+        assert_eq!(result, "ja");
+    }
+
+    #[test]
+    fn test_bbs_t_with_translations() {
+        let engine = ScriptEngine::new().unwrap();
+
+        let mut ja_translations = std::collections::HashMap::new();
+        ja_translations.insert("title".to_string(), "じゃんけん".to_string());
+        ja_translations.insert("rock".to_string(), "グー".to_string());
+
+        let mut en_translations = std::collections::HashMap::new();
+        en_translations.insert("title".to_string(), "Rock-Paper-Scissors".to_string());
+        en_translations.insert("rock".to_string(), "Rock".to_string());
+
+        let mut translations = std::collections::HashMap::new();
+        translations.insert("ja".to_string(), ja_translations);
+        translations.insert("en".to_string(), en_translations);
+
+        let context = ScriptContext {
+            lang: "ja".to_string(),
+            translations,
+            ..Default::default()
+        };
+        let api = BbsApi::new(context);
+        api.register(engine.lua()).unwrap();
+
+        // Test getting Japanese translation
+        engine.execute(r#"result = bbs.t("title")"#).unwrap();
+        let result: String = engine.get_global("result").unwrap();
+        assert_eq!(result, "じゃんけん");
+
+        engine.execute(r#"result = bbs.t("rock")"#).unwrap();
+        let result: String = engine.get_global("result").unwrap();
+        assert_eq!(result, "グー");
+    }
+
+    #[test]
+    fn test_bbs_t_fallback_to_english() {
+        let engine = ScriptEngine::new().unwrap();
+
+        let mut en_translations = std::collections::HashMap::new();
+        en_translations.insert("title".to_string(), "Rock-Paper-Scissors".to_string());
+
+        let mut translations = std::collections::HashMap::new();
+        translations.insert("en".to_string(), en_translations);
+
+        // User language is German, but we only have English translations
+        let context = ScriptContext {
+            lang: "de".to_string(),
+            translations,
+            ..Default::default()
+        };
+        let api = BbsApi::new(context);
+        api.register(engine.lua()).unwrap();
+
+        // Should fallback to English
+        engine.execute(r#"result = bbs.t("title")"#).unwrap();
+        let result: String = engine.get_global("result").unwrap();
+        assert_eq!(result, "Rock-Paper-Scissors");
+    }
+
+    #[test]
+    fn test_bbs_t_fallback_to_key() {
+        let engine = ScriptEngine::new().unwrap();
+
+        let context = ScriptContext {
+            lang: "ja".to_string(),
+            translations: std::collections::HashMap::new(),
+            ..Default::default()
+        };
+        let api = BbsApi::new(context);
+        api.register(engine.lua()).unwrap();
+
+        // No translations, should return the key
+        engine.execute(r#"result = bbs.t("unknown_key")"#).unwrap();
+        let result: String = engine.get_global("result").unwrap();
+        assert_eq!(result, "unknown_key");
+    }
+
+    #[test]
+    fn test_bbs_t_with_default() {
+        let engine = ScriptEngine::new().unwrap();
+
+        let context = ScriptContext {
+            lang: "ja".to_string(),
+            translations: std::collections::HashMap::new(),
+            ..Default::default()
+        };
+        let api = BbsApi::new(context);
+        api.register(engine.lua()).unwrap();
+
+        // No translations, should return the provided default
+        engine
+            .execute(r#"result = bbs.t("unknown_key", "Default Value")"#)
+            .unwrap();
+        let result: String = engine.get_global("result").unwrap();
+        assert_eq!(result, "Default Value");
     }
 }

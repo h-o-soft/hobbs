@@ -327,6 +327,8 @@ impl ScriptScreen {
 
     /// Create a script execution context from the session.
     fn create_script_context(ctx: &ScreenContext, session: &TelnetSession) -> ScriptContext {
+        let lang = ctx.i18n.locale().to_string();
+
         if let Some(user_id) = session.user_id() {
             let user_repo = UserRepository::new(&ctx.db);
             if let Ok(Some(user)) = user_repo.get_by_id(user_id) {
@@ -339,6 +341,8 @@ impl ScriptScreen {
                     terminal_width: ctx.profile.width,
                     terminal_height: ctx.profile.height,
                     has_ansi: ctx.profile.ansi_enabled,
+                    lang,
+                    translations: std::collections::HashMap::new(), // Set by ScriptService
                 };
             }
         }
@@ -353,6 +357,8 @@ impl ScriptScreen {
             terminal_width: ctx.profile.width,
             terminal_height: ctx.profile.height,
             has_ansi: ctx.profile.ansi_enabled,
+            lang,
+            translations: std::collections::HashMap::new(), // Set by ScriptService
         }
     }
 }

@@ -6,9 +6,9 @@
 -- @min_role 0
 
 local user = bbs.get_user()
-bbs.println("=== Rock-Paper-Scissors ===")
+bbs.println("=== " .. bbs.t("title") .. " ===")
 bbs.println("")
-bbs.println("Hello, " .. user.nickname .. "!")
+bbs.println(string.format(bbs.t("hello"), user.nickname))
 bbs.println("")
 
 -- Load stats
@@ -16,13 +16,13 @@ local wins = bbs.user_data.get("wins") or 0
 local losses = bbs.user_data.get("losses") or 0
 local draws = bbs.user_data.get("draws") or 0
 
-bbs.println("Your record: " .. wins .. "W " .. losses .. "L " .. draws .. "D")
+bbs.println(string.format(bbs.t("record"), wins, losses, draws))
 bbs.println("")
 
-local hands = {"Rock", "Scissors", "Paper"}
+local hands = {bbs.t("rock"), bbs.t("scissors"), bbs.t("paper")}
 
 while true do
-    bbs.println("[1] Rock  [2] Scissors  [3] Paper  [Q] Quit")
+    bbs.println(bbs.t("prompt"))
     local choice = bbs.input("> ")
 
     if choice == nil then
@@ -40,31 +40,31 @@ while true do
         local cpu = bbs.random(1, 3)
 
         bbs.println("")
-        bbs.println("You: " .. hands[player])
-        bbs.println("CPU: " .. hands[cpu])
+        bbs.println(bbs.t("you") .. ": " .. hands[player])
+        bbs.println(bbs.t("cpu") .. ": " .. hands[cpu])
 
         if player == cpu then
-            bbs.println("Draw!")
+            bbs.println(bbs.t("draw"))
             draws = draws + 1
             bbs.user_data.set("draws", draws)
         elseif (player == 1 and cpu == 2) or
                (player == 2 and cpu == 3) or
                (player == 3 and cpu == 1) then
-            bbs.println("You win!")
+            bbs.println(bbs.t("you_win"))
             wins = wins + 1
             bbs.user_data.set("wins", wins)
         else
-            bbs.println("You lose...")
+            bbs.println(bbs.t("you_lose"))
             losses = losses + 1
             bbs.user_data.set("losses", losses)
         end
         bbs.println("")
     else
-        bbs.println("Please enter 1, 2, 3, or Q")
+        bbs.println(bbs.t("invalid"))
         bbs.println("")
     end
 end
 
 bbs.println("")
-bbs.println("Final record: " .. wins .. "W " .. losses .. "L " .. draws .. "D")
-bbs.println("See you next time!")
+bbs.println(string.format(bbs.t("final_record"), wins, losses, draws))
+bbs.println(bbs.t("goodbye"))

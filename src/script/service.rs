@@ -109,6 +109,12 @@ impl<'a> ScriptService<'a> {
         // Set script_id in context
         context.script_id = Some(script.id);
 
+        // Load translations from sidecar file
+        if let Some(ref scripts_dir) = self.scripts_dir {
+            let loader = ScriptLoader::new(scripts_dir);
+            context.translations = loader.load_translations(&script.file_path);
+        }
+
         // Load source code
         let source = self.load_script_source(&script.file_path)?;
 
@@ -508,6 +514,8 @@ bbs.println("member only")
             terminal_width: 80,
             terminal_height: 24,
             has_ansi: true,
+            lang: "en".to_string(),
+            translations: std::collections::HashMap::new(),
         };
 
         let result = service.execute(&script, context).unwrap();

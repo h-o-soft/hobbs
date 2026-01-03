@@ -1,0 +1,36 @@
+# Translation file for janken.lua
+# Usage in script: bbs.t("rock") or bbs.t("you_win")
+
+[ja]
+title = "じゃんけん"
+hello = "こんにちは、%sさん！"
+record = "戦績: %d勝 %d敗 %d引き分け"
+prompt = "[1] グー  [2] チョキ  [3] パー  [Q] 終了"
+rock = "グー"
+scissors = "チョキ"
+paper = "パー"
+you = "あなた"
+cpu = "CPU"
+you_win = "あなたの勝ち！"
+you_lose = "あなたの負け..."
+draw = "あいこ！"
+invalid = "1, 2, 3, または Q を入力してください"
+final_record = "最終戦績: %d勝 %d敗 %d引き分け"
+goodbye = "またね！"
+
+[en]
+title = "Rock-Paper-Scissors"
+hello = "Hello, %s!"
+record = "Your record: %dW %dL %dD"
+prompt = "[1] Rock  [2] Scissors  [3] Paper  [Q] Quit"
+rock = "Rock"
+scissors = "Scissors"
+paper = "Paper"
+you = "You"
+cpu = "CPU"
+you_win = "You win!"
+you_lose = "You lose..."
+draw = "Draw!"
+invalid = "Please enter 1, 2, 3, or Q"
+final_record = "Final record: %dW %dL %dD"
+goodbye = "See you next time!"
