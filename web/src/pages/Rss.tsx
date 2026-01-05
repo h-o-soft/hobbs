@@ -1,0 +1,336 @@
+import { type Component, createResource, createSignal, For, Show } from 'solid-js';
+import { useParams, useNavigate } from '@solidjs/router';
+import { PageLoading, Pagination, Button, Input, Modal, Alert, Empty } from '../components';
+import * as rssApi from '../api/rss';
+import type { RssItem } from '../types';
+
+// RSS Feed List Page
+export const RssPage: Component = () => {
+  const [showAddFeed, setShowAddFeed] = createSignal(false);
+  const navigate = useNavigate();
+
+  const [feeds, { refetch }] = createResource(rssApi.getFeeds);
+
+  const handleAddSuccess = () => {
+    setShowAddFeed(false);
+    refetch();
+  };
+
+  const handleDeleteFeed = async (id: number, e: Event) => {
+    e.stopPropagation();
+    if (!confirm('このフィードを削除しますか？')) return;
+    await rssApi.deleteFeed(id);
+    refetch();
+  };
+
+  const handleRefreshFeed = async (id: number, e: Event) => {
+    e.stopPropagation();
+    await rssApi.refreshFeed(id);
+    refetch();
+  };
+
+  const handleRefreshAll = async () => {
+    await rssApi.refreshAllFeeds();
+    refetch();
+  };
+
+  return (
+    <div class="space-y-6">
+      {/* Header */}
+      <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-display font-bold text-neon-cyan">RSS</h1>
+        <div class="flex space-x-2">
+          <Button variant="secondary" onClick={handleRefreshAll}>
+            全て更新
+          </Button>
+          <Button variant="primary" onClick={() => setShowAddFeed(true)}>
+            フィード追加
+          </Button>
+        </div>
+      </div>
+
+      {/* Feed List */}
+      <Show when={!feeds.loading} fallback={<PageLoading />}>
+        <Show
+          when={feeds() && feeds()!.length > 0}
+          fallback={
+            <Empty
+              title="RSSフィードがありません"
+              description="フィードを追加してニュースを購読しましょう"
+              action={
+                <Button variant="primary" onClick={() => setShowAddFeed(true)}>
+                  フィードを追加
+                </Button>
+              }
+            />
+          }
+        >
+          <div class="space-y-2">
+            <For each={feeds()}>
+              {(feed) => (
+                <div
+                  onClick={() => navigate(`/rss/${feed.id}`)}
+                  class="card-hover cursor-pointer"
+                >
+                  <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center space-x-2">
+                        <h3 class="font-medium text-gray-200 truncate">{feed.title}</h3>
+                        <Show when={feed.unread_count > 0}>
+                          <span class="badge-pink">{feed.unread_count} 未読</span>
+                        </Show>
+                        <Show when={feed.error_count > 0}>
+                          <span class="badge-pink">エラー</span>
+                        </Show>
+                      </div>
+                      <Show when={feed.description}>
+                        <p class="text-sm text-gray-500 mt-1 truncate">{feed.description}</p>
+                      </Show>
+                      <p class="text-xs text-gray-600 mt-1 truncate">{feed.url}</p>
+                    </div>
+                    <div class="flex items-center space-x-2 ml-4">
+                      <button
+                        onClick={(e) => handleRefreshFeed(feed.id, e)}
+                        class="p-2 text-gray-500 hover:text-neon-cyan transition-colors"
+                        title="更新"
+                      >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => handleDeleteFeed(feed.id, e)}
+                        class="p-2 text-gray-500 hover:text-neon-pink transition-colors"
+                        title="削除"
+                      >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+      </Show>
+
+      {/* Add Feed Modal */}
+      <Modal
+        isOpen={showAddFeed()}
+        onClose={() => setShowAddFeed(false)}
+        title="RSSフィード追加"
+      >
+        <AddFeedForm
+          onSuccess={handleAddSuccess}
+          onCancel={() => setShowAddFeed(false)}
+        />
+      </Modal>
+    </div>
+  );
+};
+
+// RSS Feed Detail Page (Items)
+export const RssDetailPage: Component = () => {
+  const params = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [page, setPage] = createSignal(1);
+  const [selectedItem, setSelectedItem] = createSignal<RssItem | null>(null);
+
+  const feedId = () => parseInt(params.id);
+
+  const [feed] = createResource(feedId, rssApi.getFeed);
+
+  const [items, { refetch }] = createResource(
+    () => ({ feedId: feedId(), page: page() }),
+    ({ feedId, page }) => rssApi.getItems(feedId, { page, per_page: 30 })
+  );
+
+  const handleItemClick = async (item: RssItem) => {
+    if (!item.is_read) {
+      await rssApi.markItemAsRead(item.id);
+      refetch();
+    }
+    setSelectedItem(item);
+  };
+
+  const handleMarkAllRead = async () => {
+    await rssApi.markAllAsRead(feedId());
+    refetch();
+  };
+
+  return (
+    <div class="space-y-6">
+      <Show when={!feed.loading && feed()} fallback={<PageLoading />}>
+        {/* Header */}
+        <div class="flex items-center justify-between">
+          <div>
+            <button
+              onClick={() => navigate('/rss')}
+              class="text-sm text-gray-500 hover:text-neon-cyan transition-colors mb-2"
+            >
+              ← RSS一覧に戻る
+            </button>
+            <h1 class="text-2xl font-display font-bold text-neon-cyan">{feed()!.title}</h1>
+            <Show when={feed()!.description}>
+              <p class="text-gray-500 mt-1">{feed()!.description}</p>
+            </Show>
+          </div>
+          <Button variant="secondary" onClick={handleMarkAllRead}>
+            全て既読にする
+          </Button>
+        </div>
+
+        {/* Items */}
+        <Show when={!items.loading} fallback={<PageLoading />}>
+          <Show
+            when={items()?.data && items()!.data.length > 0}
+            fallback={
+              <Empty title="記事がありません" />
+            }
+          >
+            <div class="space-y-2">
+              <For each={items()!.data}>
+                {(item) => (
+                  <div
+                    onClick={() => handleItemClick(item)}
+                    class={`card-hover cursor-pointer ${!item.is_read ? 'border-neon-pink/30' : ''}`}
+                  >
+                    <div class="flex items-start space-x-2">
+                      <Show when={!item.is_read}>
+                        <span class="w-2 h-2 bg-neon-pink rounded-full mt-2 flex-shrink-0" />
+                      </Show>
+                      <div class="flex-1 min-w-0">
+                        <h3 class="font-medium text-gray-200">{item.title}</h3>
+                        <Show when={item.pub_date}>
+                          <p class="text-xs text-gray-500 mt-1">{formatDate(item.pub_date!)}</p>
+                        </Show>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </For>
+            </div>
+
+            <Pagination
+              page={items()!.page}
+              totalPages={items()!.total_pages}
+              onPageChange={setPage}
+            />
+          </Show>
+        </Show>
+
+        {/* Item Detail Modal */}
+        <Modal
+          isOpen={selectedItem() !== null}
+          onClose={() => setSelectedItem(null)}
+          title={selectedItem()?.title}
+          size="lg"
+        >
+          <Show when={selectedItem()}>
+            {(item) => (
+              <div class="space-y-4">
+                <Show when={item().pub_date}>
+                  <p class="text-sm text-gray-500">{formatDate(item().pub_date!)}</p>
+                </Show>
+                <Show when={item().description}>
+                  <div
+                    class="text-gray-300 prose prose-invert prose-sm max-w-none"
+                    innerHTML={item().description}
+                  />
+                </Show>
+                <Show when={item().link}>
+                  <a
+                    href={item().link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="btn-primary inline-block"
+                  >
+                    元記事を読む
+                  </a>
+                </Show>
+              </div>
+            )}
+          </Show>
+        </Modal>
+      </Show>
+    </div>
+  );
+};
+
+interface AddFeedFormProps {
+  onSuccess: () => void;
+  onCancel: () => void;
+}
+
+const AddFeedForm: Component<AddFeedFormProps> = (props) => {
+  const [url, setUrl] = createSignal('');
+  const [title, setTitle] = createSignal('');
+  const [error, setError] = createSignal('');
+  const [loading, setLoading] = createSignal(false);
+
+  const handleSubmit = async (e: Event) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      await rssApi.addFeed({
+        url: url(),
+        title: title() || undefined,
+      });
+      props.onSuccess();
+    } catch (err: any) {
+      setError(err.message || 'フィードの追加に失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} class="space-y-4">
+      <Show when={error()}>
+        <Alert type="error" onClose={() => setError('')}>
+          {error()}
+        </Alert>
+      </Show>
+
+      <Input
+        label="URL"
+        type="url"
+        value={url()}
+        onInput={(e) => setUrl(e.currentTarget.value)}
+        required
+        placeholder="https://example.com/feed.xml"
+      />
+
+      <Input
+        label="タイトル (任意)"
+        value={title()}
+        onInput={(e) => setTitle(e.currentTarget.value)}
+        placeholder="自動取得されます"
+      />
+
+      <div class="flex justify-end space-x-3">
+        <Button type="button" variant="secondary" onClick={props.onCancel}>
+          キャンセル
+        </Button>
+        <Button type="submit" variant="primary" loading={loading()}>
+          追加
+        </Button>
+      </div>
+    </form>
+  );
+};
+
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  return date.toLocaleString('ja-JP', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
