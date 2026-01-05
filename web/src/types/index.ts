@@ -6,12 +6,15 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
-export interface PaginatedResponse<T> {
-  data: T[];
+export interface PaginationMeta {
   page: number;
   per_page: number;
   total: number;
-  total_pages: number;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  meta: PaginationMeta;
 }
 
 // User types
@@ -87,7 +90,7 @@ export interface Post {
   thread_id?: number;
   board_id?: number;
   title?: string;
-  content: string;
+  body: string;
   author: AuthorInfo;
   created_at: string;
 }

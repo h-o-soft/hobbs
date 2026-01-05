@@ -126,8 +126,8 @@ const UsersTab: Component = () => {
           </div>
 
           <Pagination
-            page={users()!.page}
-            totalPages={users()!.total_pages}
+            page={users()!.meta.page}
+            totalPages={Math.ceil(users()!.meta.total / users()!.meta.per_page)}
             onPageChange={setPage}
           />
         </Show>

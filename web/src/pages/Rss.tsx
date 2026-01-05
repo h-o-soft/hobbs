@@ -214,8 +214,8 @@ export const RssDetailPage: Component = () => {
             </div>
 
             <Pagination
-              page={items()!.page}
-              totalPages={items()!.total_pages}
+              page={items()!.meta.page}
+              totalPages={Math.ceil(items()!.meta.total / items()!.meta.per_page)}
               onPageChange={setPage}
             />
           </Show>

@@ -134,8 +134,8 @@ export const MailPage: Component = () => {
           </div>
 
           <Pagination
-            page={currentList()!.page}
-            totalPages={currentList()!.total_pages}
+            page={currentList()!.meta.page}
+            totalPages={Math.ceil(currentList()!.meta.total / currentList()!.meta.per_page)}
             onPageChange={setPage}
           />
         </Show>

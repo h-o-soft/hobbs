@@ -166,8 +166,8 @@ export const BoardDetailPage: Component = () => {
               </div>
 
               <Pagination
-                page={threads()!.page}
-                totalPages={threads()!.total_pages}
+                page={threads()!.meta.page}
+                totalPages={Math.ceil(threads()!.meta.total / threads()!.meta.per_page)}
                 onPageChange={handlePageChange}
               />
             </Show>
@@ -200,7 +200,7 @@ export const BoardDetailPage: Component = () => {
                       <div class="flex items-start justify-between mb-2">
                         <div class="flex items-center space-x-2">
                           <span class="badge-cyan">
-                            {(flatPosts()!.page - 1) * flatPosts()!.per_page + index() + 1}
+                            {(flatPosts()!.meta.page - 1) * flatPosts()!.meta.per_page + index() + 1}
                           </span>
                           <span class="font-medium text-gray-300">{post.author.nickname}</span>
                         </div>
@@ -209,15 +209,15 @@ export const BoardDetailPage: Component = () => {
                       <Show when={post.title}>
                         <h3 class="font-medium text-neon-cyan mb-2">{post.title}</h3>
                       </Show>
-                      <div class="text-gray-300 whitespace-pre-wrap">{post.content}</div>
+                      <div class="text-gray-300 whitespace-pre-wrap">{post.body}</div>
                     </div>
                   )}
                 </For>
               </div>
 
               <Pagination
-                page={flatPosts()!.page}
-                totalPages={flatPosts()!.total_pages}
+                page={flatPosts()!.meta.page}
+                totalPages={Math.ceil(flatPosts()!.meta.total / flatPosts()!.meta.per_page)}
                 onPageChange={handlePageChange}
               />
             </Show>
@@ -306,13 +306,13 @@ export const ThreadDetailPage: Component = () => {
                   <div class="flex items-start justify-between mb-2">
                     <div class="flex items-center space-x-2">
                       <span class="badge-cyan">
-                        {(posts()!.page - 1) * posts()!.per_page + index() + 1}
+                        {(posts()!.meta.page - 1) * posts()!.meta.per_page + index() + 1}
                       </span>
                       <span class="font-medium text-gray-300">{post.author.nickname}</span>
                     </div>
                     <span class="text-xs text-gray-500">{formatDate(post.created_at)}</span>
                   </div>
-                  <div class="text-gray-300 whitespace-pre-wrap">{post.content}</div>
+                  <div class="text-gray-300 whitespace-pre-wrap">{post.body}</div>
                 </div>
               )}
             </For>
@@ -320,8 +320,8 @@ export const ThreadDetailPage: Component = () => {
 
           <Show when={posts()}>
             <Pagination
-              page={posts()!.page}
-              totalPages={posts()!.total_pages}
+              page={posts()!.meta.page}
+              totalPages={Math.ceil(posts()!.meta.total / posts()!.meta.per_page)}
               onPageChange={handlePageChange}
             />
           </Show>

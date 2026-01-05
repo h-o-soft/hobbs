@@ -165,8 +165,8 @@ export const FolderDetailPage: Component = () => {
             </div>
 
             <Pagination
-              page={files()!.page}
-              totalPages={files()!.total_pages}
+              page={files()!.meta.page}
+              totalPages={Math.ceil(files()!.meta.total / files()!.meta.per_page)}
               onPageChange={setPage}
             />
           </Show>
