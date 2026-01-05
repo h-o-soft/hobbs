@@ -3227,7 +3227,10 @@ impl AdminScreen {
 
                     ctx.send_line(
                         session,
-                        &format!("  {:<4} {:<30} {:<8} {}{}", num, title, "-", status, error_info),
+                        &format!(
+                            "  {:<4} {:<30} {:<8} {}{}",
+                            num, title, "-", status, error_info
+                        ),
                     )
                     .await?;
                 }
@@ -3288,11 +3291,8 @@ impl AdminScreen {
         ctx.send_line(session, "").await?;
 
         // Get URL
-        ctx.send(
-            session,
-            &format!("{}: ", ctx.i18n.t("admin.rss_enter_url")),
-        )
-        .await?;
+        ctx.send(session, &format!("{}: ", ctx.i18n.t("admin.rss_enter_url")))
+            .await?;
         let url = ctx.read_line(session).await?;
         let url = url.trim();
 
@@ -3399,11 +3399,8 @@ impl AdminScreen {
         ctx.send_line(session, "").await?;
         for (i, feed) in feeds.iter().enumerate() {
             let status = if feed.is_active { "+" } else { "-" };
-            ctx.send_line(
-                session,
-                &format!("  {} [{}] {}", i + 1, status, feed.title),
-            )
-            .await?;
+            ctx.send_line(session, &format!("  {} [{}] {}", i + 1, status, feed.title))
+                .await?;
         }
         ctx.send_line(session, "").await?;
 
@@ -3435,10 +3432,14 @@ impl AdminScreen {
         ctx.send_line(session, "").await?;
         ctx.send_line(session, &format!("=== {} ===", feed.title))
             .await?;
-        ctx.send_line(session, &format!("URL: {}", feed.url)).await?;
+        ctx.send_line(session, &format!("URL: {}", feed.url))
+            .await?;
         if let Some(desc) = &feed.description {
-            ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("admin.rss_feed_description"), desc))
-                .await?;
+            ctx.send_line(
+                session,
+                &format!("{}: {}", ctx.i18n.t("admin.rss_feed_description"), desc),
+            )
+            .await?;
         }
         ctx.send_line(
             session,
@@ -3452,7 +3453,11 @@ impl AdminScreen {
         if feed.error_count > 0 {
             ctx.send_line(
                 session,
-                &format!("{}: {}", ctx.i18n.t("admin.rss_error_count"), feed.error_count),
+                &format!(
+                    "{}: {}",
+                    ctx.i18n.t("admin.rss_error_count"),
+                    feed.error_count
+                ),
             )
             .await?;
             if let Some(err) = &feed.last_error {
@@ -3465,8 +3470,11 @@ impl AdminScreen {
         }
         ctx.send_line(session, "").await?;
 
-        ctx.send_line(session, &format!("  [1] {}", ctx.i18n.t("admin.rss_toggle_active")))
-            .await?;
+        ctx.send_line(
+            session,
+            &format!("  [1] {}", ctx.i18n.t("admin.rss_toggle_active")),
+        )
+        .await?;
         ctx.send_line(session, &format!("  [Q] {}", ctx.i18n.t("common.back")))
             .await?;
 

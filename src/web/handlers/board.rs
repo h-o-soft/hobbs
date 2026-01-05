@@ -31,11 +31,10 @@ pub async fn list_boards(
     let boards = {
         let db = state.db.lock().await;
         let repo = BoardRepository::new(&*db);
-        repo.list_accessible(user_role)
-            .map_err(|e| {
-                tracing::error!("Failed to list boards: {}", e);
-                ApiError::internal("Failed to list boards")
-            })?
+        repo.list_accessible(user_role).map_err(|e| {
+            tracing::error!("Failed to list boards: {}", e);
+            ApiError::internal("Failed to list boards")
+        })?
     };
 
     let responses: Vec<BoardResponse> = boards
@@ -318,7 +317,9 @@ pub async fn list_flat_posts(
         }
 
         if board.board_type != BoardType::Flat {
-            return Err(ApiError::bad_request("This board does not support flat posts"));
+            return Err(ApiError::bad_request(
+                "This board does not support flat posts",
+            ));
         }
 
         let posts = post_repo
@@ -417,7 +418,9 @@ pub async fn create_flat_post(
         }
 
         if board.board_type != BoardType::Flat {
-            return Err(ApiError::bad_request("This board does not support flat posts"));
+            return Err(ApiError::bad_request(
+                "This board does not support flat posts",
+            ));
         }
 
         // Create post

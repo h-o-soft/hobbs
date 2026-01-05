@@ -10,17 +10,66 @@ use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
 
 use super::handlers::{
-    // Auth handlers
-    login, logout, me, refresh, register,
-    // Board handlers
-    create_flat_post, create_thread, create_thread_post, delete_post, get_board, get_thread,
-    list_boards, list_flat_posts, list_thread_posts, list_threads,
-    // Mail handlers
-    delete_mail, get_mail, get_unread_count, list_inbox, list_sent, send_mail,
-    // RSS handlers
-    get_feed, get_item, list_feeds, list_items, mark_as_read,
+    // Admin handlers
+    admin_add_feed,
+    admin_create_board,
+    admin_create_folder,
+    admin_delete_board,
+    admin_delete_feed,
+    admin_delete_folder,
+    admin_list_boards,
+    admin_list_folders,
+    admin_list_users,
+    admin_reset_password,
+    admin_update_board,
+    admin_update_folder,
+    admin_update_role,
+    admin_update_status,
+    admin_update_user,
     // User handlers
-    change_password, get_my_profile, get_user, list_users, update_my_profile,
+    change_password,
+    // Board handlers
+    create_flat_post,
+    create_thread,
+    create_thread_post,
+    // File handlers
+    delete_file,
+    // Mail handlers
+    delete_mail,
+    delete_post,
+    download_file,
+    get_board,
+    // RSS handlers
+    get_feed,
+    get_file,
+    get_folder,
+    get_item,
+    get_mail,
+    get_my_profile,
+    get_thread,
+    get_unread_count,
+    get_user,
+    list_boards,
+    list_feeds,
+    list_files,
+    list_flat_posts,
+    list_folders,
+    list_inbox,
+    list_items,
+    list_sent,
+    list_thread_posts,
+    list_threads,
+    list_users,
+    // Auth handlers
+    login,
+    logout,
+    mark_as_read,
+    me,
+    refresh,
+    register,
+    send_mail,
+    update_my_profile,
+    upload_file,
     // State
     AppState,
 };
@@ -92,6 +141,49 @@ pub fn create_router(
         .route("/{feed_id}/items/{item_id}", get(get_item))
         .route("/{id}/mark-read", post(mark_as_read));
 
+    // Folder routes
+    let folder_routes = Router::new()
+        .route("/", get(list_folders))
+        .route("/{id}", get(get_folder))
+        .route("/{id}/files", get(list_files))
+        .route("/{id}/files", post(upload_file));
+
+    // File routes
+    let file_routes = Router::new()
+        .route("/{id}", get(get_file))
+        .route("/{id}", delete(delete_file))
+        .route("/{id}/download", get(download_file));
+
+    // Admin routes
+    let admin_user_routes = Router::new()
+        .route("/", get(admin_list_users))
+        .route("/{id}", put(admin_update_user))
+        .route("/{id}/role", put(admin_update_role))
+        .route("/{id}/status", put(admin_update_status))
+        .route("/{id}/reset-password", post(admin_reset_password));
+
+    let admin_board_routes = Router::new()
+        .route("/", get(admin_list_boards))
+        .route("/", post(admin_create_board))
+        .route("/{id}", put(admin_update_board))
+        .route("/{id}", delete(admin_delete_board));
+
+    let admin_folder_routes = Router::new()
+        .route("/", get(admin_list_folders))
+        .route("/", post(admin_create_folder))
+        .route("/{id}", put(admin_update_folder))
+        .route("/{id}", delete(admin_delete_folder));
+
+    let admin_rss_routes = Router::new()
+        .route("/feeds", post(admin_add_feed))
+        .route("/feeds/{id}", delete(admin_delete_feed));
+
+    let admin_routes = Router::new()
+        .nest("/users", admin_user_routes)
+        .nest("/boards", admin_board_routes)
+        .nest("/folders", admin_folder_routes)
+        .nest("/rss", admin_rss_routes);
+
     // API routes
     let api_routes = Router::new()
         .nest("/auth", auth_routes)
@@ -100,7 +192,10 @@ pub fn create_router(
         .nest("/posts", post_routes)
         .nest("/mail", mail_routes)
         .nest("/users", user_routes)
-        .nest("/rss", rss_routes);
+        .nest("/rss", rss_routes)
+        .nest("/folders", folder_routes)
+        .nest("/files", file_routes)
+        .nest("/admin", admin_routes);
 
     // Clone jwt_state for the middleware closure
     let jwt_state_for_middleware = jwt_state.clone();

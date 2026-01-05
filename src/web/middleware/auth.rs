@@ -69,7 +69,9 @@ where
     fn from_request_parts<'life0, 'life1, 'async_trait>(
         parts: &'life0 mut Parts,
         _state: &'life1 S,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self, Self::Rejection>> + Send + 'async_trait>>
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Self, Self::Rejection>> + Send + 'async_trait>,
+    >
     where
         'life0: 'async_trait,
         'life1: 'async_trait,
@@ -95,11 +97,12 @@ where
                 .ok_or_else(|| ApiError::internal("JWT state not configured"))?;
 
             // Decode and validate the token
-            let token_data = decode::<JwtClaims>(token, &jwt_state.decoding_key, &jwt_state.validation)
-                .map_err(|e| {
-                    tracing::debug!("JWT validation failed: {}", e);
-                    ApiError::unauthorized("Invalid or expired token")
-                })?;
+            let token_data =
+                decode::<JwtClaims>(token, &jwt_state.decoding_key, &jwt_state.validation)
+                    .map_err(|e| {
+                        tracing::debug!("JWT validation failed: {}", e);
+                        ApiError::unauthorized("Invalid or expired token")
+                    })?;
 
             Ok(AuthUser(token_data.claims))
         })
@@ -121,7 +124,9 @@ where
     fn from_request_parts<'life0, 'life1, 'async_trait>(
         parts: &'life0 mut Parts,
         _state: &'life1 S,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self, Self::Rejection>> + Send + 'async_trait>>
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Self, Self::Rejection>> + Send + 'async_trait>,
+    >
     where
         'life0: 'async_trait,
         'life1: 'async_trait,
@@ -129,7 +134,11 @@ where
     {
         Box::pin(async move {
             // Get the Authorization header
-            let auth_header = match parts.headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok()) {
+            let auth_header = match parts
+                .headers
+                .get(AUTHORIZATION)
+                .and_then(|v| v.to_str().ok())
+            {
                 Some(h) => h,
                 None => return Ok(OptionalAuthUser(None)),
             };

@@ -90,7 +90,7 @@ async fn run_server(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     // Start Web server if enabled (runs in separate task with its own DB connection)
     if config.web.enabled {
         let web_db = Database::open(&config.database.path)?;
-        let web_server = WebServer::from_database(&config.web, web_db);
+        let web_server = WebServer::from_database_with_files(&config.web, web_db, &config.files);
         let web_addr = web_server.addr();
 
         tokio::spawn(async move {

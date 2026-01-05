@@ -6,7 +6,8 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 
-use crate::config::WebConfig;
+use crate::config::{FilesConfig, WebConfig};
+use crate::file::FileStorage;
 use crate::Database;
 
 use super::handlers::{AppState, SharedDatabase};
@@ -27,23 +28,39 @@ pub struct WebServer {
 
 impl WebServer {
     /// Create a new web server.
-    pub fn new(config: &WebConfig, db: SharedDatabase) -> Self {
+    pub fn new(config: &WebConfig, db: SharedDatabase, files_config: Option<&FilesConfig>) -> Self {
         let addr = format!("{}:{}", config.host, config.port)
             .parse()
             .expect("Invalid web server address");
 
-        let app_state = Arc::new(AppState::new(
+        let mut app_state = AppState::new(
             db,
             &config.jwt_secret,
             config.jwt_access_token_expiry_secs,
             config.jwt_refresh_token_expiry_days,
-        ));
+        );
+
+        // Initialize file storage if files config is provided
+        if let Some(files) = files_config {
+            match FileStorage::new(&files.storage_path) {
+                Ok(storage) => {
+                    app_state = app_state.with_file_storage(storage, files.max_upload_size_mb);
+                    tracing::info!("File storage initialized at: {}", files.storage_path);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to initialize file storage: {}. File API will be disabled.",
+                        e
+                    );
+                }
+            }
+        }
 
         let jwt_state = Arc::new(JwtState::new(&config.jwt_secret));
 
         Self {
             addr,
-            app_state,
+            app_state: Arc::new(app_state),
             jwt_state,
             cors_origins: config.cors_origins.clone(),
         }
@@ -51,7 +68,16 @@ impl WebServer {
 
     /// Create a new web server from a raw Database.
     pub fn from_database(config: &WebConfig, db: Database) -> Self {
-        Self::new(config, Arc::new(Mutex::new(db)))
+        Self::new(config, Arc::new(Mutex::new(db)), None)
+    }
+
+    /// Create a new web server from a raw Database with files config.
+    pub fn from_database_with_files(
+        config: &WebConfig,
+        db: Database,
+        files_config: &FilesConfig,
+    ) -> Self {
+        Self::new(config, Arc::new(Mutex::new(db)), Some(files_config))
     }
 
     /// Get the server address.
