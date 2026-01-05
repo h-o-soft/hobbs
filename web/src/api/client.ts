@@ -32,6 +32,19 @@ export function clearTokens() {
   localStorage.removeItem('refresh_token');
 }
 
+// API response wrapper type (backend wraps all responses)
+interface ApiResponse<T> {
+  data: T;
+}
+
+// API error response type
+interface ApiErrorResponse {
+  error: {
+    code: string;
+    message: string;
+  };
+}
+
 // Refresh token logic
 async function refreshAccessToken(): Promise<boolean> {
   const refresh = getRefreshToken();
@@ -49,8 +62,8 @@ async function refreshAccessToken(): Promise<boolean> {
       return false;
     }
 
-    const data = await response.json();
-    setTokens(data.access_token, data.refresh_token);
+    const json: ApiResponse<{ access_token: string; refresh_token: string }> = await response.json();
+    setTokens(json.data.access_token, json.data.refresh_token);
     return true;
   } catch {
     clearTokens();
@@ -122,17 +135,18 @@ async function request<T>(
   }
 
   if (!response.ok) {
-    let errorData: { error?: string; code?: string } = {};
+    let errorMessage = response.statusText;
+    let errorCode = 'UNKNOWN_ERROR';
     try {
-      errorData = await response.json();
+      const errorData: ApiErrorResponse = await response.json();
+      if (errorData.error) {
+        errorMessage = errorData.error.message;
+        errorCode = errorData.error.code;
+      }
     } catch {
       // Ignore JSON parse errors
     }
-    throw new ApiError(
-      response.status,
-      errorData.code || 'UNKNOWN_ERROR',
-      errorData.error || response.statusText
-    );
+    throw new ApiError(response.status, errorCode, errorMessage);
   }
 
   // Handle empty responses
@@ -141,7 +155,9 @@ async function request<T>(
     return {} as T;
   }
 
-  return response.json();
+  // Unwrap ApiResponse wrapper
+  const json: ApiResponse<T> = await response.json();
+  return json.data;
 }
 
 export const api = {
