@@ -65,9 +65,10 @@ export interface Board {
   name: string;
   description?: string;
   board_type: 'thread' | 'flat';
-  thread_count: number;
-  post_count: number;
-  can_post: boolean;
+  thread_count?: number;
+  post_count?: number;
+  can_read: boolean;
+  can_write: boolean;
   created_at: string;
 }
 

@@ -58,14 +58,22 @@ export const BoardDetailPage: Component = () => {
   const params = useParams<{ id: string }>();
   const [page, setPage] = createSignal(1);
   const [showNewThread, setShowNewThread] = createSignal(false);
+  const [showNewPost, setShowNewPost] = createSignal(false);
 
   const boardId = () => parseInt(params.id);
 
   const [board] = createResource(boardId, boardApi.getBoard);
 
-  const [threads, { refetch }] = createResource(
-    () => ({ boardId: boardId(), page: page() }),
+  // スレッド形式の掲示板用
+  const [threads, { refetch: refetchThreads }] = createResource(
+    () => board()?.board_type === 'thread' ? { boardId: boardId(), page: page() } : null,
     ({ boardId, page }) => boardApi.getThreads(boardId, { page, per_page: 20 })
+  );
+
+  // フラット形式の掲示板用
+  const [flatPosts, { refetch: refetchPosts }] = createResource(
+    () => board()?.board_type === 'flat' ? { boardId: boardId(), page: page() } : null,
+    ({ boardId, page }) => boardApi.getFlatPosts(boardId, { page, per_page: 50 })
   );
 
   const handlePageChange = (newPage: number) => {
@@ -74,8 +82,15 @@ export const BoardDetailPage: Component = () => {
 
   const handleThreadCreated = () => {
     setShowNewThread(false);
-    refetch();
+    refetchThreads();
   };
+
+  const handlePostCreated = () => {
+    setShowNewPost(false);
+    refetchPosts();
+  };
+
+  const isThreadBoard = () => board()?.board_type === 'thread';
 
   return (
     <div class="space-y-6">
@@ -92,59 +107,120 @@ export const BoardDetailPage: Component = () => {
               <p class="text-gray-500 mt-1">{board()!.description}</p>
             </Show>
           </div>
-          <Show when={board()!.can_post}>
-            <Button variant="primary" onClick={() => setShowNewThread(true)}>
-              新規スレッド
-            </Button>
+          <Show when={board()!.can_write}>
+            <Show
+              when={isThreadBoard()}
+              fallback={
+                <Button variant="primary" onClick={() => setShowNewPost(true)}>
+                  新規投稿
+                </Button>
+              }
+            >
+              <Button variant="primary" onClick={() => setShowNewThread(true)}>
+                新規スレッド
+              </Button>
+            </Show>
           </Show>
         </div>
 
-        {/* Thread List */}
-        <Show when={!threads.loading} fallback={<PageLoading />}>
-          <Show
-            when={threads()?.data && threads()!.data.length > 0}
-            fallback={
-              <Empty
-                title="スレッドがありません"
-                description="最初のスレッドを作成してください"
-                action={
-                  <Show when={board()!.can_post}>
-                    <Button variant="primary" onClick={() => setShowNewThread(true)}>
-                      スレッドを作成
-                    </Button>
-                  </Show>
-                }
-              />
-            }
-          >
-            <div class="space-y-2">
-              <For each={threads()!.data}>
-                {(thread) => (
-                  <A
-                    href={`/threads/${thread.id}`}
-                    class="card-hover block"
-                  >
-                    <div class="flex items-center justify-between">
-                      <div>
-                        <h3 class="font-medium text-gray-200">{thread.title}</h3>
-                        <p class="text-xs text-gray-500 mt-1">
-                          {thread.author.nickname} - {formatDate(thread.created_at)}
-                        </p>
+        {/* Thread Board: Thread List */}
+        <Show when={isThreadBoard()}>
+          <Show when={!threads.loading} fallback={<PageLoading />}>
+            <Show
+              when={threads()?.data && threads()!.data.length > 0}
+              fallback={
+                <Empty
+                  title="スレッドがありません"
+                  description="最初のスレッドを作成してください"
+                  action={
+                    <Show when={board()!.can_write}>
+                      <Button variant="primary" onClick={() => setShowNewThread(true)}>
+                        スレッドを作成
+                      </Button>
+                    </Show>
+                  }
+                />
+              }
+            >
+              <div class="space-y-2">
+                <For each={threads()!.data}>
+                  {(thread) => (
+                    <A
+                      href={`/threads/${thread.id}`}
+                      class="card-hover block"
+                    >
+                      <div class="flex items-center justify-between">
+                        <div>
+                          <h3 class="font-medium text-gray-200">{thread.title}</h3>
+                          <p class="text-xs text-gray-500 mt-1">
+                            {thread.author.nickname} - {formatDate(thread.created_at)}
+                          </p>
+                        </div>
+                        <div class="text-sm text-gray-500">
+                          {thread.post_count} 件
+                        </div>
                       </div>
-                      <div class="text-sm text-gray-500">
-                        {thread.post_count} 件
-                      </div>
-                    </div>
-                  </A>
-                )}
-              </For>
-            </div>
+                    </A>
+                  )}
+                </For>
+              </div>
 
-            <Pagination
-              page={threads()!.page}
-              totalPages={threads()!.total_pages}
-              onPageChange={handlePageChange}
-            />
+              <Pagination
+                page={threads()!.page}
+                totalPages={threads()!.total_pages}
+                onPageChange={handlePageChange}
+              />
+            </Show>
+          </Show>
+        </Show>
+
+        {/* Flat Board: Post List */}
+        <Show when={!isThreadBoard()}>
+          <Show when={!flatPosts.loading} fallback={<PageLoading />}>
+            <Show
+              when={flatPosts()?.data && flatPosts()!.data.length > 0}
+              fallback={
+                <Empty
+                  title="投稿がありません"
+                  description="最初の投稿を作成してください"
+                  action={
+                    <Show when={board()!.can_write}>
+                      <Button variant="primary" onClick={() => setShowNewPost(true)}>
+                        投稿を作成
+                      </Button>
+                    </Show>
+                  }
+                />
+              }
+            >
+              <div class="space-y-4">
+                <For each={flatPosts()!.data}>
+                  {(post, index) => (
+                    <div class="card">
+                      <div class="flex items-start justify-between mb-2">
+                        <div class="flex items-center space-x-2">
+                          <span class="badge-cyan">
+                            {(flatPosts()!.page - 1) * flatPosts()!.per_page + index() + 1}
+                          </span>
+                          <span class="font-medium text-gray-300">{post.author.nickname}</span>
+                        </div>
+                        <span class="text-xs text-gray-500">{formatDate(post.created_at)}</span>
+                      </div>
+                      <Show when={post.title}>
+                        <h3 class="font-medium text-neon-cyan mb-2">{post.title}</h3>
+                      </Show>
+                      <div class="text-gray-300 whitespace-pre-wrap">{post.content}</div>
+                    </div>
+                  )}
+                </For>
+              </div>
+
+              <Pagination
+                page={flatPosts()!.page}
+                totalPages={flatPosts()!.total_pages}
+                onPageChange={handlePageChange}
+              />
+            </Show>
           </Show>
         </Show>
 
@@ -159,6 +235,20 @@ export const BoardDetailPage: Component = () => {
             boardId={boardId()}
             onSuccess={handleThreadCreated}
             onCancel={() => setShowNewThread(false)}
+          />
+        </Modal>
+
+        {/* New Flat Post Modal */}
+        <Modal
+          isOpen={showNewPost()}
+          onClose={() => setShowNewPost(false)}
+          title="新規投稿"
+          size="lg"
+        >
+          <NewFlatPostForm
+            boardId={boardId()}
+            onSuccess={handlePostCreated}
+            onCancel={() => setShowNewPost(false)}
           />
         </Modal>
       </Show>
@@ -362,6 +452,76 @@ const ReplyForm: Component<ReplyFormProps> = (props) => {
       />
 
       <div class="flex justify-end">
+        <Button type="submit" variant="primary" loading={loading()}>
+          投稿
+        </Button>
+      </div>
+    </form>
+  );
+};
+
+// New Flat Post Form Component
+interface NewFlatPostFormProps {
+  boardId: number;
+  onSuccess: () => void;
+  onCancel: () => void;
+}
+
+const NewFlatPostForm: Component<NewFlatPostFormProps> = (props) => {
+  const [title, setTitle] = createSignal('');
+  const [content, setContent] = createSignal('');
+  const [error, setError] = createSignal('');
+  const [loading, setLoading] = createSignal(false);
+
+  const handleSubmit = async (e: Event) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      await boardApi.createFlatPost(props.boardId, {
+        title: title() || undefined,
+        content: content(),
+      });
+      props.onSuccess();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('投稿の作成に失敗しました');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} class="space-y-4">
+      <Show when={error()}>
+        <Alert type="error" onClose={() => setError('')}>
+          {error()}
+        </Alert>
+      </Show>
+
+      <Input
+        label="タイトル（任意）"
+        value={title()}
+        onInput={(e) => setTitle(e.currentTarget.value)}
+        maxLength={50}
+      />
+
+      <Textarea
+        label="本文"
+        value={content()}
+        onInput={(e) => setContent(e.currentTarget.value)}
+        required
+        rows={8}
+      />
+
+      <div class="flex justify-end space-x-3">
+        <Button type="button" variant="secondary" onClick={props.onCancel}>
+          キャンセル
+        </Button>
         <Button type="submit" variant="primary" loading={loading()}>
           投稿
         </Button>
