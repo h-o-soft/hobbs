@@ -36,6 +36,10 @@ pub enum HobbsError {
     /// Script execution error.
     #[error("script error: {0}")]
     Script(String),
+
+    /// RSS feed error.
+    #[error("RSS error: {0}")]
+    Rss(String),
 }
 
 /// Result type alias for HOBBS operations.
@@ -89,5 +93,11 @@ mod tests {
 
         assert_eq!(sample_ok().unwrap(), 42);
         assert!(sample_err().is_err());
+    }
+
+    #[test]
+    fn test_rss_error_display() {
+        let err = HobbsError::Rss("feed parsing failed".to_string());
+        assert_eq!(err.to_string(), "RSS error: feed parsing failed");
     }
 }

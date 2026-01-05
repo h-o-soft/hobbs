@@ -392,11 +392,7 @@ impl RssItemRepository {
     }
 
     /// Count unread items for a user and feed.
-    pub fn count_unread(
-        conn: &Connection,
-        feed_id: i64,
-        user_id: i64,
-    ) -> rusqlite::Result<i64> {
+    pub fn count_unread(conn: &Connection, feed_id: i64, user_id: i64) -> rusqlite::Result<i64> {
         conn.query_row(
             r#"
             SELECT COUNT(*) FROM rss_items
@@ -510,7 +506,11 @@ impl RssReadPositionRepository {
     }
 
     /// Mark all items as read (set to newest item ID).
-    pub fn mark_all_as_read(conn: &Connection, user_id: i64, feed_id: i64) -> rusqlite::Result<bool> {
+    pub fn mark_all_as_read(
+        conn: &Connection,
+        user_id: i64,
+        feed_id: i64,
+    ) -> rusqlite::Result<bool> {
         let newest_id = RssItemRepository::get_newest_item_id(conn, feed_id)?;
         match newest_id {
             Some(id) => {
@@ -747,7 +747,10 @@ mod tests {
         assert!(id2.is_none());
 
         // Should still have only one item
-        assert_eq!(RssItemRepository::count_by_feed(db.conn(), feed.id).unwrap(), 1);
+        assert_eq!(
+            RssItemRepository::count_by_feed(db.conn(), feed.id).unwrap(),
+            1
+        );
     }
 
     #[test]
@@ -785,7 +788,10 @@ mod tests {
             RssItemRepository::create_or_ignore(db.conn(), &item).unwrap();
         }
 
-        assert_eq!(RssItemRepository::count_by_feed(db.conn(), feed.id).unwrap(), 150);
+        assert_eq!(
+            RssItemRepository::count_by_feed(db.conn(), feed.id).unwrap(),
+            150
+        );
 
         RssItemRepository::prune_old_items(db.conn(), feed.id).unwrap();
 
@@ -845,7 +851,10 @@ mod tests {
         }
 
         // All should be unread
-        assert_eq!(RssItemRepository::count_unread(db.conn(), feed.id, user_id).unwrap(), 5);
+        assert_eq!(
+            RssItemRepository::count_unread(db.conn(), feed.id, user_id).unwrap(),
+            5
+        );
 
         // Mark item 3 as read
         let item3 = RssItemRepository::get_by_guid(db.conn(), feed.id, "guid-3")
@@ -854,7 +863,10 @@ mod tests {
         RssReadPositionRepository::upsert(db.conn(), user_id, feed.id, item3.id).unwrap();
 
         // Items 4, 5 should be unread
-        assert_eq!(RssItemRepository::count_unread(db.conn(), feed.id, user_id).unwrap(), 2);
+        assert_eq!(
+            RssItemRepository::count_unread(db.conn(), feed.id, user_id).unwrap(),
+            2
+        );
     }
 
     #[test]
@@ -873,7 +885,10 @@ mod tests {
 
         RssReadPositionRepository::mark_all_as_read(db.conn(), user_id, feed.id).unwrap();
 
-        assert_eq!(RssItemRepository::count_unread(db.conn(), feed.id, user_id).unwrap(), 0);
+        assert_eq!(
+            RssItemRepository::count_unread(db.conn(), feed.id, user_id).unwrap(),
+            0
+        );
     }
 
     #[test]
@@ -890,7 +905,8 @@ mod tests {
             RssItemRepository::create_or_ignore(db.conn(), &item).unwrap();
         }
 
-        let feeds_with_unread = RssFeedRepository::list_with_unread(db.conn(), Some(user_id)).unwrap();
+        let feeds_with_unread =
+            RssFeedRepository::list_with_unread(db.conn(), Some(user_id)).unwrap();
         assert_eq!(feeds_with_unread.len(), 1);
         assert_eq!(feeds_with_unread[0].unread_count, 3);
     }

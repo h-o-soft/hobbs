@@ -2,9 +2,11 @@
 //!
 //! This module provides RSS feed subscription and reading functionality.
 
+pub mod fetcher;
 pub mod repository;
 pub mod types;
 
+pub use fetcher::{fetch_feed, validate_url, RssFetcher};
 pub use repository::{RssFeedRepository, RssItemRepository, RssReadPositionRepository};
 pub use types::{
     NewRssFeed, NewRssItem, ParsedFeed, ParsedItem, RssFeed, RssFeedUpdate, RssFeedWithUnread,
