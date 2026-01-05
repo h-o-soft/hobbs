@@ -155,9 +155,22 @@ async function request<T>(
     return {} as T;
   }
 
-  // Unwrap ApiResponse wrapper
-  const json: ApiResponse<T> = await response.json();
-  return json.data;
+  const json = await response.json();
+
+  // PaginatedResponse has 'meta' field and should not be unwrapped
+  // ApiResponse has 'data' field that should be unwrapped
+  if ('meta' in json) {
+    // This is a PaginatedResponse, return as-is
+    return json as T;
+  }
+
+  // This is an ApiResponse, unwrap the 'data' field
+  if ('data' in json) {
+    return json.data as T;
+  }
+
+  // Fallback: return as-is
+  return json as T;
 }
 
 export const api = {
