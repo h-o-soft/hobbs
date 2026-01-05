@@ -35,6 +35,8 @@ pub enum SessionState {
     Script,
     /// User is in admin menu.
     Admin,
+    /// User is reading RSS feeds.
+    News,
     /// Session is being closed.
     Closing,
 }

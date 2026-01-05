@@ -298,6 +298,21 @@ impl SessionHandler {
                         }
                     }
                 }
+                SessionState::News => {
+                    let mut screen_ctx = self.create_screen_context();
+                    match super::screens::RssScreen::run(&mut screen_ctx, session).await? {
+                        super::screens::ScreenResult::Logout => {
+                            session.clear_user();
+                            session.set_state(SessionState::Welcome);
+                        }
+                        super::screens::ScreenResult::Quit => {
+                            break;
+                        }
+                        _ => {
+                            session.set_state(SessionState::MainMenu);
+                        }
+                    }
+                }
                 SessionState::Closing => {
                     break;
                 }
@@ -686,6 +701,9 @@ Select language / Gengo sentaku:
             MenuAction::Script => {
                 session.set_state(SessionState::Script);
             }
+            MenuAction::News => {
+                session.set_state(SessionState::News);
+            }
             MenuAction::Profile => {
                 if is_logged_in {
                     let mut screen_ctx = self.create_screen_context();
@@ -847,6 +865,7 @@ Select language / Gengo sentaku:
         context.set("menu.chat", Value::bool(menu_items.chat));
         context.set("menu.mail", Value::bool(menu_items.mail));
         context.set("menu.file", Value::bool(menu_items.file));
+        context.set("menu.news", Value::bool(menu_items.news));
         context.set("menu.profile", Value::bool(menu_items.profile));
         context.set("menu.member_list", Value::bool(menu_items.member_list));
         context.set("menu.admin", Value::bool(menu_items.admin));

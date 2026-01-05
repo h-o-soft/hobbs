@@ -1531,6 +1531,7 @@ impl AdminScreen {
             SessionState::Files => ctx.i18n.t("admin.session_state_files").to_string(),
             SessionState::Admin => ctx.i18n.t("admin.session_state_admin").to_string(),
             SessionState::Script => ctx.i18n.t("admin.session_state_script").to_string(),
+            SessionState::News => ctx.i18n.t("admin.session_state_news").to_string(),
             SessionState::Closing => ctx.i18n.t("admin.session_state_closing").to_string(),
         }
     }
