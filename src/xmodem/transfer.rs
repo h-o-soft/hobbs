@@ -408,8 +408,12 @@ async fn send_block(
             packet.push(checksum);
         }
 
+        // Escape IAC (0xFF) bytes for Telnet transparency
+        // Each 0xFF in the packet becomes 0xFF 0xFF
+        let escaped_packet = escape_iac(&packet);
+
         // Send packet
-        stream.write_all(&packet).await?;
+        stream.write_all(&escaped_packet).await?;
         stream.flush().await?;
 
         // Wait for response
@@ -424,6 +428,19 @@ async fn send_block(
     }
 
     Err(TransferError::MaxRetries)
+}
+
+/// Escape IAC (0xFF) bytes for Telnet transparency.
+/// Each 0xFF byte is doubled to 0xFF 0xFF.
+fn escape_iac(data: &[u8]) -> Vec<u8> {
+    let mut result = Vec::with_capacity(data.len());
+    for &byte in data {
+        result.push(byte);
+        if byte == IAC {
+            result.push(IAC); // Double the IAC byte
+        }
+    }
+    result
 }
 
 /// Receive a single block.
@@ -589,5 +606,29 @@ mod tests {
         // Known CRC-16/XMODEM test vectors
         assert_eq!(calculate_crc16(b"123456789"), 0x31C3);
         assert_eq!(calculate_crc16(&[]), 0x0000);
+    }
+
+    #[test]
+    fn test_escape_iac() {
+        // No IAC bytes - unchanged
+        assert_eq!(escape_iac(&[0x01, 0x02, 0x03]), vec![0x01, 0x02, 0x03]);
+
+        // Single IAC byte - doubled
+        assert_eq!(escape_iac(&[0xFF]), vec![0xFF, 0xFF]);
+
+        // Multiple IAC bytes
+        assert_eq!(
+            escape_iac(&[0xFF, 0xFF]),
+            vec![0xFF, 0xFF, 0xFF, 0xFF]
+        );
+
+        // Mixed data with IAC
+        assert_eq!(
+            escape_iac(&[0x01, 0xFF, 0x02, 0xFF, 0x03]),
+            vec![0x01, 0xFF, 0xFF, 0x02, 0xFF, 0xFF, 0x03]
+        );
+
+        // Empty data
+        assert_eq!(escape_iac(&[]), Vec::<u8>::new());
     }
 }
