@@ -64,7 +64,7 @@ max_consecutive_errors = 5
 
 [web]
 # Whether Web UI is enabled
-enabled = false
+enabled = true
 # Host address for Web API
 host = "0.0.0.0"
 # Port number for Web API
