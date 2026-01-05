@@ -63,9 +63,10 @@ pub use mail::{
     WELCOME_MAIL_BODY, WELCOME_MAIL_SUBJECT,
 };
 pub use rss::{
-    fetch_feed, validate_url, NewRssFeed, NewRssItem, ParsedFeed, ParsedItem, RssFeed,
-    RssFeedRepository, RssFeedUpdate, RssFeedWithUnread, RssFetcher, RssItem, RssItemRepository,
-    RssReadPosition, RssReadPositionRepository, DEFAULT_FETCH_INTERVAL, MAX_CONSECUTIVE_ERRORS,
+    fetch_feed, validate_url, AddFeedRequest, NewRssFeed, NewRssItem, ParsedFeed, ParsedItem,
+    RssFeed, RssFeedRepository, RssFeedUpdate, RssFeedWithUnread, RssFetcher, RssItem,
+    RssItemRepository, RssReadPosition, RssReadPositionRepository, RssService,
+    DEFAULT_FETCH_INTERVAL, MAX_CONSECUTIVE_ERRORS,
     MAX_DESCRIPTION_LENGTH as MAX_RSS_DESCRIPTION_LENGTH, MAX_FEED_SIZE, MAX_ITEMS_PER_FEED,
 };
 pub use screen::{
