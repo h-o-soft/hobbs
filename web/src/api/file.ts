@@ -1,4 +1,4 @@
-import { api, buildQueryString, type PaginationParams } from './client';
+import { api, buildQueryString, getAccessToken, type PaginationParams } from './client';
 import type { Folder, FileInfo, PaginatedResponse } from '../types';
 
 export async function getFolders(): Promise<Folder[]> {
@@ -39,5 +39,9 @@ export async function deleteFile(id: number): Promise<void> {
 }
 
 export function getDownloadUrl(id: number): string {
+  const token = getAccessToken();
+  if (token) {
+    return `/api/files/${id}/download?token=${encodeURIComponent(token)}`;
+  }
   return `/api/files/${id}/download`;
 }

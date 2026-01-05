@@ -78,17 +78,42 @@ where
         Self: 'async_trait,
     {
         Box::pin(async move {
-            // Get the Authorization header
-            let auth_header = parts
+            // Try to get token from Authorization header first
+            let token = if let Some(auth_header) = parts
                 .headers
                 .get(AUTHORIZATION)
                 .and_then(|value| value.to_str().ok())
-                .ok_or_else(|| ApiError::unauthorized("Missing authorization header"))?;
+            {
+                // Check Bearer prefix
+                auth_header
+                    .strip_prefix("Bearer ")
+                    .map(|t| t.to_string())
+            } else {
+                None
+            };
 
-            // Check Bearer prefix
-            let token = auth_header
-                .strip_prefix("Bearer ")
-                .ok_or_else(|| ApiError::unauthorized("Invalid authorization header format"))?;
+            // If no header token, try query parameter (for file downloads)
+            let token = match token {
+                Some(t) => t,
+                None => {
+                    // Parse query string for token parameter
+                    let query = parts.uri.query().unwrap_or("");
+                    query
+                        .split('&')
+                        .find_map(|pair| {
+                            let mut parts = pair.splitn(2, '=');
+                            let key = parts.next()?;
+                            let value = parts.next()?;
+                            if key == "token" {
+                                // URL decode the token
+                                urlencoding::decode(value).ok().map(|s| s.into_owned())
+                            } else {
+                                None
+                            }
+                        })
+                        .ok_or_else(|| ApiError::unauthorized("Missing authorization"))?
+                }
+            };
 
             // Get JWT state from extensions (set by middleware)
             let jwt_state = parts
@@ -98,7 +123,7 @@ where
 
             // Decode and validate the token
             let token_data =
-                decode::<JwtClaims>(token, &jwt_state.decoding_key, &jwt_state.validation)
+                decode::<JwtClaims>(&token, &jwt_state.decoding_key, &jwt_state.validation)
                     .map_err(|e| {
                         tracing::debug!("JWT validation failed: {}", e);
                         ApiError::unauthorized("Invalid or expired token")

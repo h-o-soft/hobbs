@@ -25,6 +25,7 @@ mlua = { version = "0.10", features = ["lua54", "async", "serialize", "vendored"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "deflate"] }
 feed-rs = "2.3"
 url = "2"
+urlencoding = "2"
 # xmodem = "0.4" # Using custom async implementation instead
 
 # Web UI
