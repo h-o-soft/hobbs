@@ -1,5 +1,5 @@
 import type { Component, JSX } from 'solid-js';
-import { Show, splitProps } from 'solid-js';
+import { Show, splitProps, For } from 'solid-js';
 
 // Input Component
 interface InputProps extends JSX.InputHTMLAttributes<HTMLInputElement> {
@@ -52,14 +52,15 @@ export const Textarea: Component<TextareaProps> = (props) => {
 };
 
 // Select Component
-interface SelectProps extends JSX.SelectHTMLAttributes<HTMLSelectElement> {
+interface SelectProps extends Omit<JSX.SelectHTMLAttributes<HTMLSelectElement>, 'value'> {
   label?: string;
   error?: string;
   options: Array<{ value: string; label: string }>;
+  value?: string;
 }
 
 export const Select: Component<SelectProps> = (props) => {
-  const [local, selectProps] = splitProps(props, ['label', 'error', 'options', 'class']);
+  const [local, selectProps] = splitProps(props, ['label', 'error', 'options', 'class', 'value']);
 
   return (
     <div class="space-y-1">
@@ -68,11 +69,16 @@ export const Select: Component<SelectProps> = (props) => {
       </Show>
       <select
         {...selectProps}
+        value={local.value}
         class={`input ${local.error ? 'border-neon-pink/50 focus:border-neon-pink/60' : ''} ${local.class || ''}`}
       >
-        {local.options.map((option) => (
-          <option value={option.value}>{option.label}</option>
-        ))}
+        <For each={local.options}>
+          {(option) => (
+            <option value={option.value} selected={option.value === local.value}>
+              {option.label}
+            </option>
+          )}
+        </For>
       </select>
       <Show when={local.error}>
         <p class="text-xs text-neon-pink">{local.error}</p>
