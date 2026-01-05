@@ -14,8 +14,6 @@ const MailPage = lazy(() => import('./pages/Mail').then(m => ({ default: m.MailP
 const ChatPage = lazy(() => import('./pages/Chat').then(m => ({ default: m.ChatPage })));
 const FilesPage = lazy(() => import('./pages/Files').then(m => ({ default: m.FilesPage })));
 const FolderDetailPage = lazy(() => import('./pages/Files').then(m => ({ default: m.FolderDetailPage })));
-const RssPage = lazy(() => import('./pages/Rss').then(m => ({ default: m.RssPage })));
-const RssDetailPage = lazy(() => import('./pages/Rss').then(m => ({ default: m.RssDetailPage })));
 const AdminPage = lazy(() => import('./pages/Admin').then(m => ({ default: m.AdminPage })));
 
 // Protected route wrapper
@@ -140,16 +138,6 @@ const App: Component = () => {
         <Route path="/files/:id" component={() => (
           <ProtectedRoute>
             <FolderDetailPage />
-          </ProtectedRoute>
-        )} />
-        <Route path="/rss" component={() => (
-          <ProtectedRoute>
-            <RssPage />
-          </ProtectedRoute>
-        )} />
-        <Route path="/rss/:id" component={() => (
-          <ProtectedRoute>
-            <RssDetailPage />
           </ProtectedRoute>
         )} />
 

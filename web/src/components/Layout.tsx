@@ -33,7 +33,6 @@ export const Layout: ParentComponent = (props) => {
                 <NavLink href="/mail" active={isActive('/mail')}>メール</NavLink>
                 <NavLink href="/chat" active={isActive('/chat')}>チャット</NavLink>
                 <NavLink href="/files" active={isActive('/files')}>ファイル</NavLink>
-                <NavLink href="/rss" active={isActive('/rss')}>RSS</NavLink>
                 <Show when={auth.user?.role === 'sysop' || auth.user?.role === 'subop'}>
                   <NavLink href="/admin" active={isActive('/admin')}>管理</NavLink>
                 </Show>
@@ -77,7 +76,6 @@ export const Layout: ParentComponent = (props) => {
               <NavLink href="/mail" active={isActive('/mail')}>メール</NavLink>
               <NavLink href="/chat" active={isActive('/chat')}>チャット</NavLink>
               <NavLink href="/files" active={isActive('/files')}>ファイル</NavLink>
-              <NavLink href="/rss" active={isActive('/rss')}>RSS</NavLink>
               <Show when={auth.user?.role === 'sysop' || auth.user?.role === 'subop'}>
                 <NavLink href="/admin" active={isActive('/admin')}>管理</NavLink>
               </Show>
