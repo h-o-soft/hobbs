@@ -23,8 +23,8 @@ pub struct WebServer {
     app_state: Arc<AppState>,
     /// JWT state.
     jwt_state: Arc<JwtState>,
-    /// CORS origins.
-    cors_origins: Vec<String>,
+    /// Web configuration.
+    web_config: WebConfig,
     /// Chat room manager.
     chat_manager: Option<Arc<ChatRoomManager>>,
 }
@@ -65,7 +65,7 @@ impl WebServer {
             addr,
             app_state: Arc::new(app_state),
             jwt_state,
-            cors_origins: config.cors_origins.clone(),
+            web_config: config.clone(),
             chat_manager: None,
         }
     }
@@ -101,7 +101,7 @@ impl WebServer {
             self.app_state,
             self.jwt_state,
             self.chat_manager,
-            &self.cors_origins,
+            &self.web_config,
         )
         .merge(create_health_router());
 
@@ -121,7 +121,7 @@ impl WebServer {
             self.app_state,
             self.jwt_state,
             self.chat_manager,
-            &self.cors_origins,
+            &self.web_config,
         )
         .merge(create_health_router());
 
@@ -155,6 +155,8 @@ mod tests {
             jwt_refresh_token_expiry_days: 7,
             serve_static: false,
             static_path: "web/dist".to_string(),
+            login_rate_limit: 5,
+            api_rate_limit: 100,
         }
     }
 

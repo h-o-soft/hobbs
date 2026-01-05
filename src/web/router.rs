@@ -10,6 +10,7 @@ use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
 
 use crate::chat::ChatRoomManager;
+use crate::config::WebConfig;
 
 use super::handlers::{
     // Admin handlers
@@ -75,7 +76,10 @@ use super::handlers::{
     // State
     AppState,
 };
-use super::middleware::{create_cors_layer, jwt_auth, JwtState};
+use super::middleware::{
+    api_rate_limit, create_cors_layer, jwt_auth, login_rate_limit, security_headers, JwtState,
+    RateLimitState,
+};
 use super::ws::{chat_ws_handler, ChatWsState};
 
 /// Create the main API router.
@@ -83,11 +87,29 @@ pub fn create_router(
     app_state: Arc<AppState>,
     jwt_state: Arc<JwtState>,
     chat_manager: Option<Arc<ChatRoomManager>>,
-    cors_origins: &[String],
+    web_config: &WebConfig,
 ) -> Router {
-    // Auth routes (no authentication required)
+    // Create rate limit state
+    let rate_limit_state = Arc::new(RateLimitState::new(
+        web_config.login_rate_limit,
+        web_config.api_rate_limit,
+    ));
+
+    // Start cleanup task for rate limiters
+    rate_limit_state.clone().start_cleanup_task();
+
+    // Clone for login rate limit middleware
+    let login_rate_limit_state = rate_limit_state.clone();
+
+    // Auth routes with login rate limiting
     let auth_public_routes = Router::new()
-        .route("/login", post(login))
+        .route(
+            "/login",
+            post(login).layer(middleware::from_fn(move |req, next| {
+                let state = login_rate_limit_state.clone();
+                login_rate_limit(state, req, next)
+            })),
+        )
         .route("/logout", post(logout))
         .route("/refresh", post(refresh))
         .route("/register", post(register));
@@ -212,8 +234,9 @@ pub fn create_router(
         .nest("/admin", admin_routes)
         .nest("/chat", chat_routes);
 
-    // Clone jwt_state for the middleware closure
+    // Clone for middleware closures
     let jwt_state_for_middleware = jwt_state.clone();
+    let api_rate_limit_state = rate_limit_state.clone();
 
     // Build the main router with middleware
     Router::new()
@@ -221,7 +244,12 @@ pub fn create_router(
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())
-                .layer(create_cors_layer(cors_origins))
+                .layer(middleware::from_fn(security_headers))
+                .layer(create_cors_layer(&web_config.cors_origins))
+                .layer(middleware::from_fn(move |req, next| {
+                    let state = api_rate_limit_state.clone();
+                    api_rate_limit(state, req, next)
+                }))
                 .layer(middleware::from_fn(move |req, next| {
                     let state = jwt_state_for_middleware.clone();
                     jwt_auth(state, req, next)
