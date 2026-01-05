@@ -287,6 +287,9 @@ ansi_color = "ANSIカラー"
 enabled = "有効"
 disabled = "無効"
 settings_saved = "設定を保存しました"
+auto_paging = "自動ページング"
+auto_paging_on = "有効（スクロールなし端末向け）"
+auto_paging_off = "無効"
 
 [terminal]
 select_profile = "端末プロファイルを選択してください"

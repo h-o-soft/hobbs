@@ -1,5 +1,6 @@
 //! Common utilities for screen handlers.
 
+use std::cell::Cell;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -39,6 +40,12 @@ pub struct ScreenContext {
     pub chat_manager: Arc<ChatRoomManager>,
     /// Session manager.
     pub session_manager: Arc<SessionManager>,
+    /// Lines since last pause (for auto-paging).
+    lines_since_pause: Cell<usize>,
+    /// Auto-paging enabled flag.
+    auto_paging_enabled: bool,
+    /// Paging threshold (lines before pause).
+    paging_threshold: usize,
 }
 
 impl ScreenContext {
@@ -53,6 +60,49 @@ impl ScreenContext {
         chat_manager: Arc<ChatRoomManager>,
         session_manager: Arc<SessionManager>,
     ) -> Self {
+        // Calculate paging threshold
+        let paging_threshold = if config.terminal.paging_lines > 0 {
+            config.terminal.paging_lines
+        } else {
+            // Default: terminal height - 4 (leaving room for prompt)
+            (profile.height.saturating_sub(4).max(5)) as usize
+        };
+
+        Self {
+            db,
+            config: Arc::clone(&config),
+            template_loader,
+            profile,
+            i18n,
+            line_buffer: LineBuffer::with_encoding(1024, encoding),
+            chat_manager,
+            session_manager,
+            lines_since_pause: Cell::new(0),
+            auto_paging_enabled: config.terminal.auto_paging,
+            paging_threshold,
+        }
+    }
+
+    /// Create a new screen context with user-specific auto-paging setting.
+    pub fn new_with_user_paging(
+        db: Arc<Database>,
+        config: Arc<Config>,
+        template_loader: Arc<TemplateLoader>,
+        profile: TerminalProfile,
+        i18n: Arc<I18n>,
+        encoding: CharacterEncoding,
+        chat_manager: Arc<ChatRoomManager>,
+        session_manager: Arc<SessionManager>,
+        auto_paging: bool,
+    ) -> Self {
+        // Calculate paging threshold
+        let paging_threshold = if config.terminal.paging_lines > 0 {
+            config.terminal.paging_lines
+        } else {
+            // Default: terminal height - 4 (leaving room for prompt)
+            (profile.height.saturating_sub(4).max(5)) as usize
+        };
+
         Self {
             db,
             config,
@@ -62,7 +112,20 @@ impl ScreenContext {
             line_buffer: LineBuffer::with_encoding(1024, encoding),
             chat_manager,
             session_manager,
+            lines_since_pause: Cell::new(0),
+            auto_paging_enabled: auto_paging,
+            paging_threshold,
         }
+    }
+
+    /// Set auto-paging enabled state.
+    pub fn set_auto_paging(&mut self, enabled: bool) {
+        self.auto_paging_enabled = enabled;
+    }
+
+    /// Check if auto-paging is enabled.
+    pub fn auto_paging_enabled(&self) -> bool {
+        self.auto_paging_enabled
     }
 
     /// Create a template context with system variables.
@@ -92,8 +155,53 @@ impl ScreenContext {
     }
 
     /// Send a line to the client with CRLF.
+    ///
+    /// If auto-paging is enabled, this method will count lines and
+    /// pause for user input when the threshold is reached.
     pub async fn send_line(&self, session: &mut TelnetSession, data: &str) -> Result<()> {
-        self.send(session, &format!("{}\r\n", data)).await
+        self.send(session, &format!("{}\r\n", data)).await?;
+
+        if self.auto_paging_enabled {
+            // Count lines (including embedded newlines)
+            let newlines = data.matches('\n').count() + 1;
+            let current = self.lines_since_pause.get() + newlines;
+            self.lines_since_pause.set(current);
+
+            // Check if we need to pause
+            if current >= self.paging_threshold {
+                self.pause_for_more(session).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Pause and wait for user input (for auto-paging).
+    async fn pause_for_more(&self, session: &mut TelnetSession) -> Result<()> {
+        self.send(session, self.i18n.t("common.more")).await?;
+
+        let mut buf = [0u8; 1];
+        loop {
+            match session.stream_mut().read(&mut buf).await {
+                Ok(0) => break,
+                Ok(_) => {
+                    if buf[0] == b'\r' || buf[0] == b'\n' {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+
+        // Move to new line and reset counter
+        self.send(session, "\r\n").await?;
+        self.lines_since_pause.set(0);
+        Ok(())
+    }
+
+    /// Reset the line counter (call after input operations).
+    pub fn reset_line_counter(&self) {
+        self.lines_since_pause.set(0);
     }
 
     /// Read a line of input from the client.
@@ -157,12 +265,14 @@ impl ScreenContext {
 
                     match result {
                         InputResult::Line(ref line) => {
+                            self.reset_line_counter();
                             return Ok(line.clone());
                         }
                         InputResult::Buffering => {
                             // Continue reading
                         }
                         InputResult::Cancel | InputResult::Eof => {
+                            self.reset_line_counter();
                             return Ok(String::new());
                         }
                     }
@@ -374,6 +484,7 @@ impl ScreenContext {
                 }
             }
         }
+        self.reset_line_counter();
         Ok(())
     }
 

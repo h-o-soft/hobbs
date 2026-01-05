@@ -272,13 +272,18 @@ impl ProfileScreen {
         user_id: i64,
     ) -> Result<Option<ScreenResult>> {
         // Get current settings
-        let (current_language, current_encoding, current_terminal) = {
+        let (current_language, current_encoding, current_terminal, current_auto_paging) = {
             let user_repo = UserRepository::new(&ctx.db);
             let user = match user_repo.get_by_id(user_id)? {
                 Some(u) => u,
                 None => return Ok(None),
             };
-            (user.language.clone(), user.encoding, user.terminal.clone())
+            (
+                user.language.clone(),
+                user.encoding,
+                user.terminal.clone(),
+                user.auto_paging,
+            )
         };
 
         ctx.send_line(session, "").await?;
@@ -315,6 +320,19 @@ impl ProfileScreen {
                 "{}: {}",
                 ctx.i18n.t("settings.terminal_profile"),
                 Self::profile_display_name(ctx, &current_terminal)
+            ),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!(
+                "{}: {}",
+                ctx.i18n.t("settings.auto_paging"),
+                if current_auto_paging {
+                    ctx.i18n.t("settings.enabled")
+                } else {
+                    ctx.i18n.t("settings.disabled")
+                }
             ),
         )
         .await?;
@@ -428,9 +446,50 @@ impl ProfileScreen {
             .clone()
             .unwrap_or_else(|| current_terminal.clone());
 
+        // Auto-paging selection
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("{}:", ctx.i18n.t("settings.auto_paging")),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!("  [1] {}", ctx.i18n.t("settings.auto_paging_on")),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!("  [2] {}", ctx.i18n.t("settings.auto_paging_off")),
+        )
+        .await?;
+        ctx.send(
+            session,
+            &format!(
+                "{} [{}]: ",
+                ctx.i18n.t("common.number"),
+                if current_auto_paging { "1" } else { "2" }
+            ),
+        )
+        .await?;
+
+        let paging_input = ctx.read_line(session).await?;
+        let paging_input = paging_input.trim();
+
+        let new_auto_paging = match paging_input {
+            "1" => true,
+            "2" => false,
+            "" => current_auto_paging, // No change
+            _ => current_auto_paging,
+        };
+
         // Check if anything changed
         let terminal_changed = new_terminal.is_some() && actual_new_terminal != current_terminal;
-        if new_language == current_language && new_encoding == current_encoding && !terminal_changed
+        let auto_paging_changed = new_auto_paging != current_auto_paging;
+        if new_language == current_language
+            && new_encoding == current_encoding
+            && !terminal_changed
+            && !auto_paging_changed
         {
             ctx.send_line(session, "").await?;
             return Ok(None);
@@ -444,6 +503,10 @@ impl ProfileScreen {
 
         if terminal_changed {
             update = update.terminal(actual_new_terminal.clone());
+        }
+
+        if auto_paging_changed {
+            update = update.auto_paging(new_auto_paging);
         }
 
         match user_repo.update(user_id, &update) {
