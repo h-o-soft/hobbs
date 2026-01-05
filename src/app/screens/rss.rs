@@ -24,11 +24,8 @@ impl RssScreen {
 
             // Display feed list
             ctx.send_line(session, "").await?;
-            ctx.send_line(
-                session,
-                &format!("=== {} ===", ctx.i18n.t("rss.title")),
-            )
-            .await?;
+            ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("rss.title")))
+                .await?;
 
             if total_unread > 0 && user_id.is_some() {
                 ctx.send_line(
@@ -86,11 +83,7 @@ impl RssScreen {
             ctx.send_line(session, "").await?;
             ctx.send_line(
                 session,
-                &format!(
-                    "{}: {}",
-                    ctx.i18n.t("rss.total"),
-                    feeds.len()
-                ),
+                &format!("{}: {}", ctx.i18n.t("rss.total"), feeds.len()),
             )
             .await?;
 
@@ -255,7 +248,8 @@ impl RssScreen {
             }
             prompt_parts.push(format!("[Q]={}", ctx.i18n.t("common.back")));
 
-            ctx.send(session, &format!("{}: ", prompt_parts.join(" "))).await?;
+            ctx.send(session, &format!("{}: ", prompt_parts.join(" ")))
+                .await?;
 
             let input = ctx.read_line(session).await?;
             let input = input.trim();
@@ -411,11 +405,9 @@ impl RssScreen {
 
             // Get items after last read
             let items = RssItemRepository::list_by_feed(ctx.db.conn(), feed_id, 100, 0)?;
-            let unread_item = items.into_iter().rev().find(|item| {
-                match last_read_id {
-                    None => true,
-                    Some(last_id) => item.id > last_id,
-                }
+            let unread_item = items.into_iter().rev().find(|item| match last_read_id {
+                None => true,
+                Some(last_id) => item.id > last_id,
             });
 
             let item = match unread_item {
@@ -427,7 +419,8 @@ impl RssScreen {
             ctx.send_line(session, "").await?;
             ctx.send_line(
                 session,
-                &ctx.i18n.t_with("rss.unread_count", &[("count", &unread_count.to_string())]),
+                &ctx.i18n
+                    .t_with("rss.unread_count", &[("count", &unread_count.to_string())]),
             )
             .await?;
             ctx.send_line(session, &"=".repeat(60)).await?;
@@ -499,7 +492,8 @@ impl RssScreen {
             let _ = RssReadPositionRepository::upsert(ctx.db.conn(), user_id, feed_id, item.id);
 
             // Prompt for next
-            ctx.send(session, ctx.i18n.t("rss.press_enter_next")).await?;
+            ctx.send(session, ctx.i18n.t("rss.press_enter_next"))
+                .await?;
             let input = ctx.read_line(session).await?;
             if input.trim().eq_ignore_ascii_case("q") {
                 break;

@@ -217,11 +217,12 @@ pub async fn get_mail(
 
         // Mark as read if recipient
         if mail.recipient_id == claims.sub && !mail.is_read {
-            MailRepository::update(db.conn(), mail_id, &MailUpdate::new().mark_as_read())
-                .map_err(|e| {
+            MailRepository::update(db.conn(), mail_id, &MailUpdate::new().mark_as_read()).map_err(
+                |e| {
                     tracing::error!("Failed to mark mail as read: {}", e);
                     ApiError::internal("Database error")
-                })?;
+                },
+            )?;
         }
 
         let user_repo = UserRepository::new(&*db);

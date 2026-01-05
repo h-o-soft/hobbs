@@ -229,9 +229,8 @@ pub async fn change_password(
             .ok_or_else(|| ApiError::not_found("User not found"))?;
 
         // Verify current password
-        verify_password(&req.current_password, &user.password).map_err(|_| {
-            ApiError::unauthorized("Current password is incorrect")
-        })?;
+        verify_password(&req.current_password, &user.password)
+            .map_err(|_| ApiError::unauthorized("Current password is incorrect"))?;
 
         // Hash new password
         let new_hash = hash_password(&req.new_password).map_err(|e| {

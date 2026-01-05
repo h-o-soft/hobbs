@@ -448,11 +448,8 @@ impl ProfileScreen {
 
         // Auto-paging selection
         ctx.send_line(session, "").await?;
-        ctx.send_line(
-            session,
-            &format!("{}:", ctx.i18n.t("settings.auto_paging")),
-        )
-        .await?;
+        ctx.send_line(session, &format!("{}:", ctx.i18n.t("settings.auto_paging")))
+            .await?;
         ctx.send_line(
             session,
             &format!("  [1] {}", ctx.i18n.t("settings.auto_paging_on")),

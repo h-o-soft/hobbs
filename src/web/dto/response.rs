@@ -325,3 +325,135 @@ pub struct RssItemResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub published_at: Option<String>,
 }
+
+// ============================================================================
+// File DTOs
+// ============================================================================
+
+/// Folder response.
+#[derive(Debug, Serialize)]
+pub struct FolderResponse {
+    /// Folder ID.
+    pub id: i64,
+    /// Folder name.
+    pub name: String,
+    /// Folder description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Parent folder ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<i64>,
+    /// Whether user can view this folder.
+    pub can_read: bool,
+    /// Whether user can upload to this folder.
+    pub can_upload: bool,
+    /// File count in this folder.
+    pub file_count: i64,
+    /// Creation timestamp.
+    pub created_at: String,
+}
+
+/// File metadata response.
+#[derive(Debug, Serialize)]
+pub struct FileResponse {
+    /// File ID.
+    pub id: i64,
+    /// Folder ID.
+    pub folder_id: i64,
+    /// Original filename.
+    pub filename: String,
+    /// File size in bytes.
+    pub size: i64,
+    /// File description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Uploader info.
+    pub uploader: AuthorInfo,
+    /// Download count.
+    pub downloads: i64,
+    /// Upload timestamp.
+    pub created_at: String,
+}
+
+/// File upload response.
+#[derive(Debug, Serialize)]
+pub struct FileUploadResponse {
+    /// Uploaded file info.
+    pub file: FileResponse,
+}
+
+// ============================================================================
+// Admin DTOs
+// ============================================================================
+
+/// Admin user response (includes more details).
+#[derive(Debug, Serialize)]
+pub struct AdminUserResponse {
+    /// User ID.
+    pub id: i64,
+    /// Username.
+    pub username: String,
+    /// Nickname.
+    pub nickname: String,
+    /// User role.
+    pub role: String,
+    /// Email address.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    /// Whether the user is active.
+    pub is_active: bool,
+    /// Account creation timestamp.
+    pub created_at: String,
+    /// Last login timestamp.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_login_at: Option<String>,
+}
+
+/// Admin board response (includes more details).
+#[derive(Debug, Serialize)]
+pub struct AdminBoardResponse {
+    /// Board ID.
+    pub id: i64,
+    /// Board name.
+    pub name: String,
+    /// Board description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Board type (thread or flat).
+    pub board_type: String,
+    /// Minimum role required to read.
+    pub min_read_role: String,
+    /// Minimum role required to write.
+    pub min_write_role: String,
+    /// Sort order.
+    pub sort_order: i32,
+    /// Whether the board is active.
+    pub is_active: bool,
+    /// Creation timestamp.
+    pub created_at: String,
+}
+
+/// Admin folder response (includes more details).
+#[derive(Debug, Serialize)]
+pub struct AdminFolderResponse {
+    /// Folder ID.
+    pub id: i64,
+    /// Folder name.
+    pub name: String,
+    /// Folder description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Parent folder ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<i64>,
+    /// Minimum role required to view.
+    pub permission: String,
+    /// Minimum role required to upload.
+    pub upload_perm: String,
+    /// Sort order.
+    pub order_num: i32,
+    /// File count.
+    pub file_count: i64,
+    /// Creation timestamp.
+    pub created_at: String,
+}

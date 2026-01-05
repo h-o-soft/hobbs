@@ -25,10 +25,8 @@ pub fn create_cors_layer(origins: &[String]) -> CorsLayer {
             .allow_origin(Any)
     } else {
         // Production mode: specific origins with credentials
-        let parsed_origins: Vec<HeaderValue> = origins
-            .iter()
-            .filter_map(|o| o.parse().ok())
-            .collect();
+        let parsed_origins: Vec<HeaderValue> =
+            origins.iter().filter_map(|o| o.parse().ok()).collect();
 
         if parsed_origins.is_empty() {
             // Fallback to dev mode if no valid origins

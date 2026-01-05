@@ -67,8 +67,8 @@ pub use rss::{
     fetch_feed, start_rss_updater, start_rss_updater_with_config, start_rss_updater_with_interval,
     validate_url, AddFeedRequest, NewRssFeed, NewRssItem, ParsedFeed, ParsedItem, RssFeed,
     RssFeedRepository, RssFeedUpdate, RssFeedWithUnread, RssFetcher, RssItem, RssItemRepository,
-    RssReadPosition, RssReadPositionRepository, RssService, RssUpdater, DEFAULT_CHECK_INTERVAL_SECS,
-    DEFAULT_FETCH_INTERVAL, MAX_CONSECUTIVE_ERRORS,
+    RssReadPosition, RssReadPositionRepository, RssService, RssUpdater,
+    DEFAULT_CHECK_INTERVAL_SECS, DEFAULT_FETCH_INTERVAL, MAX_CONSECUTIVE_ERRORS,
     MAX_DESCRIPTION_LENGTH as MAX_RSS_DESCRIPTION_LENGTH, MAX_FEED_SIZE, MAX_ITEMS_PER_FEED,
 };
 pub use screen::{
