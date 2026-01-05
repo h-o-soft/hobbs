@@ -239,6 +239,64 @@ CREATE INDEX idx_script_logs_executed_at ON script_logs(executed_at);
 ALTER TABLE scripts ADD COLUMN name_i18n TEXT;
 ALTER TABLE scripts ADD COLUMN description_i18n TEXT;
 "#,
+    // v16: RSS feeds table
+    r#"
+-- RSS feeds table for external feed subscriptions
+CREATE TABLE rss_feeds (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    url             TEXT NOT NULL UNIQUE,
+    title           TEXT NOT NULL,
+    description     TEXT,
+    site_url        TEXT,
+    last_fetched_at TEXT,
+    last_item_at    TEXT,
+    fetch_interval  INTEGER NOT NULL DEFAULT 3600,
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    error_count     INTEGER NOT NULL DEFAULT 0,
+    last_error      TEXT,
+    created_by      INTEGER NOT NULL REFERENCES users(id),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_rss_feeds_is_active ON rss_feeds(is_active);
+CREATE INDEX idx_rss_feeds_last_fetched ON rss_feeds(last_fetched_at);
+"#,
+    // v17: RSS items table
+    r#"
+-- RSS items table for storing fetched articles
+CREATE TABLE rss_items (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    feed_id         INTEGER NOT NULL REFERENCES rss_feeds(id) ON DELETE CASCADE,
+    guid            TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    link            TEXT,
+    description     TEXT,
+    author          TEXT,
+    published_at    TEXT,
+    fetched_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(feed_id, guid)
+);
+
+CREATE INDEX idx_rss_items_feed_id ON rss_items(feed_id);
+CREATE INDEX idx_rss_items_published_at ON rss_items(published_at);
+CREATE INDEX idx_rss_items_fetched_at ON rss_items(fetched_at);
+"#,
+    // v18: RSS read positions table for tracking user's last read position
+    r#"
+-- RSS read positions table for tracking user's last read position per feed
+CREATE TABLE rss_read_positions (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    feed_id             INTEGER NOT NULL REFERENCES rss_feeds(id) ON DELETE CASCADE,
+    last_read_item_id   INTEGER REFERENCES rss_items(id) ON DELETE SET NULL,
+    last_read_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, feed_id)
+);
+
+CREATE INDEX idx_rss_read_positions_user ON rss_read_positions(user_id);
+CREATE INDEX idx_rss_read_positions_feed ON rss_read_positions(feed_id);
+"#,
 ];
 
 #[cfg(test)]
@@ -421,5 +479,52 @@ mod tests {
         assert!(script_logs_migration.contains("idx_script_logs_script"));
         assert!(script_logs_migration.contains("idx_script_logs_user"));
         assert!(script_logs_migration.contains("idx_script_logs_executed_at"));
+    }
+
+    #[test]
+    fn test_rss_feeds_migration_contains_rss_feeds_table() {
+        let rss_feeds_migration = MIGRATIONS[15];
+        assert!(rss_feeds_migration.contains("CREATE TABLE rss_feeds"));
+        assert!(rss_feeds_migration.contains("url"));
+        assert!(rss_feeds_migration.contains("title"));
+        assert!(rss_feeds_migration.contains("description"));
+        assert!(rss_feeds_migration.contains("site_url"));
+        assert!(rss_feeds_migration.contains("last_fetched_at"));
+        assert!(rss_feeds_migration.contains("fetch_interval"));
+        assert!(rss_feeds_migration.contains("is_active"));
+        assert!(rss_feeds_migration.contains("error_count"));
+        assert!(rss_feeds_migration.contains("created_by"));
+        assert!(rss_feeds_migration.contains("idx_rss_feeds_is_active"));
+        assert!(rss_feeds_migration.contains("idx_rss_feeds_last_fetched"));
+    }
+
+    #[test]
+    fn test_rss_items_migration_contains_rss_items_table() {
+        let rss_items_migration = MIGRATIONS[16];
+        assert!(rss_items_migration.contains("CREATE TABLE rss_items"));
+        assert!(rss_items_migration.contains("feed_id"));
+        assert!(rss_items_migration.contains("guid"));
+        assert!(rss_items_migration.contains("title"));
+        assert!(rss_items_migration.contains("link"));
+        assert!(rss_items_migration.contains("description"));
+        assert!(rss_items_migration.contains("author"));
+        assert!(rss_items_migration.contains("published_at"));
+        assert!(rss_items_migration.contains("fetched_at"));
+        assert!(rss_items_migration.contains("UNIQUE(feed_id, guid)"));
+        assert!(rss_items_migration.contains("idx_rss_items_feed_id"));
+        assert!(rss_items_migration.contains("idx_rss_items_published_at"));
+    }
+
+    #[test]
+    fn test_rss_read_positions_migration_contains_rss_read_positions_table() {
+        let rss_read_positions_migration = MIGRATIONS[17];
+        assert!(rss_read_positions_migration.contains("CREATE TABLE rss_read_positions"));
+        assert!(rss_read_positions_migration.contains("user_id"));
+        assert!(rss_read_positions_migration.contains("feed_id"));
+        assert!(rss_read_positions_migration.contains("last_read_item_id"));
+        assert!(rss_read_positions_migration.contains("last_read_at"));
+        assert!(rss_read_positions_migration.contains("UNIQUE(user_id, feed_id)"));
+        assert!(rss_read_positions_migration.contains("idx_rss_read_positions_user"));
+        assert!(rss_read_positions_migration.contains("idx_rss_read_positions_feed"));
     }
 }

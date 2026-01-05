@@ -15,6 +15,7 @@ pub mod file;
 pub mod i18n;
 pub mod logging;
 pub mod mail;
+pub mod rss;
 pub mod screen;
 pub mod script;
 pub mod server;
@@ -60,6 +61,12 @@ pub use mail::{
     Mail, MailRepository, MailService, MailUpdate, NewMail, SendMailRequest, SystemMailService,
     MAX_BODY_LENGTH as MAX_MAIL_BODY_LENGTH, MAX_SUBJECT_LENGTH as MAX_MAIL_SUBJECT_LENGTH,
     WELCOME_MAIL_BODY, WELCOME_MAIL_SUBJECT,
+};
+pub use rss::{
+    NewRssFeed, NewRssItem, ParsedFeed, ParsedItem, RssFeed, RssFeedRepository, RssFeedUpdate,
+    RssFeedWithUnread, RssItem, RssItemRepository, RssReadPosition, RssReadPositionRepository,
+    DEFAULT_FETCH_INTERVAL, MAX_CONSECUTIVE_ERRORS, MAX_DESCRIPTION_LENGTH as MAX_RSS_DESCRIPTION_LENGTH,
+    MAX_FEED_SIZE, MAX_ITEMS_PER_FEED,
 };
 pub use screen::{
     create_screen, create_screen_from_profile, AnsiScreen, Color, PlainScreen, Screen,
