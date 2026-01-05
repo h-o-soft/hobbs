@@ -13,7 +13,7 @@ use crate::Database;
 
 use super::handlers::{AppState, SharedDatabase};
 use super::middleware::JwtState;
-use super::router::{create_health_router, create_router};
+use super::router::{create_health_router, create_router, create_static_router};
 
 /// Web server for the API.
 pub struct WebServer {
@@ -97,13 +97,20 @@ impl WebServer {
 
     /// Run the web server.
     pub async fn run(self) -> Result<(), std::io::Error> {
-        let router = create_router(
+        let mut router = create_router(
             self.app_state,
             self.jwt_state,
             self.chat_manager,
             &self.web_config,
         )
         .merge(create_health_router());
+
+        // Add static file serving if enabled
+        if self.web_config.serve_static {
+            if let Some(static_router) = create_static_router(&self.web_config.static_path) {
+                router = router.merge(static_router);
+            }
+        }
 
         let listener = TcpListener::bind(self.addr).await?;
         let local_addr = listener.local_addr()?;
@@ -117,13 +124,20 @@ impl WebServer {
     ///
     /// This is useful for testing when binding to port 0.
     pub async fn run_with_addr(self) -> Result<SocketAddr, std::io::Error> {
-        let router = create_router(
+        let mut router = create_router(
             self.app_state,
             self.jwt_state,
             self.chat_manager,
             &self.web_config,
         )
         .merge(create_health_router());
+
+        // Add static file serving if enabled
+        if self.web_config.serve_static {
+            if let Some(static_router) = create_static_router(&self.web_config.static_path) {
+                router = router.merge(static_router);
+            }
+        }
 
         let listener = TcpListener::bind(self.addr).await?;
         let local_addr = listener.local_addr()?;

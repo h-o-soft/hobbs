@@ -5,8 +5,10 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
+use std::path::Path;
 use std::sync::Arc;
 use tower::ServiceBuilder;
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
 use crate::chat::ChatRoomManager;
@@ -268,13 +270,68 @@ async fn health_check() -> &'static str {
     "OK"
 }
 
+/// Create a static file serving router for SPA.
+///
+/// This serves static files from the specified directory and falls back to
+/// index.html for unknown routes (SPA routing support).
+pub fn create_static_router<P: AsRef<Path>>(static_path: P) -> Option<Router> {
+    let path = static_path.as_ref();
+
+    // Check if the directory exists
+    if !path.exists() || !path.is_dir() {
+        tracing::warn!(
+            "Static files directory not found: {}. Static file serving disabled.",
+            path.display()
+        );
+        return None;
+    }
+
+    let index_path = path.join("index.html");
+    if !index_path.exists() {
+        tracing::warn!(
+            "index.html not found in {}. Static file serving disabled.",
+            path.display()
+        );
+        return None;
+    }
+
+    tracing::info!("Serving static files from: {}", path.display());
+
+    // Create ServeDir with fallback to index.html for SPA routing
+    let serve_dir = ServeDir::new(path).not_found_service(ServeFile::new(&index_path));
+
+    Some(Router::new().fallback_service(serve_dir))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_create_health_router() {
         let _router = create_health_router();
         // Should not panic
+    }
+
+    #[test]
+    fn test_create_static_router_nonexistent_path() {
+        let result = create_static_router("/nonexistent/path");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_create_static_router_without_index() {
+        let temp_dir = TempDir::new().unwrap();
+        let result = create_static_router(temp_dir.path());
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_create_static_router_with_index() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::write(temp_dir.path().join("index.html"), "<html></html>").unwrap();
+        let result = create_static_router(temp_dir.path());
+        assert!(result.is_some());
     }
 }
