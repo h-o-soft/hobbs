@@ -1,7 +1,6 @@
 import { type Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import { Button, Input, Alert, Empty } from '../components';
 import { getChatWebSocket } from '../api/chat';
-import * as chatApi from '../api/chat';
 import type { ChatRoom, ServerMessage, ChatParticipant } from '../types';
 
 interface ChatMessage {
@@ -23,17 +22,7 @@ export const ChatPage: Component = () => {
   let messagesContainer: HTMLDivElement | undefined;
   const ws = getChatWebSocket();
 
-  // Load rooms
-  createEffect(async () => {
-    try {
-      const roomList = await chatApi.getRooms();
-      setRooms(roomList);
-    } catch (err) {
-      console.error('Failed to load rooms:', err);
-    }
-  });
-
-  // WebSocket handlers
+  // WebSocket handlers - room list is received automatically on connect
   createEffect(() => {
     ws.onConnect(() => {
       setConnected(true);
