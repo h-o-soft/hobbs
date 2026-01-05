@@ -64,7 +64,7 @@ impl RssFeedRepository {
         .optional()
     }
 
-    /// List all active feeds.
+    /// List all active feeds (ordered by registration order).
     pub fn list_active(conn: &Connection) -> rusqlite::Result<Vec<RssFeed>> {
         let mut stmt = conn.prepare(
             r#"
@@ -73,7 +73,7 @@ impl RssFeedRepository {
                    created_at, updated_at
             FROM rss_feeds
             WHERE is_active = 1
-            ORDER BY title ASC
+            ORDER BY id ASC
             "#,
         )?;
 
@@ -83,7 +83,7 @@ impl RssFeedRepository {
         Ok(feeds)
     }
 
-    /// List all feeds (including inactive).
+    /// List all feeds (including inactive, ordered by registration order).
     pub fn list_all(conn: &Connection) -> rusqlite::Result<Vec<RssFeed>> {
         let mut stmt = conn.prepare(
             r#"
@@ -91,7 +91,7 @@ impl RssFeedRepository {
                    fetch_interval, is_active, error_count, last_error, created_by,
                    created_at, updated_at
             FROM rss_feeds
-            ORDER BY title ASC
+            ORDER BY id ASC
             "#,
         )?;
 
@@ -122,7 +122,7 @@ impl RssFeedRepository {
         Ok(feeds)
     }
 
-    /// List active feeds with unread counts for a user.
+    /// List active feeds with unread counts for a user (ordered by registration order).
     pub fn list_with_unread(
         conn: &Connection,
         user_id: Option<i64>,
@@ -142,7 +142,7 @@ impl RssFeedRepository {
                    END as unread_count
             FROM rss_feeds f
             WHERE f.is_active = 1
-            ORDER BY f.title ASC
+            ORDER BY f.id ASC
             "#,
         )?;
 
