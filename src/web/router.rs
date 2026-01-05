@@ -103,22 +103,22 @@ pub fn create_router(
     // Board routes
     let board_routes = Router::new()
         .route("/", get(list_boards))
-        .route("/{id}", get(get_board))
+        .route("/:id", get(get_board))
         // Thread-based board routes
-        .route("/{id}/threads", get(list_threads))
-        .route("/{id}/threads", post(create_thread))
+        .route("/:id/threads", get(list_threads))
+        .route("/:id/threads", post(create_thread))
         // Flat board routes
-        .route("/{id}/posts", get(list_flat_posts))
-        .route("/{id}/posts", post(create_flat_post));
+        .route("/:id/posts", get(list_flat_posts))
+        .route("/:id/posts", post(create_flat_post));
 
     // Thread routes
     let thread_routes = Router::new()
-        .route("/{id}", get(get_thread))
-        .route("/{id}/posts", get(list_thread_posts))
-        .route("/{id}/posts", post(create_thread_post));
+        .route("/:id", get(get_thread))
+        .route("/:id/posts", get(list_thread_posts))
+        .route("/:id/posts", post(create_thread_post));
 
     // Post routes
-    let post_routes = Router::new().route("/{id}", delete(delete_post));
+    let post_routes = Router::new().route("/:id", delete(delete_post));
 
     // Mail routes
     let mail_routes = Router::new()
@@ -126,8 +126,8 @@ pub fn create_router(
         .route("/sent", get(list_sent))
         .route("/unread-count", get(get_unread_count))
         .route("/", post(send_mail))
-        .route("/{id}", get(get_mail))
-        .route("/{id}", delete(delete_mail));
+        .route("/:id", get(get_mail))
+        .route("/:id", delete(delete_mail));
 
     // User routes
     let user_routes = Router::new()
@@ -135,52 +135,52 @@ pub fn create_router(
         .route("/me", get(get_my_profile))
         .route("/me", put(update_my_profile))
         .route("/me/password", post(change_password))
-        .route("/{id}", get(get_user));
+        .route("/:id", get(get_user));
 
     // RSS routes
     let rss_routes = Router::new()
         .route("/", get(list_feeds))
-        .route("/{id}", get(get_feed))
-        .route("/{id}/items", get(list_items))
-        .route("/{feed_id}/items/{item_id}", get(get_item))
-        .route("/{id}/mark-read", post(mark_as_read));
+        .route("/:id", get(get_feed))
+        .route("/:id/items", get(list_items))
+        .route("/:feed_id/items/:item_id", get(get_item))
+        .route("/:id/mark-read", post(mark_as_read));
 
     // Folder routes
     let folder_routes = Router::new()
         .route("/", get(list_folders))
-        .route("/{id}", get(get_folder))
-        .route("/{id}/files", get(list_files))
-        .route("/{id}/files", post(upload_file));
+        .route("/:id", get(get_folder))
+        .route("/:id/files", get(list_files))
+        .route("/:id/files", post(upload_file));
 
     // File routes
     let file_routes = Router::new()
-        .route("/{id}", get(get_file))
-        .route("/{id}", delete(delete_file))
-        .route("/{id}/download", get(download_file));
+        .route("/:id", get(get_file))
+        .route("/:id", delete(delete_file))
+        .route("/:id/download", get(download_file));
 
     // Admin routes
     let admin_user_routes = Router::new()
         .route("/", get(admin_list_users))
-        .route("/{id}", put(admin_update_user))
-        .route("/{id}/role", put(admin_update_role))
-        .route("/{id}/status", put(admin_update_status))
-        .route("/{id}/reset-password", post(admin_reset_password));
+        .route("/:id", put(admin_update_user))
+        .route("/:id/role", put(admin_update_role))
+        .route("/:id/status", put(admin_update_status))
+        .route("/:id/reset-password", post(admin_reset_password));
 
     let admin_board_routes = Router::new()
         .route("/", get(admin_list_boards))
         .route("/", post(admin_create_board))
-        .route("/{id}", put(admin_update_board))
-        .route("/{id}", delete(admin_delete_board));
+        .route("/:id", put(admin_update_board))
+        .route("/:id", delete(admin_delete_board));
 
     let admin_folder_routes = Router::new()
         .route("/", get(admin_list_folders))
         .route("/", post(admin_create_folder))
-        .route("/{id}", put(admin_update_folder))
-        .route("/{id}", delete(admin_delete_folder));
+        .route("/:id", put(admin_update_folder))
+        .route("/:id", delete(admin_delete_folder));
 
     let admin_rss_routes = Router::new()
         .route("/feeds", post(admin_add_feed))
-        .route("/feeds/{id}", delete(admin_delete_feed));
+        .route("/feeds/:id", delete(admin_delete_feed));
 
     let admin_routes = Router::new()
         .nest("/users", admin_user_routes)

@@ -37,22 +37,32 @@ pub async fn list_boards(
         })?
     };
 
-    let responses: Vec<BoardResponse> = boards
-        .into_iter()
-        .map(|b| {
-            let can_read = b.can_read(user_role);
-            let can_write = b.can_write(user_role);
-            BoardResponse {
-                id: b.id,
-                name: b.name,
-                description: b.description,
-                board_type: b.board_type.as_str().to_string(),
-                can_read,
-                can_write,
-                created_at: b.created_at,
-            }
-        })
-        .collect();
+    let responses: Vec<BoardResponse> = {
+        let db = state.db.lock().await;
+        let thread_repo = ThreadRepository::new(&*db);
+        let post_repo = PostRepository::new(&*db);
+
+        boards
+            .into_iter()
+            .map(|b| {
+                let can_read = b.can_read(user_role);
+                let can_write = b.can_write(user_role);
+                let thread_count = thread_repo.count_by_board(b.id).unwrap_or(0);
+                let post_count = post_repo.count_by_board(b.id).unwrap_or(0);
+                BoardResponse {
+                    id: b.id,
+                    name: b.name,
+                    description: b.description,
+                    board_type: b.board_type.as_str().to_string(),
+                    thread_count,
+                    post_count,
+                    can_read,
+                    can_write,
+                    created_at: b.created_at,
+                }
+            })
+            .collect()
+    };
 
     Ok(Json(ApiResponse::new(responses)))
 }
@@ -84,11 +94,24 @@ pub async fn get_board(
 
     let can_read = board.can_read(user_role);
     let can_write = board.can_write(user_role);
+
+    let (thread_count, post_count) = {
+        let db = state.db.lock().await;
+        let thread_repo = ThreadRepository::new(&*db);
+        let post_repo = PostRepository::new(&*db);
+        (
+            thread_repo.count_by_board(board.id).unwrap_or(0),
+            post_repo.count_by_board(board.id).unwrap_or(0),
+        )
+    };
+
     let response = BoardResponse {
         id: board.id,
         name: board.name,
         description: board.description,
         board_type: board.board_type.as_str().to_string(),
+        thread_count,
+        post_count,
         can_read,
         can_write,
         created_at: board.created_at,
