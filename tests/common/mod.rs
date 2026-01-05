@@ -17,6 +17,7 @@ use tokio::time::timeout;
 use hobbs::chat::ChatRoomManager;
 use hobbs::config::{
     BbsConfig, Config, DatabaseConfig, LocaleConfig, LoggingConfig, RssConfig, ServerConfig,
+    WebConfig,
 };
 use hobbs::server::{encode_for_client, CharacterEncoding, SessionManager};
 use hobbs::{Application, Database, I18nManager, TelnetServer, TelnetSession, TemplateLoader};
@@ -538,6 +539,7 @@ pub fn test_config() -> Config {
         templates: Default::default(),
         terminal: Default::default(),
         rss: Default::default(),
+        web: Default::default(),
     }
 }
 

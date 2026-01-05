@@ -61,3 +61,23 @@ total_timeout_secs = 30
 max_redirects = 5
 # Maximum consecutive errors before disabling feed (default: 5)
 max_consecutive_errors = 5
+
+[web]
+# Whether Web UI is enabled
+enabled = false
+# Host address for Web API
+host = "0.0.0.0"
+# Port number for Web API
+port = 8080
+# CORS allowed origins (for development)
+cors_origins = ["http://localhost:5173"]
+# JWT secret key (MUST be set if enabled - use a secure random string)
+jwt_secret = ""
+# Access token expiry in seconds (default: 900 = 15 minutes)
+jwt_access_token_expiry_secs = 900
+# Refresh token expiry in days (default: 7)
+jwt_refresh_token_expiry_days = 7
+# Whether to serve static files (SPA)
+serve_static = false
+# Path to static files directory
+static_path = "web/dist"

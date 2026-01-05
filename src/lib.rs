@@ -21,6 +21,7 @@ pub mod script;
 pub mod server;
 pub mod template;
 pub mod terminal;
+pub mod web;
 pub mod xmodem;
 
 pub use admin::{
