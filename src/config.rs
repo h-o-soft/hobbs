@@ -245,6 +245,106 @@ impl Default for TerminalConfig {
     }
 }
 
+/// RSS configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RssConfig {
+    /// Whether RSS feature is enabled.
+    #[serde(default = "default_rss_enabled")]
+    pub enabled: bool,
+    /// Update check interval in seconds.
+    #[serde(default = "default_rss_update_interval")]
+    pub update_interval_secs: u64,
+    /// Default fetch interval per feed in seconds.
+    #[serde(default = "default_rss_fetch_interval")]
+    pub default_fetch_interval_secs: u64,
+    /// Maximum feed size in bytes.
+    #[serde(default = "default_rss_max_feed_size")]
+    pub max_feed_size_bytes: u64,
+    /// Maximum items per feed.
+    #[serde(default = "default_rss_max_items")]
+    pub max_items_per_feed: usize,
+    /// Maximum description/content length in characters.
+    #[serde(default = "default_rss_max_content_length")]
+    pub max_content_length: usize,
+    /// Connection timeout in seconds.
+    #[serde(default = "default_rss_connect_timeout")]
+    pub connect_timeout_secs: u64,
+    /// Read timeout in seconds.
+    #[serde(default = "default_rss_read_timeout")]
+    pub read_timeout_secs: u64,
+    /// Total request timeout in seconds.
+    #[serde(default = "default_rss_total_timeout")]
+    pub total_timeout_secs: u64,
+    /// Maximum number of redirects.
+    #[serde(default = "default_rss_max_redirects")]
+    pub max_redirects: usize,
+    /// Maximum consecutive errors before disabling feed.
+    #[serde(default = "default_rss_max_errors")]
+    pub max_consecutive_errors: i32,
+}
+
+fn default_rss_enabled() -> bool {
+    true
+}
+
+fn default_rss_update_interval() -> u64 {
+    300 // 5 minutes
+}
+
+fn default_rss_fetch_interval() -> u64 {
+    3600 // 1 hour
+}
+
+fn default_rss_max_feed_size() -> u64 {
+    5 * 1024 * 1024 // 5MB
+}
+
+fn default_rss_max_items() -> usize {
+    100
+}
+
+fn default_rss_max_content_length() -> usize {
+    10000
+}
+
+fn default_rss_connect_timeout() -> u64 {
+    10
+}
+
+fn default_rss_read_timeout() -> u64 {
+    20
+}
+
+fn default_rss_total_timeout() -> u64 {
+    30
+}
+
+fn default_rss_max_redirects() -> usize {
+    5
+}
+
+fn default_rss_max_errors() -> i32 {
+    5
+}
+
+impl Default for RssConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_rss_enabled(),
+            update_interval_secs: default_rss_update_interval(),
+            default_fetch_interval_secs: default_rss_fetch_interval(),
+            max_feed_size_bytes: default_rss_max_feed_size(),
+            max_items_per_feed: default_rss_max_items(),
+            max_content_length: default_rss_max_content_length(),
+            connect_timeout_secs: default_rss_connect_timeout(),
+            read_timeout_secs: default_rss_read_timeout(),
+            total_timeout_secs: default_rss_total_timeout(),
+            max_redirects: default_rss_max_redirects(),
+            max_consecutive_errors: default_rss_max_errors(),
+        }
+    }
+}
+
 /// Main configuration structure.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct Config {
@@ -272,6 +372,9 @@ pub struct Config {
     /// Terminal configuration.
     #[serde(default)]
     pub terminal: TerminalConfig,
+    /// RSS configuration.
+    #[serde(default)]
+    pub rss: RssConfig,
 }
 
 impl Config {
@@ -319,6 +422,18 @@ mod tests {
         assert_eq!(config.logging.file, "logs/hobbs.log");
 
         assert_eq!(config.terminal.default_profile, "standard");
+
+        assert!(config.rss.enabled);
+        assert_eq!(config.rss.update_interval_secs, 300);
+        assert_eq!(config.rss.default_fetch_interval_secs, 3600);
+        assert_eq!(config.rss.max_feed_size_bytes, 5 * 1024 * 1024);
+        assert_eq!(config.rss.max_items_per_feed, 100);
+        assert_eq!(config.rss.max_content_length, 10000);
+        assert_eq!(config.rss.connect_timeout_secs, 10);
+        assert_eq!(config.rss.read_timeout_secs, 20);
+        assert_eq!(config.rss.total_timeout_secs, 30);
+        assert_eq!(config.rss.max_redirects, 5);
+        assert_eq!(config.rss.max_consecutive_errors, 5);
     }
 
     #[test]
@@ -354,6 +469,19 @@ file = "custom/logs/app.log"
 
 [terminal]
 default_profile = "c64"
+
+[rss]
+enabled = false
+update_interval_secs = 600
+default_fetch_interval_secs = 1800
+max_feed_size_bytes = 10485760
+max_items_per_feed = 50
+max_content_length = 5000
+connect_timeout_secs = 15
+read_timeout_secs = 25
+total_timeout_secs = 45
+max_redirects = 3
+max_consecutive_errors = 3
 "#;
 
         let config = Config::parse(toml).unwrap();
@@ -380,6 +508,18 @@ default_profile = "c64"
         assert_eq!(config.logging.file, "custom/logs/app.log");
 
         assert_eq!(config.terminal.default_profile, "c64");
+
+        assert!(!config.rss.enabled);
+        assert_eq!(config.rss.update_interval_secs, 600);
+        assert_eq!(config.rss.default_fetch_interval_secs, 1800);
+        assert_eq!(config.rss.max_feed_size_bytes, 10485760);
+        assert_eq!(config.rss.max_items_per_feed, 50);
+        assert_eq!(config.rss.max_content_length, 5000);
+        assert_eq!(config.rss.connect_timeout_secs, 15);
+        assert_eq!(config.rss.read_timeout_secs, 25);
+        assert_eq!(config.rss.total_timeout_secs, 45);
+        assert_eq!(config.rss.max_redirects, 3);
+        assert_eq!(config.rss.max_consecutive_errors, 3);
     }
 
     #[test]
