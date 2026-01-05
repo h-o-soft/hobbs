@@ -357,6 +357,78 @@ impl Default for RssConfig {
     }
 }
 
+/// Web UI configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WebConfig {
+    /// Whether Web UI is enabled.
+    #[serde(default = "default_web_enabled")]
+    pub enabled: bool,
+    /// Host address to bind.
+    #[serde(default = "default_web_host")]
+    pub host: String,
+    /// Port number for Web API.
+    #[serde(default = "default_web_port")]
+    pub port: u16,
+    /// CORS allowed origins.
+    #[serde(default)]
+    pub cors_origins: Vec<String>,
+    /// JWT secret key (must be set if enabled).
+    #[serde(default)]
+    pub jwt_secret: String,
+    /// Access token expiry in seconds.
+    #[serde(default = "default_jwt_access_expiry")]
+    pub jwt_access_token_expiry_secs: u64,
+    /// Refresh token expiry in days.
+    #[serde(default = "default_jwt_refresh_expiry")]
+    pub jwt_refresh_token_expiry_days: u64,
+    /// Whether to serve static files.
+    #[serde(default)]
+    pub serve_static: bool,
+    /// Path to static files directory.
+    #[serde(default = "default_static_path")]
+    pub static_path: String,
+}
+
+fn default_web_enabled() -> bool {
+    false
+}
+
+fn default_web_host() -> String {
+    "0.0.0.0".to_string()
+}
+
+fn default_web_port() -> u16 {
+    8080
+}
+
+fn default_jwt_access_expiry() -> u64 {
+    900 // 15 minutes
+}
+
+fn default_jwt_refresh_expiry() -> u64 {
+    7 // 7 days
+}
+
+fn default_static_path() -> String {
+    "web/dist".to_string()
+}
+
+impl Default for WebConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_web_enabled(),
+            host: default_web_host(),
+            port: default_web_port(),
+            cors_origins: vec![],
+            jwt_secret: String::new(),
+            jwt_access_token_expiry_secs: default_jwt_access_expiry(),
+            jwt_refresh_token_expiry_days: default_jwt_refresh_expiry(),
+            serve_static: false,
+            static_path: default_static_path(),
+        }
+    }
+}
+
 /// Main configuration structure.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct Config {
@@ -387,6 +459,9 @@ pub struct Config {
     /// RSS configuration.
     #[serde(default)]
     pub rss: RssConfig,
+    /// Web UI configuration.
+    #[serde(default)]
+    pub web: WebConfig,
 }
 
 impl Config {
@@ -448,6 +523,16 @@ mod tests {
         assert_eq!(config.rss.total_timeout_secs, 30);
         assert_eq!(config.rss.max_redirects, 5);
         assert_eq!(config.rss.max_consecutive_errors, 5);
+
+        assert!(!config.web.enabled);
+        assert_eq!(config.web.host, "0.0.0.0");
+        assert_eq!(config.web.port, 8080);
+        assert!(config.web.cors_origins.is_empty());
+        assert!(config.web.jwt_secret.is_empty());
+        assert_eq!(config.web.jwt_access_token_expiry_secs, 900);
+        assert_eq!(config.web.jwt_refresh_token_expiry_days, 7);
+        assert!(!config.web.serve_static);
+        assert_eq!(config.web.static_path, "web/dist");
     }
 
     #[test]
@@ -498,6 +583,17 @@ read_timeout_secs = 25
 total_timeout_secs = 45
 max_redirects = 3
 max_consecutive_errors = 3
+
+[web]
+enabled = true
+host = "127.0.0.1"
+port = 3000
+cors_origins = ["http://localhost:3000", "http://localhost:5173"]
+jwt_secret = "test-secret-key"
+jwt_access_token_expiry_secs = 600
+jwt_refresh_token_expiry_days = 14
+serve_static = true
+static_path = "public"
 "#;
 
         let config = Config::parse(toml).unwrap();
@@ -536,6 +632,18 @@ max_consecutive_errors = 3
         assert_eq!(config.rss.total_timeout_secs, 45);
         assert_eq!(config.rss.max_redirects, 3);
         assert_eq!(config.rss.max_consecutive_errors, 3);
+
+        assert!(config.web.enabled);
+        assert_eq!(config.web.host, "127.0.0.1");
+        assert_eq!(config.web.port, 3000);
+        assert_eq!(config.web.cors_origins.len(), 2);
+        assert_eq!(config.web.cors_origins[0], "http://localhost:3000");
+        assert_eq!(config.web.cors_origins[1], "http://localhost:5173");
+        assert_eq!(config.web.jwt_secret, "test-secret-key");
+        assert_eq!(config.web.jwt_access_token_expiry_secs, 600);
+        assert_eq!(config.web.jwt_refresh_token_expiry_days, 14);
+        assert!(config.web.serve_static);
+        assert_eq!(config.web.static_path, "public");
     }
 
     #[test]

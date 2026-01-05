@@ -2,10 +2,12 @@
 //!
 //! This module provides SQLite database connectivity and migration management.
 
+mod refresh_token;
 mod repository;
 mod schema;
 mod user;
 
+pub use refresh_token::{NewRefreshToken, RefreshToken, RefreshTokenRepository};
 pub use repository::UserRepository;
 pub use schema::MIGRATIONS;
 pub use user::{NewUser, Role, User, UserUpdate};

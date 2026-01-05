@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tracing::{error, info};
 
 use hobbs::server::SessionManager;
+use hobbs::web::WebServer;
 use hobbs::{
     chat::ChatRoomManager, start_rss_updater_with_config, Application, Config, Database,
     I18nManager, TelnetServer, TelnetSession, TemplateLoader,
@@ -85,6 +86,20 @@ async fn run_server(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         config.server.host, config.server.port
     );
     info!("Press Ctrl+C to stop");
+
+    // Start Web server if enabled (runs in separate task with its own DB connection)
+    if config.web.enabled {
+        let web_db = Database::open(&config.database.path)?;
+        let web_server = WebServer::from_database(&config.web, web_db);
+        let web_addr = web_server.addr();
+
+        tokio::spawn(async move {
+            info!("Web server starting on http://{}", web_addr);
+            if let Err(e) = web_server.run().await {
+                error!("Web server error: {}", e);
+            }
+        });
+    }
 
     // Create LocalSet for non-Send futures (rusqlite is not Send)
     let local = tokio::task::LocalSet::new();
