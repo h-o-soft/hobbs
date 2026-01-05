@@ -7,6 +7,7 @@ use std::sync::Arc;
 use tokio::time::{interval, Duration};
 use tracing::{debug, error, info, warn};
 
+use crate::config::RssConfig;
 use crate::db::Database;
 use crate::rss::fetcher::fetch_feed;
 use crate::rss::repository::{RssFeedRepository, RssItemRepository};
@@ -180,6 +181,23 @@ pub fn start_rss_updater_with_interval(db: Arc<Database>, interval_secs: u64) {
     tokio::task::spawn_local(async move {
         updater.run().await;
     });
+}
+
+/// Start the RSS updater with configuration.
+///
+/// This function checks if RSS is enabled in the config before starting.
+/// Returns true if the updater was started, false if RSS is disabled.
+pub fn start_rss_updater_with_config(db: Arc<Database>, config: &RssConfig) -> bool {
+    if !config.enabled {
+        info!("RSS feature is disabled in configuration");
+        return false;
+    }
+
+    let updater = RssUpdater::with_interval(db, config.update_interval_secs);
+    tokio::task::spawn_local(async move {
+        updater.run().await;
+    });
+    true
 }
 
 #[cfg(test)]

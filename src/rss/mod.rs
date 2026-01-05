@@ -17,5 +17,6 @@ pub use types::{
     MAX_DESCRIPTION_LENGTH, MAX_FEED_SIZE, MAX_ITEMS_PER_FEED,
 };
 pub use updater::{
-    start_rss_updater, start_rss_updater_with_interval, RssUpdater, DEFAULT_CHECK_INTERVAL_SECS,
+    start_rss_updater, start_rss_updater_with_config, start_rss_updater_with_interval, RssUpdater,
+    DEFAULT_CHECK_INTERVAL_SECS,
 };

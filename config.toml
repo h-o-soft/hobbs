@@ -33,3 +33,27 @@ file = "logs/hobbs.log"
 [terminal]
 # Default terminal profile: standard (80x24), c64 (40x25, no ANSI), c64_ansi (40x25)
 default_profile = "standard"
+
+[rss]
+# Whether RSS feature is enabled
+enabled = true
+# Background update check interval in seconds (default: 300 = 5 minutes)
+update_interval_secs = 300
+# Default fetch interval per feed in seconds (default: 3600 = 1 hour)
+default_fetch_interval_secs = 3600
+# Maximum feed size in bytes (default: 5MB)
+max_feed_size_bytes = 5242880
+# Maximum items to keep per feed (default: 100)
+max_items_per_feed = 100
+# Maximum description/content length in characters (default: 10000)
+max_content_length = 10000
+# Connection timeout in seconds (default: 10)
+connect_timeout_secs = 10
+# Read timeout in seconds (default: 20)
+read_timeout_secs = 20
+# Total request timeout in seconds (default: 30)
+total_timeout_secs = 30
+# Maximum number of HTTP redirects (default: 5)
+max_redirects = 5
+# Maximum consecutive errors before disabling feed (default: 5)
+max_consecutive_errors = 5
