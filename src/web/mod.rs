@@ -9,7 +9,9 @@ pub mod handlers;
 pub mod middleware;
 pub mod router;
 pub mod server;
+pub mod ws;
 
 pub use error::ApiError;
 pub use router::create_router;
 pub use server::WebServer;
+pub use ws::{chat_ws_handler, ClientMessage, ServerMessage};

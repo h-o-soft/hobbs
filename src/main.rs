@@ -76,7 +76,7 @@ async fn run_server(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         i18n_manager,
         template_loader,
         session_manager,
-        chat_manager,
+        Arc::clone(&chat_manager),
     );
 
     // Bind server
@@ -90,7 +90,9 @@ async fn run_server(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     // Start Web server if enabled (runs in separate task with its own DB connection)
     if config.web.enabled {
         let web_db = Database::open(&config.database.path)?;
-        let web_server = WebServer::from_database_with_files(&config.web, web_db, &config.files);
+        let web_chat_manager = Arc::clone(&chat_manager);
+        let web_server = WebServer::from_database_with_files(&config.web, web_db, &config.files)
+            .with_chat_manager(web_chat_manager);
         let web_addr = web_server.addr();
 
         tokio::spawn(async move {
