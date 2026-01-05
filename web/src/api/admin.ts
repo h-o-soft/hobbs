@@ -16,12 +16,19 @@ export async function getUser(id: number): Promise<AdminUser> {
 export interface UpdateUserRequest {
   nickname?: string;
   email?: string;
-  role?: string;
-  is_active?: boolean;
+  profile?: string;
 }
 
 export async function updateUser(id: number, data: UpdateUserRequest): Promise<AdminUser> {
   return api.put<AdminUser>(`/admin/users/${id}`, data);
+}
+
+export async function updateUserRole(id: number, role: string): Promise<AdminUser> {
+  return api.put<AdminUser>(`/admin/users/${id}/role`, { role });
+}
+
+export async function updateUserStatus(id: number, is_active: boolean): Promise<AdminUser> {
+  return api.put<AdminUser>(`/admin/users/${id}/status`, { is_active });
 }
 
 export async function deleteUser(id: number): Promise<void> {
@@ -37,8 +44,9 @@ export interface CreateBoardRequest {
   name: string;
   description?: string;
   board_type: string;
-  permission: string;
-  post_permission: string;
+  min_read_role: string;
+  min_write_role: string;
+  sort_order?: number;
 }
 
 export async function createBoard(data: CreateBoardRequest): Promise<AdminBoard> {
@@ -48,10 +56,11 @@ export async function createBoard(data: CreateBoardRequest): Promise<AdminBoard>
 export interface UpdateBoardRequest {
   name?: string;
   description?: string;
-  permission?: string;
-  post_permission?: string;
-  order_num?: number;
-  is_visible?: boolean;
+  board_type?: string;
+  min_read_role?: string;
+  min_write_role?: string;
+  sort_order?: number;
+  is_active?: boolean;
 }
 
 export async function updateBoard(id: number, data: UpdateBoardRequest): Promise<AdminBoard> {

@@ -235,10 +235,11 @@ export interface AdminBoard {
   name: string;
   description?: string;
   board_type: string;
-  permission: string;
-  post_permission: string;
-  order_num: number;
-  is_visible: boolean;
+  min_read_role: string;
+  min_write_role: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
 }
 
 export interface AdminFolder {
@@ -249,4 +250,6 @@ export interface AdminFolder {
   permission: string;
   upload_perm: string;
   order_num: number;
+  file_count: number;
+  created_at: string;
 }

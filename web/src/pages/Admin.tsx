@@ -193,7 +193,7 @@ const BoardsTab: Component = () => {
                     <div>
                       <h3 class="font-medium text-gray-200">{board.name}</h3>
                       <p class="text-sm text-gray-500 mt-1">
-                        {board.board_type} | 閲覧: {board.permission} | 投稿: {board.post_permission}
+                        {board.board_type} | 閲覧: {board.min_read_role} | 投稿: {board.min_write_role}
                       </p>
                     </div>
                     <div class="flex space-x-2">
@@ -340,12 +340,22 @@ const EditUserForm: Component<EditUserFormProps> = (props) => {
     setLoading(true);
 
     try {
+      // Update basic info
       await adminApi.updateUser(props.user.id, {
         nickname: nickname(),
         email: email() || undefined,
-        role: role(),
-        is_active: isActive(),
       });
+
+      // Update role if changed
+      if (role() !== props.user.role) {
+        await adminApi.updateUserRole(props.user.id, role());
+      }
+
+      // Update status if changed
+      if (isActive() !== props.user.is_active) {
+        await adminApi.updateUserStatus(props.user.id, isActive());
+      }
+
       props.onSuccess();
     } catch (err: any) {
       setError(err.message || '更新に失敗しました');
@@ -422,8 +432,8 @@ const BoardForm: Component<BoardFormProps> = (props) => {
   const [name, setName] = createSignal(props.board?.name || '');
   const [description, setDescription] = createSignal(props.board?.description || '');
   const [boardType, setBoardType] = createSignal(props.board?.board_type || 'thread');
-  const [permission, setPermission] = createSignal(props.board?.permission || 'member');
-  const [postPermission, setPostPermission] = createSignal(props.board?.post_permission || 'member');
+  const [minReadRole, setMinReadRole] = createSignal(props.board?.min_read_role || 'guest');
+  const [minWriteRole, setMinWriteRole] = createSignal(props.board?.min_write_role || 'member');
   const [error, setError] = createSignal('');
   const [loading, setLoading] = createSignal(false);
 
@@ -437,16 +447,16 @@ const BoardForm: Component<BoardFormProps> = (props) => {
         await adminApi.updateBoard(props.board.id, {
           name: name(),
           description: description() || undefined,
-          permission: permission(),
-          post_permission: postPermission(),
+          min_read_role: minReadRole(),
+          min_write_role: minWriteRole(),
         });
       } else {
         await adminApi.createBoard({
           name: name(),
           description: description() || undefined,
           board_type: boardType(),
-          permission: permission(),
-          post_permission: postPermission(),
+          min_read_role: minReadRole(),
+          min_write_role: minWriteRole(),
         });
       }
       props.onSuccess();
@@ -498,15 +508,15 @@ const BoardForm: Component<BoardFormProps> = (props) => {
 
       <Select
         label="閲覧権限"
-        value={permission()}
-        onChange={(e) => setPermission(e.currentTarget.value)}
+        value={minReadRole()}
+        onChange={(e) => setMinReadRole(e.currentTarget.value)}
         options={permissionOptions}
       />
 
       <Select
         label="投稿権限"
-        value={postPermission()}
-        onChange={(e) => setPostPermission(e.currentTarget.value)}
+        value={minWriteRole()}
+        onChange={(e) => setMinWriteRole(e.currentTarget.value)}
         options={permissionOptions}
       />
 
