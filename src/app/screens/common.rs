@@ -162,9 +162,9 @@ impl ScreenContext {
         self.send(session, &format!("{}\r\n", data)).await?;
 
         if self.auto_paging_enabled {
-            // Count lines (including embedded newlines)
-            let newlines = data.matches('\n').count() + 1;
-            let current = self.lines_since_pause.get() + newlines;
+            // Count display lines considering terminal width and text wrapping
+            let line_count = self.count_display_lines(data);
+            let current = self.lines_since_pause.get() + line_count;
             self.lines_since_pause.set(current);
 
             // Check if we need to pause
@@ -174,6 +174,41 @@ impl ScreenContext {
         }
 
         Ok(())
+    }
+
+    /// Count the number of display lines considering terminal width.
+    ///
+    /// Takes into account:
+    /// - Embedded newlines in the text
+    /// - Text wrapping due to terminal width
+    /// - Full-width characters (CJK) taking 2 columns
+    fn count_display_lines(&self, data: &str) -> usize {
+        let width = self.profile.width as usize;
+        if width == 0 {
+            return 1;
+        }
+
+        let mut total_lines = 0;
+
+        // Process each logical line (split by newlines)
+        for line in data.split('\n') {
+            let display_width = self.profile.display_width(line);
+            if display_width == 0 {
+                // Empty line still counts as 1 line
+                total_lines += 1;
+            } else {
+                // Calculate how many display lines this text will take
+                // (ceiling division: how many rows needed for this text)
+                total_lines += (display_width + width - 1) / width;
+            }
+        }
+
+        // If data doesn't contain newlines, ensure at least 1 line is counted
+        if total_lines == 0 {
+            total_lines = 1;
+        }
+
+        total_lines
     }
 
     /// Pause and wait for user input (for auto-paging).
