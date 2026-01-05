@@ -88,11 +88,7 @@ pub struct NewRssFeed {
 
 impl NewRssFeed {
     /// Create a new feed.
-    pub fn new(
-        url: impl Into<String>,
-        title: impl Into<String>,
-        created_by: i64,
-    ) -> Self {
+    pub fn new(url: impl Into<String>, title: impl Into<String>, created_by: i64) -> Self {
         Self {
             url: url.into(),
             title: title.into(),
@@ -211,11 +207,7 @@ pub struct NewRssItem {
 
 impl NewRssItem {
     /// Create a new item.
-    pub fn new(
-        feed_id: i64,
-        guid: impl Into<String>,
-        title: impl Into<String>,
-    ) -> Self {
+    pub fn new(feed_id: i64, guid: impl Into<String>, title: impl Into<String>) -> Self {
         Self {
             feed_id,
             guid: guid.into(),
@@ -422,9 +414,11 @@ mod tests {
     #[test]
     fn test_new_rss_item_truncates_long_description() {
         let long_desc = "a".repeat(MAX_DESCRIPTION_LENGTH + 100);
-        let item = NewRssItem::new(1, "guid-123", "Test")
-            .with_description(long_desc);
-        assert_eq!(item.description.as_ref().unwrap().len(), MAX_DESCRIPTION_LENGTH);
+        let item = NewRssItem::new(1, "guid-123", "Test").with_description(long_desc);
+        assert_eq!(
+            item.description.as_ref().unwrap().len(),
+            MAX_DESCRIPTION_LENGTH
+        );
     }
 
     #[test]
