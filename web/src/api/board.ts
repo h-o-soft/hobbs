@@ -6,6 +6,7 @@ import type {
   PaginatedResponse,
   CreateThreadRequest,
   CreatePostRequest,
+  CreateFlatPostRequest,
 } from '../types';
 
 export async function getBoards(): Promise<Board[]> {
@@ -61,7 +62,7 @@ export async function getFlatPosts(
 
 export async function createFlatPost(
   boardId: number,
-  data: CreatePostRequest & { title?: string }
+  data: CreateFlatPostRequest
 ): Promise<Post> {
   return api.post<Post>(`/boards/${boardId}/posts`, data);
 }

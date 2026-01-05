@@ -349,7 +349,7 @@ interface NewThreadFormProps {
 
 const NewThreadForm: Component<NewThreadFormProps> = (props) => {
   const [title, setTitle] = createSignal('');
-  const [content, setContent] = createSignal('');
+  const [body, setBody] = createSignal('');
   const [error, setError] = createSignal('');
   const [loading, setLoading] = createSignal(false);
 
@@ -361,11 +361,15 @@ const NewThreadForm: Component<NewThreadFormProps> = (props) => {
     try {
       await boardApi.createThread(props.boardId, {
         title: title(),
-        content: content(),
+        body: body(),
       });
       props.onSuccess();
-    } catch (err: any) {
-      setError(err.message || 'スレッドの作成に失敗しました');
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('スレッドの作成に失敗しました');
+      }
     } finally {
       setLoading(false);
     }
@@ -389,8 +393,8 @@ const NewThreadForm: Component<NewThreadFormProps> = (props) => {
 
       <Textarea
         label="本文"
-        value={content()}
-        onInput={(e) => setContent(e.currentTarget.value)}
+        value={body()}
+        onInput={(e) => setBody(e.currentTarget.value)}
         required
         rows={8}
       />
@@ -414,23 +418,27 @@ interface ReplyFormProps {
 }
 
 const ReplyForm: Component<ReplyFormProps> = (props) => {
-  const [content, setContent] = createSignal('');
+  const [body, setBody] = createSignal('');
   const [error, setError] = createSignal('');
   const [loading, setLoading] = createSignal(false);
 
   const handleSubmit = async (e: Event) => {
     e.preventDefault();
-    if (!content().trim()) return;
+    if (!body().trim()) return;
 
     setError('');
     setLoading(true);
 
     try {
-      await boardApi.createPost(props.threadId, { content: content() });
-      setContent('');
+      await boardApi.createPost(props.threadId, { body: body() });
+      setBody('');
       props.onSuccess();
-    } catch (err: any) {
-      setError(err.message || '投稿に失敗しました');
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('投稿に失敗しました');
+      }
     } finally {
       setLoading(false);
     }
@@ -445,8 +453,8 @@ const ReplyForm: Component<ReplyFormProps> = (props) => {
       </Show>
 
       <Textarea
-        value={content()}
-        onInput={(e) => setContent(e.currentTarget.value)}
+        value={body()}
+        onInput={(e) => setBody(e.currentTarget.value)}
         placeholder="返信を入力..."
         rows={4}
       />
@@ -469,7 +477,7 @@ interface NewFlatPostFormProps {
 
 const NewFlatPostForm: Component<NewFlatPostFormProps> = (props) => {
   const [title, setTitle] = createSignal('');
-  const [content, setContent] = createSignal('');
+  const [body, setBody] = createSignal('');
   const [error, setError] = createSignal('');
   const [loading, setLoading] = createSignal(false);
 
@@ -480,8 +488,8 @@ const NewFlatPostForm: Component<NewFlatPostFormProps> = (props) => {
 
     try {
       await boardApi.createFlatPost(props.boardId, {
-        title: title() || undefined,
-        content: content(),
+        title: title(),
+        body: body(),
       });
       props.onSuccess();
     } catch (err: unknown) {
@@ -504,16 +512,17 @@ const NewFlatPostForm: Component<NewFlatPostFormProps> = (props) => {
       </Show>
 
       <Input
-        label="タイトル（任意）"
+        label="タイトル"
         value={title()}
         onInput={(e) => setTitle(e.currentTarget.value)}
+        required
         maxLength={50}
       />
 
       <Textarea
         label="本文"
-        value={content()}
-        onInput={(e) => setContent(e.currentTarget.value)}
+        value={body()}
+        onInput={(e) => setBody(e.currentTarget.value)}
         required
         rows={8}
       />

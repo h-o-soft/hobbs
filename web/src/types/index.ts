@@ -103,11 +103,16 @@ export interface AuthorInfo {
 
 export interface CreateThreadRequest {
   title: string;
-  content: string;
+  body: string;
 }
 
 export interface CreatePostRequest {
-  content: string;
+  body: string;
+}
+
+export interface CreateFlatPostRequest {
+  title: string;
+  body: string;
 }
 
 // Mail types
