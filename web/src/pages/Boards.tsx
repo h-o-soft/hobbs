@@ -39,8 +39,7 @@ export const BoardsPage: Component = () => {
                       <span class="badge-cyan">
                         {board.board_type === 'thread' ? 'スレッド' : 'フラット'}
                       </span>
-                      <span>{board.thread_count} スレッド</span>
-                      <span>{board.post_count} 投稿</span>
+                      <span>{board.post_count ?? 0} 投稿</span>
                     </div>
                   </div>
                 </A>
@@ -142,7 +141,7 @@ export const BoardDetailPage: Component = () => {
                 />
               }
             >
-              <div class="space-y-2">
+              <div class="space-y-2 max-w-3xl">
                 <For each={threads()!.data}>
                   {(thread) => (
                     <A
@@ -151,9 +150,11 @@ export const BoardDetailPage: Component = () => {
                     >
                       <div class="flex items-center justify-between">
                         <div>
-                          <h3 class="font-medium text-gray-200">{thread.title}</h3>
+                          <h3 class="font-bold text-gray-200">{thread.title}</h3>
                           <p class="text-xs text-gray-500 mt-1">
-                            {thread.author.nickname} - {formatDate(thread.created_at)}
+                            <span class="text-gray-400 font-light">{thread.author.nickname}</span>
+                            <span class="mx-1">-</span>
+                            {formatDate(thread.created_at)}
                           </p>
                         </div>
                         <div class="text-sm text-gray-500">
@@ -193,21 +194,22 @@ export const BoardDetailPage: Component = () => {
                 />
               }
             >
-              <div class="space-y-4">
+              <div class="space-y-4 max-w-3xl">
                 <For each={flatPosts()!.data}>
                   {(post, index) => (
                     <div class="card">
                       <div class="flex items-start justify-between mb-2">
                         <div class="flex items-center space-x-2">
-                          <span class="badge-cyan">
+                          {/* 投稿番号（非表示） */}
+                          <span class="badge-cyan hidden">
                             {(flatPosts()!.meta.page - 1) * flatPosts()!.meta.per_page + index() + 1}
                           </span>
-                          <span class="font-medium text-gray-300">{post.author.nickname}</span>
+                          <span class="text-sm text-gray-400 font-light">{post.author.nickname}</span>
                         </div>
                         <span class="text-xs text-gray-500">{formatDate(post.created_at)}</span>
                       </div>
                       <Show when={post.title}>
-                        <h3 class="font-medium text-neon-cyan mb-2">{post.title}</h3>
+                        <h3 class="font-bold text-neon-cyan mb-2">{post.title}</h3>
                       </Show>
                       <div class="text-gray-300 whitespace-pre-wrap">{post.body}</div>
                     </div>
@@ -299,16 +301,17 @@ export const ThreadDetailPage: Component = () => {
 
         {/* Posts */}
         <Show when={!posts.loading} fallback={<PageLoading />}>
-          <div class="space-y-4">
+          <div class="space-y-4 max-w-3xl">
             <For each={posts()?.data}>
               {(post, index) => (
                 <div class="card">
                   <div class="flex items-start justify-between mb-2">
                     <div class="flex items-center space-x-2">
-                      <span class="badge-cyan">
+                      {/* 投稿番号（非表示） */}
+                      <span class="badge-cyan hidden">
                         {(posts()!.meta.page - 1) * posts()!.meta.per_page + index() + 1}
                       </span>
-                      <span class="font-medium text-gray-300">{post.author.nickname}</span>
+                      <span class="text-sm text-gray-400 font-light">{post.author.nickname}</span>
                     </div>
                     <span class="text-xs text-gray-500">{formatDate(post.created_at)}</span>
                   </div>
