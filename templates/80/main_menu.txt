@@ -7,6 +7,7 @@
     [M] {{t "menu.mail"}}            - {{t "menu.mail_desc"}} ({{t "mail.unread_count" count=user.unread_mail}})
     [F] {{t "menu.file"}}          - {{t "menu.file_desc"}}
     [D] {{t "menu.door"}}            - {{t "menu.door_desc"}}
+    [N] {{t "menu.news"}}          - {{t "menu.news_desc"}}
     [P] {{t "menu.profile"}}      - {{t "menu.profile_desc"}}
     [W] {{t "menu.user_list"}}          - {{t "menu.user_list_desc"}}
 

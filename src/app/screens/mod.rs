@@ -11,6 +11,7 @@ mod help;
 mod mail;
 mod member;
 mod profile;
+mod rss;
 mod script;
 
 pub use admin::AdminScreen;
@@ -22,6 +23,7 @@ pub use help::HelpScreen;
 pub use mail::MailScreen;
 pub use member::MemberScreen;
 pub use profile::ProfileScreen;
+pub use rss::RssScreen;
 pub use script::ScriptScreen;
 
 use crate::server::CharacterEncoding;

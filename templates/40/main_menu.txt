@@ -8,6 +8,7 @@
  [M] {{t "menu.mail"}}        ({{t "mail.unread"}}{{user.unread_mail}})
  [F] {{t "menu.file"}}
  [D] {{t "menu.door"}}
+ [N] {{t "menu.news"}}
  [P] {{t "menu.profile"}}
  [W] {{t "menu.user_list"}}
 
