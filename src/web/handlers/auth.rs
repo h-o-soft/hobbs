@@ -5,7 +5,7 @@ use jsonwebtoken::{encode, EncodingKey, Header};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::db::{NewUser, UserRepository};
+use crate::db::{NewRefreshToken, NewUser, RefreshTokenRepository, UserRepository};
 use crate::mail::MailRepository;
 use crate::web::dto::{
     ApiResponse, LoginRequest, LoginResponse, LogoutRequest, MeResponse, RefreshRequest,
@@ -99,7 +99,23 @@ pub async fn login(
     let access_token = state.generate_access_token(user.id, &user.username, &user.role)?;
     let refresh_token = state.generate_refresh_token();
 
-    // TODO: Store refresh token in database (Phase 1 - will implement in refresh_tokens table)
+    // Store refresh token in database
+    {
+        let db = state.db.lock().await;
+        let repo = RefreshTokenRepository::new(db.conn());
+        let expires_at = chrono::Utc::now()
+            + chrono::Duration::days(state.refresh_token_expiry as i64);
+        let new_token = NewRefreshToken {
+            user_id: user.id,
+            token: refresh_token.clone(),
+            expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+        };
+        repo.create(&new_token)
+            .map_err(|e| {
+                tracing::error!("Failed to store refresh token: {}", e);
+                ApiError::internal("Failed to create session")
+            })?;
+    }
 
     // Update last login time
     {
@@ -125,21 +141,82 @@ pub async fn login(
 
 /// POST /api/auth/logout - User logout.
 pub async fn logout(
-    State(_state): State<Arc<AppState>>,
-    Json(_req): Json<LogoutRequest>,
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<LogoutRequest>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    // TODO: Invalidate refresh token in database (Phase 1 - will implement)
+    // Revoke the refresh token
+    let db = state.db.lock().await;
+    let repo = RefreshTokenRepository::new(db.conn());
+    let _ = repo.revoke(&req.refresh_token);
+
     Ok(Json(ApiResponse::new(())))
 }
 
 /// POST /api/auth/refresh - Refresh access token.
 pub async fn refresh(
-    State(_state): State<Arc<AppState>>,
-    Json(_req): Json<RefreshRequest>,
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<RefreshRequest>,
 ) -> Result<Json<ApiResponse<RefreshResponse>>, ApiError> {
-    // TODO: Validate refresh token from database (Phase 1 - will implement)
-    // For now, return a placeholder error
-    Err(ApiError::unauthorized("Refresh token validation not yet implemented"))
+    // Validate refresh token
+    let user_id = {
+        let db = state.db.lock().await;
+        let repo = RefreshTokenRepository::new(db.conn());
+        let token = repo.get_valid_token(&req.refresh_token)
+            .map_err(|_| ApiError::internal("Database error"))?
+            .ok_or_else(|| ApiError::unauthorized("Invalid or expired refresh token"))?;
+        token.user_id
+    };
+
+    // Get user info
+    let user = {
+        let db = state.db.lock().await;
+        let repo = UserRepository::new(&*db);
+        repo.get_by_id(user_id)
+            .map_err(|_| ApiError::internal("Database error"))?
+            .ok_or_else(|| ApiError::unauthorized("User not found"))?
+    };
+
+    // Check if user is active
+    if !user.is_active {
+        return Err(ApiError::forbidden("Account is disabled"));
+    }
+
+    // Revoke old refresh token
+    {
+        let db = state.db.lock().await;
+        let repo = RefreshTokenRepository::new(db.conn());
+        let _ = repo.revoke(&req.refresh_token);
+    }
+
+    // Generate new tokens
+    let access_token = state.generate_access_token(user.id, &user.username, &user.role)?;
+    let new_refresh_token = state.generate_refresh_token();
+
+    // Store new refresh token
+    {
+        let db = state.db.lock().await;
+        let repo = RefreshTokenRepository::new(db.conn());
+        let expires_at = chrono::Utc::now()
+            + chrono::Duration::days(state.refresh_token_expiry as i64);
+        let new_token = NewRefreshToken {
+            user_id: user.id,
+            token: new_refresh_token.clone(),
+            expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+        };
+        repo.create(&new_token)
+            .map_err(|e| {
+                tracing::error!("Failed to store refresh token: {}", e);
+                ApiError::internal("Failed to create session")
+            })?;
+    }
+
+    let response = RefreshResponse {
+        access_token,
+        refresh_token: new_refresh_token,
+        expires_in: state.access_token_expiry,
+    };
+
+    Ok(Json(ApiResponse::new(response)))
 }
 
 /// POST /api/auth/register - User registration.
@@ -188,6 +265,24 @@ pub async fn register(
     // Generate tokens
     let access_token = state.generate_access_token(user.id, &user.username, &user.role)?;
     let refresh_token = state.generate_refresh_token();
+
+    // Store refresh token in database
+    {
+        let db = state.db.lock().await;
+        let repo = RefreshTokenRepository::new(db.conn());
+        let expires_at = chrono::Utc::now()
+            + chrono::Duration::days(state.refresh_token_expiry as i64);
+        let new_token = NewRefreshToken {
+            user_id: user.id,
+            token: refresh_token.clone(),
+            expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+        };
+        repo.create(&new_token)
+            .map_err(|e| {
+                tracing::error!("Failed to store refresh token: {}", e);
+                ApiError::internal("Failed to create session")
+            })?;
+    }
 
     let response = LoginResponse {
         access_token,

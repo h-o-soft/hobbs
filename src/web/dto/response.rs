@@ -67,6 +67,8 @@ pub struct UserInfo {
 pub struct RefreshResponse {
     /// New access token.
     pub access_token: String,
+    /// New refresh token.
+    pub refresh_token: String,
     /// Expiry in seconds.
     pub expires_in: u64,
 }
