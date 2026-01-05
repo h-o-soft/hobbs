@@ -4,8 +4,8 @@ use tracing::{error, info};
 
 use hobbs::server::SessionManager;
 use hobbs::{
-    chat::ChatRoomManager, Application, Config, Database, I18nManager, TelnetServer, TelnetSession,
-    TemplateLoader,
+    chat::ChatRoomManager, start_rss_updater, Application, Config, Database, I18nManager,
+    TelnetServer, TelnetSession, TemplateLoader,
 };
 
 fn main() {
@@ -89,8 +89,15 @@ async fn run_server(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     // Create LocalSet for non-Send futures (rusqlite is not Send)
     let local = tokio::task::LocalSet::new();
 
+    // Clone db for RSS updater
+    let rss_db = Arc::clone(&app.db());
+
     local
         .run_until(async move {
+            // Start RSS background updater
+            start_rss_updater(rss_db);
+            info!("RSS updater started");
+
             loop {
                 match server.accept().await {
                     Ok((stream, addr, permit)) => {
