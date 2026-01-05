@@ -5,6 +5,7 @@ use jsonwebtoken::{encode, EncodingKey, Header};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::chat::ChatRoomManager;
 use crate::db::{NewRefreshToken, NewUser, RefreshTokenRepository, UserRepository};
 use crate::file::FileStorage;
 use crate::mail::MailRepository;
@@ -34,6 +35,8 @@ pub struct AppState {
     pub file_storage: Option<Arc<FileStorage>>,
     /// Maximum upload size in bytes.
     pub max_upload_size: u64,
+    /// Chat room manager.
+    pub chat_manager: Option<Arc<ChatRoomManager>>,
 }
 
 impl AppState {
@@ -51,6 +54,7 @@ impl AppState {
             refresh_token_expiry: refresh_expiry,
             file_storage: None,
             max_upload_size: 10 * 1024 * 1024, // 10MB default
+            chat_manager: None,
         }
     }
 
@@ -58,6 +62,12 @@ impl AppState {
     pub fn with_file_storage(mut self, storage: FileStorage, max_upload_size_mb: u64) -> Self {
         self.file_storage = Some(Arc::new(storage));
         self.max_upload_size = max_upload_size_mb * 1024 * 1024;
+        self
+    }
+
+    /// Set chat room manager.
+    pub fn with_chat_manager(mut self, chat_manager: Arc<ChatRoomManager>) -> Self {
+        self.chat_manager = Some(chat_manager);
         self
     }
 

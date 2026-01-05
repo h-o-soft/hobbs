@@ -28,8 +28,9 @@ url = "2"
 # xmodem = "0.4" # Using custom async implementation instead
 
 # Web UI
-axum = { version = "0.7", features = ["multipart"] }
+axum = { version = "0.7", features = ["multipart", "ws"] }
 axum-extra = { version = "0.9", features = ["typed-header", "cookie"] }
+futures = "0.3"
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 jsonwebtoken = "9"

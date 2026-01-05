@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 
+use crate::chat::ChatRoomManager;
 use crate::config::{FilesConfig, WebConfig};
 use crate::file::FileStorage;
 use crate::Database;
@@ -24,6 +25,8 @@ pub struct WebServer {
     jwt_state: Arc<JwtState>,
     /// CORS origins.
     cors_origins: Vec<String>,
+    /// Chat room manager.
+    chat_manager: Option<Arc<ChatRoomManager>>,
 }
 
 impl WebServer {
@@ -63,7 +66,14 @@ impl WebServer {
             app_state: Arc::new(app_state),
             jwt_state,
             cors_origins: config.cors_origins.clone(),
+            chat_manager: None,
         }
+    }
+
+    /// Set the chat room manager.
+    pub fn with_chat_manager(mut self, chat_manager: Arc<ChatRoomManager>) -> Self {
+        self.chat_manager = Some(chat_manager);
+        self
     }
 
     /// Create a new web server from a raw Database.
@@ -87,8 +97,13 @@ impl WebServer {
 
     /// Run the web server.
     pub async fn run(self) -> Result<(), std::io::Error> {
-        let router = create_router(self.app_state, self.jwt_state, &self.cors_origins)
-            .merge(create_health_router());
+        let router = create_router(
+            self.app_state,
+            self.jwt_state,
+            self.chat_manager,
+            &self.cors_origins,
+        )
+        .merge(create_health_router());
 
         let listener = TcpListener::bind(self.addr).await?;
         let local_addr = listener.local_addr()?;
@@ -102,8 +117,13 @@ impl WebServer {
     ///
     /// This is useful for testing when binding to port 0.
     pub async fn run_with_addr(self) -> Result<SocketAddr, std::io::Error> {
-        let router = create_router(self.app_state, self.jwt_state, &self.cors_origins)
-            .merge(create_health_router());
+        let router = create_router(
+            self.app_state,
+            self.jwt_state,
+            self.chat_manager,
+            &self.cors_origins,
+        )
+        .merge(create_health_router());
 
         let listener = TcpListener::bind(self.addr).await?;
         let local_addr = listener.local_addr()?;

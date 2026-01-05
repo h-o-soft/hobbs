@@ -9,6 +9,8 @@ use std::sync::Arc;
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
 
+use crate::chat::ChatRoomManager;
+
 use super::handlers::{
     // Admin handlers
     admin_add_feed,
@@ -74,11 +76,13 @@ use super::handlers::{
     AppState,
 };
 use super::middleware::{create_cors_layer, jwt_auth, JwtState};
+use super::ws::{chat_ws_handler, ChatWsState};
 
 /// Create the main API router.
 pub fn create_router(
     app_state: Arc<AppState>,
     jwt_state: Arc<JwtState>,
+    chat_manager: Option<Arc<ChatRoomManager>>,
     cors_origins: &[String],
 ) -> Router {
     // Auth routes (no authentication required)
@@ -184,6 +188,16 @@ pub fn create_router(
         .nest("/folders", admin_folder_routes)
         .nest("/rss", admin_rss_routes);
 
+    // Chat WebSocket routes (if chat manager is provided)
+    let chat_routes = if let Some(ref manager) = chat_manager {
+        let chat_ws_state = Arc::new(ChatWsState::new(jwt_state.clone(), manager.clone()));
+        Router::new()
+            .route("/ws", get(chat_ws_handler))
+            .with_state(chat_ws_state)
+    } else {
+        Router::new()
+    };
+
     // API routes
     let api_routes = Router::new()
         .nest("/auth", auth_routes)
@@ -195,7 +209,8 @@ pub fn create_router(
         .nest("/rss", rss_routes)
         .nest("/folders", folder_routes)
         .nest("/files", file_routes)
-        .nest("/admin", admin_routes);
+        .nest("/admin", admin_routes)
+        .nest("/chat", chat_routes);
 
     // Clone jwt_state for the middleware closure
     let jwt_state_for_middleware = jwt_state.clone();
