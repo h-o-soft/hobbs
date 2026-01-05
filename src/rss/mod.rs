@@ -4,10 +4,12 @@
 
 pub mod fetcher;
 pub mod repository;
+pub mod service;
 pub mod types;
 
 pub use fetcher::{fetch_feed, validate_url, RssFetcher};
 pub use repository::{RssFeedRepository, RssItemRepository, RssReadPositionRepository};
+pub use service::{AddFeedRequest, RssService};
 pub use types::{
     NewRssFeed, NewRssItem, ParsedFeed, ParsedItem, RssFeed, RssFeedUpdate, RssFeedWithUnread,
     RssItem, RssReadPosition, DEFAULT_FETCH_INTERVAL, MAX_CONSECUTIVE_ERRORS,
