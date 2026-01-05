@@ -130,6 +130,10 @@ pub struct BoardResponse {
     pub description: Option<String>,
     /// Board type (thread or flat).
     pub board_type: String,
+    /// Number of threads (for thread-type boards).
+    pub thread_count: i64,
+    /// Number of posts.
+    pub post_count: i64,
     /// Whether user can read this board.
     pub can_read: bool,
     /// Whether user can write to this board.

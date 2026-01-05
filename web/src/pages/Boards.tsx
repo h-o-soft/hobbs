@@ -141,7 +141,7 @@ export const BoardDetailPage: Component = () => {
                 />
               }
             >
-              <div class="space-y-2 max-w-3xl">
+              <div class="space-y-2 max-w-3xl mx-auto">
                 <For each={threads()!.data}>
                   {(thread) => (
                     <A
@@ -194,7 +194,7 @@ export const BoardDetailPage: Component = () => {
                 />
               }
             >
-              <div class="space-y-4 max-w-3xl">
+              <div class="space-y-4 max-w-3xl mx-auto">
                 <For each={flatPosts()!.data}>
                   {(post, index) => (
                     <div class="card">
@@ -301,7 +301,7 @@ export const ThreadDetailPage: Component = () => {
 
         {/* Posts */}
         <Show when={!posts.loading} fallback={<PageLoading />}>
-          <div class="space-y-4 max-w-3xl">
+          <div class="space-y-4 max-w-3xl mx-auto">
             <For each={posts()?.data}>
               {(post, index) => (
                 <div class="card">

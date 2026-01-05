@@ -158,8 +158,7 @@ const BoardCard: Component<BoardCardProps> = (props) => {
           <span class="badge-cyan">
             {props.board.board_type === 'thread' ? 'スレッド' : 'フラット'}
           </span>
-          <span>{props.board.thread_count} スレッド</span>
-          <span>{props.board.post_count} 投稿</span>
+          <span>{props.board.post_count ?? 0} 投稿</span>
         </div>
       </div>
     </A>
