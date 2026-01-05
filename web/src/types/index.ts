@@ -118,27 +118,27 @@ export interface CreateFlatPostRequest {
 // Mail types
 export interface Mail {
   id: number;
-  from_user: AuthorInfo;
-  to_user: AuthorInfo;
+  sender: AuthorInfo;
+  recipient: AuthorInfo;
   subject: string;
-  content: string;
+  body: string;
   is_read: boolean;
   created_at: string;
 }
 
 export interface MailListItem {
   id: number;
-  from_user?: AuthorInfo;
-  to_user?: AuthorInfo;
+  sender: AuthorInfo;
+  recipient: AuthorInfo;
   subject: string;
   is_read: boolean;
   created_at: string;
 }
 
 export interface SendMailRequest {
-  to_username: string;
+  recipient: string;
   subject: string;
-  content: string;
+  body: string;
 }
 
 // Chat types

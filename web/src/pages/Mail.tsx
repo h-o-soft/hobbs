@@ -120,8 +120,8 @@ export const MailPage: Component = () => {
                       </div>
                       <p class="text-sm text-gray-500 mt-1">
                         {activeTab() === 'inbox'
-                          ? `From: ${mail.from_user?.nickname}`
-                          : `To: ${mail.to_user?.nickname}`}
+                          ? `From: ${mail.sender.nickname}`
+                          : `To: ${mail.recipient.nickname}`}
                       </p>
                     </div>
                     <span class="text-xs text-gray-500 ml-4">
@@ -154,13 +154,13 @@ export const MailPage: Component = () => {
               <div class="border-b border-neon-cyan/20 pb-4">
                 <h3 class="text-lg font-medium text-gray-200">{mail().subject}</h3>
                 <div class="text-sm text-gray-500 mt-2 space-y-1">
-                  <p>From: {mail().from_user.nickname} ({mail().from_user.username})</p>
-                  <p>To: {mail().to_user.nickname} ({mail().to_user.username})</p>
+                  <p>From: {mail().sender.nickname} ({mail().sender.username})</p>
+                  <p>To: {mail().recipient.nickname} ({mail().recipient.username})</p>
                   <p>Date: {formatDate(mail().created_at)}</p>
                 </div>
               </div>
               <div class="text-gray-300 whitespace-pre-wrap">
-                {mail().content}
+                {mail().body}
               </div>
               <div class="flex justify-end space-x-3 pt-4">
                 <Button variant="danger" onClick={() => handleDelete(mail().id)}>
@@ -222,13 +222,13 @@ interface ComposeFormProps {
 }
 
 const ComposeForm: Component<ComposeFormProps> = (props) => {
-  const [to, setTo] = createSignal(props.replyTo?.from_user.username || '');
+  const [to, setTo] = createSignal(props.replyTo?.sender.username || '');
   const [subject, setSubject] = createSignal(
     props.replyTo ? `Re: ${props.replyTo.subject}` : ''
   );
-  const [content, setContent] = createSignal(
+  const [body, setBody] = createSignal(
     props.replyTo
-      ? `\n\n--- Original Message ---\n${props.replyTo.content}`
+      ? `\n\n--- Original Message ---\n${props.replyTo.body}`
       : ''
   );
   const [error, setError] = createSignal('');
@@ -241,13 +241,17 @@ const ComposeForm: Component<ComposeFormProps> = (props) => {
 
     try {
       await mailApi.sendMail({
-        to_username: to(),
+        recipient: to(),
         subject: subject(),
-        content: content(),
+        body: body(),
       });
       props.onSuccess();
-    } catch (err: any) {
-      setError(err.message || 'メールの送信に失敗しました');
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('メールの送信に失敗しました');
+      }
     } finally {
       setLoading(false);
     }
@@ -277,8 +281,8 @@ const ComposeForm: Component<ComposeFormProps> = (props) => {
 
       <Textarea
         label="本文"
-        value={content()}
-        onInput={(e) => setContent(e.currentTarget.value)}
+        value={body()}
+        onInput={(e) => setBody(e.currentTarget.value)}
         required
         rows={10}
       />
