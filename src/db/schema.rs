@@ -297,6 +297,11 @@ CREATE TABLE rss_read_positions (
 CREATE INDEX idx_rss_read_positions_user ON rss_read_positions(user_id);
 CREATE INDEX idx_rss_read_positions_feed ON rss_read_positions(feed_id);
 "#,
+    // v19: Add auto_paging column to users table
+    r#"
+-- Add auto_paging setting to users table
+ALTER TABLE users ADD COLUMN auto_paging INTEGER NOT NULL DEFAULT 1;
+"#,
 ];
 
 #[cfg(test)]

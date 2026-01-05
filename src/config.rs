@@ -231,16 +231,28 @@ pub struct TerminalConfig {
     /// Default terminal profile (standard, c64, c64_ansi).
     #[serde(default = "default_terminal_profile")]
     pub default_profile: String,
+    /// Enable auto-paging for terminals without scroll capability.
+    #[serde(default = "default_auto_paging")]
+    pub auto_paging: bool,
+    /// Lines before auto-pause (0 = auto-calculate from terminal height - 4).
+    #[serde(default)]
+    pub paging_lines: usize,
 }
 
 fn default_terminal_profile() -> String {
     "standard".to_string()
 }
 
+fn default_auto_paging() -> bool {
+    true
+}
+
 impl Default for TerminalConfig {
     fn default() -> Self {
         Self {
             default_profile: default_terminal_profile(),
+            auto_paging: default_auto_paging(),
+            paging_lines: 0,
         }
     }
 }
@@ -422,6 +434,8 @@ mod tests {
         assert_eq!(config.logging.file, "logs/hobbs.log");
 
         assert_eq!(config.terminal.default_profile, "standard");
+        assert!(config.terminal.auto_paging);
+        assert_eq!(config.terminal.paging_lines, 0);
 
         assert!(config.rss.enabled);
         assert_eq!(config.rss.update_interval_secs, 300);
@@ -469,6 +483,8 @@ file = "custom/logs/app.log"
 
 [terminal]
 default_profile = "c64"
+auto_paging = false
+paging_lines = 15
 
 [rss]
 enabled = false

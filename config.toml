@@ -33,6 +33,10 @@ file = "logs/hobbs.log"
 [terminal]
 # Default terminal profile: standard (80x24), c64 (40x25, no ANSI), c64_ansi (40x25)
 default_profile = "standard"
+# Auto-paging for terminals without scroll capability
+auto_paging = true
+# Lines before pause (0 = terminal height - 4)
+paging_lines = 0
 
 [rss]
 # Whether RSS feature is enabled

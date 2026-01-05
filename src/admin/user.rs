@@ -118,7 +118,7 @@ impl<'a> UserAdminService<'a> {
         // Get users with pagination
         let mut stmt = conn.prepare(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
-                    encoding, language, created_at, last_login, is_active
+                    encoding, language, auto_paging, created_at, last_login, is_active
              FROM users
              ORDER BY created_at DESC
              LIMIT ? OFFSET ?",
@@ -132,7 +132,8 @@ impl<'a> UserAdminService<'a> {
                 let encoding = encoding_str
                     .parse()
                     .unwrap_or(crate::server::CharacterEncoding::default());
-                let is_active: i64 = row.get(12)?;
+                let auto_paging: i64 = row.get(10)?;
+                let is_active: i64 = row.get(13)?;
 
                 Ok(User {
                     id: row.get(0)?,
@@ -145,8 +146,9 @@ impl<'a> UserAdminService<'a> {
                     terminal: row.get(7)?,
                     encoding,
                     language: row.get(9)?,
-                    created_at: row.get(10)?,
-                    last_login: row.get(11)?,
+                    auto_paging: auto_paging != 0,
+                    created_at: row.get(11)?,
+                    last_login: row.get(12)?,
                     is_active: is_active != 0,
                 })
             })?
@@ -397,7 +399,7 @@ impl<'a> UserAdminService<'a> {
         // Get users with pagination
         let mut stmt = conn.prepare(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
-                    encoding, language, created_at, last_login, is_active
+                    encoding, language, auto_paging, created_at, last_login, is_active
              FROM users
              WHERE username LIKE ? OR nickname LIKE ?
              ORDER BY username
@@ -414,7 +416,8 @@ impl<'a> UserAdminService<'a> {
                     let encoding = encoding_str
                         .parse()
                         .unwrap_or(crate::server::CharacterEncoding::default());
-                    let is_active: i64 = row.get(12)?;
+                    let auto_paging: i64 = row.get(10)?;
+                    let is_active: i64 = row.get(13)?;
 
                     Ok(User {
                         id: row.get(0)?,
@@ -427,8 +430,9 @@ impl<'a> UserAdminService<'a> {
                         terminal: row.get(7)?,
                         encoding,
                         language: row.get(9)?,
-                        created_at: row.get(10)?,
-                        last_login: row.get(11)?,
+                        auto_paging: auto_paging != 0,
+                        created_at: row.get(11)?,
+                        last_login: row.get(12)?,
                         is_active: is_active != 0,
                     })
                 },
@@ -466,6 +470,7 @@ mod tests {
             terminal: "standard".to_string(),
             encoding: CharacterEncoding::default(),
             language: "en".to_string(),
+            auto_paging: true,
             created_at: "2024-01-01".to_string(),
             last_login: None,
             is_active: true,
@@ -727,6 +732,7 @@ mod tests {
             terminal: "standard".to_string(),
             encoding: CharacterEncoding::default(),
             language: "en".to_string(),
+            auto_paging: true,
             created_at: "2024-01-01".to_string(),
             last_login: None,
             is_active: true,
@@ -793,6 +799,7 @@ mod tests {
             terminal: "standard".to_string(),
             encoding: CharacterEncoding::default(),
             language: "en".to_string(),
+            auto_paging: true,
             created_at: "2024-01-01".to_string(),
             last_login: None,
             is_active: true,
