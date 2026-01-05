@@ -321,6 +321,7 @@ mod tests {
             terminal: "standard".to_string(),
             encoding: CharacterEncoding::default(),
             language: "en".to_string(),
+            auto_paging: true,
             created_at: "2024-01-01".to_string(),
             last_login: None,
             is_active: true,

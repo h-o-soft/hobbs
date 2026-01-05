@@ -101,6 +101,8 @@ pub struct User {
     pub encoding: CharacterEncoding,
     /// Language preference (e.g., "en", "ja").
     pub language: String,
+    /// Auto-paging enabled (for terminals without scroll capability).
+    pub auto_paging: bool,
     /// Account creation timestamp.
     pub created_at: String,
     /// Last login timestamp (optional).
@@ -145,6 +147,8 @@ pub struct NewUser {
     pub encoding: CharacterEncoding,
     /// Language preference (defaults to "en").
     pub language: String,
+    /// Auto-paging enabled (defaults to true).
+    pub auto_paging: bool,
 }
 
 impl NewUser {
@@ -163,6 +167,7 @@ impl NewUser {
             terminal: "standard".to_string(),
             encoding: CharacterEncoding::default(),
             language: "en".to_string(),
+            auto_paging: true,
         }
     }
 
@@ -195,6 +200,12 @@ impl NewUser {
         self.language = language.into();
         self
     }
+
+    /// Set the auto-paging preference.
+    pub fn with_auto_paging(mut self, auto_paging: bool) -> Self {
+        self.auto_paging = auto_paging;
+        self
+    }
 }
 
 /// Data for updating an existing user.
@@ -218,6 +229,8 @@ pub struct UserUpdate {
     pub language: Option<String>,
     /// New active status.
     pub is_active: Option<bool>,
+    /// New auto-paging preference.
+    pub auto_paging: Option<bool>,
 }
 
 impl UserUpdate {
@@ -280,6 +293,12 @@ impl UserUpdate {
         self
     }
 
+    /// Set auto-paging preference.
+    pub fn auto_paging(mut self, auto_paging: bool) -> Self {
+        self.auto_paging = Some(auto_paging);
+        self
+    }
+
     /// Check if any fields are set.
     pub fn is_empty(&self) -> bool {
         self.password.is_none()
@@ -291,6 +310,7 @@ impl UserUpdate {
             && self.encoding.is_none()
             && self.language.is_none()
             && self.is_active.is_none()
+            && self.auto_paging.is_none()
     }
 }
 
@@ -381,6 +401,7 @@ mod tests {
             terminal: "standard".to_string(),
             encoding: CharacterEncoding::default(),
             language: "en".to_string(),
+            auto_paging: true,
             created_at: "2024-01-01".to_string(),
             last_login: None,
             is_active: true,
@@ -405,6 +426,7 @@ mod tests {
             terminal: "standard".to_string(),
             encoding: CharacterEncoding::default(),
             language: "en".to_string(),
+            auto_paging: true,
             created_at: "2024-01-01".to_string(),
             last_login: None,
             is_active: true,
