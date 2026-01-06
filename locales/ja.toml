@@ -51,23 +51,20 @@ goodbye = "ご利用ありがとうございました。またのお越しをお
 force_disconnected = "管理者により切断されました。"
 
 [welcome]
-# These appear before language selection, so must be ASCII/English
 prompt = "[L]Login [R]Register [G]Guest [Q]Quit > "
-invalid_choice = "Invalid choice. Please select L, R, G, or Q."
+invalid_choice = "無効な選択です。L, R, G, Q のいずれかを入力してください。"
 description_line1 = "レトロなパソコン通信BBSへようこそ"
 description_line2 = "テキストベースのコミュニケーションをお楽しみください"
 description_short = "レトロBBSへようこそ"
 
 [login]
-# These appear before login succeeds (language not yet applied), so must be ASCII/English
-# Only success message uses Japanese (shown after user's language is applied)
 title = "=== Login ==="
 username = "Username"
 password = "Password"
 success = "ログインしました。ようこそ、{{username}}さん！"
-invalid_credentials = "Invalid username or password."
-locked_out = "Too many failed attempts. Please try again later."
-account_disabled = "This account has been disabled."
+invalid_credentials = "ユーザーIDまたはパスワードが正しくありません。"
+locked_out = "ログイン試行回数が上限に達しました。しばらくしてから再度お試しください。"
+account_disabled = "このアカウントは無効化されています。"
 
 [register]
 title = "=== 新規登録 ==="
@@ -88,8 +85,7 @@ guest = "ゲスト"
 not_implemented = "この機能は現在実装中です。"
 
 [error]
-# This can appear during login, so must be ASCII/English
-database = "A database error occurred."
+database = "データベースエラーが発生しました。"
 not_logged_in = "ログインが必要です"
 user_not_found = "ユーザーが見つかりません"
 
