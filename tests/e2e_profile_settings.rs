@@ -171,6 +171,15 @@ async fn test_change_language_en_to_ja() {
     // Keep terminal profile as default
     client.send_line("").await.unwrap();
 
+    // Wait for auto paging prompt (added in Issue #224)
+    let _ = client
+        .recv_timeout(Duration::from_secs(1))
+        .await
+        .unwrap_or_default();
+
+    // Keep auto paging as default
+    client.send_line("").await.unwrap();
+
     // Wait for settings saved message and return to main menu
     // After SettingsChanged, we go back to main menu (not profile)
     let mut response = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
@@ -270,6 +279,15 @@ async fn test_change_encoding_utf8_to_shiftjis() {
     // Keep terminal profile as default
     client.send_line("").await.unwrap();
 
+    // Wait for auto paging prompt (added in Issue #224)
+    let _ = client
+        .recv_timeout(Duration::from_secs(1))
+        .await
+        .unwrap_or_default();
+
+    // Keep auto paging as default
+    client.send_line("").await.unwrap();
+
     // Wait for settings saved message
     let mut response = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
 
@@ -361,6 +379,15 @@ async fn test_settings_persist_on_main_menu() {
         .unwrap_or_default();
 
     // Keep terminal profile as default
+    client.send_line("").await.unwrap();
+
+    // Wait for auto paging prompt (added in Issue #224)
+    let _ = client
+        .recv_timeout(Duration::from_secs(1))
+        .await
+        .unwrap_or_default();
+
+    // Keep auto paging as default
     client.send_line("").await.unwrap();
 
     // After SettingsChanged, we go back to main menu (not profile)
