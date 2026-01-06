@@ -565,3 +565,8 @@ total = "合計"
 view_in_browser = "ブラウザで見る場合: {{url}}"
 press_enter_next = "[Enter]で次の記事、[Q]で終了"
 reading_complete = "未読をすべて読みました"
+
+[rate_limit]
+post_denied = "投稿間隔が短すぎます。{{seconds}}秒後に再試行してください"
+chat_denied = "発言間隔が短すぎます。{{seconds}}秒後に再試行してください"
+mail_denied = "送信間隔が短すぎます。{{seconds}}秒後に再試行してください"

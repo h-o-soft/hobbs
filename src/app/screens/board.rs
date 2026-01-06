@@ -10,6 +10,7 @@ use crate::board::{
 };
 use crate::db::{Role, UserRepository};
 use crate::error::Result;
+use crate::rate_limit::RateLimitResult;
 use crate::server::TelnetSession;
 
 /// Board screen handler.
@@ -680,6 +681,19 @@ impl BoardScreen {
             None => return Ok(()),
         };
 
+        // Check rate limit
+        match ctx.rate_limiters.post.check(user_id) {
+            RateLimitResult::Denied { retry_after } => {
+                let msg = ctx.i18n.t_with(
+                    "rate_limit.post_denied",
+                    &[("seconds", &retry_after.as_secs().to_string())],
+                );
+                ctx.send_line(session, &msg).await?;
+                return Ok(());
+            }
+            RateLimitResult::Allowed => {}
+        }
+
         ctx.send_line(session, "").await?;
         ctx.send_line(
             session,
@@ -703,6 +717,8 @@ impl BoardScreen {
 
         match board_service.create_thread(board_id, title, user_id, user_role) {
             Ok(_) => {
+                // Record successful action for rate limiting
+                ctx.rate_limiters.post.record(user_id);
                 ctx.send_line(session, ctx.i18n.t("board.thread_created"))
                     .await?;
             }
@@ -726,6 +742,19 @@ impl BoardScreen {
             Some(id) => id,
             None => return Ok(()),
         };
+
+        // Check rate limit
+        match ctx.rate_limiters.post.check(user_id) {
+            RateLimitResult::Denied { retry_after } => {
+                let msg = ctx.i18n.t_with(
+                    "rate_limit.post_denied",
+                    &[("seconds", &retry_after.as_secs().to_string())],
+                );
+                ctx.send_line(session, &msg).await?;
+                return Ok(());
+            }
+            RateLimitResult::Allowed => {}
+        }
 
         ctx.send_line(session, "").await?;
         ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("board.reply")))
@@ -756,6 +785,8 @@ impl BoardScreen {
 
         match board_service.create_thread_post(thread_id, user_id, &body, user_role) {
             Ok(_) => {
+                // Record successful action for rate limiting
+                ctx.rate_limiters.post.record(user_id);
                 ctx.send_line(session, ctx.i18n.t("board.post_created"))
                     .await?;
             }
@@ -779,6 +810,19 @@ impl BoardScreen {
             Some(id) => id,
             None => return Ok(()),
         };
+
+        // Check rate limit
+        match ctx.rate_limiters.post.check(user_id) {
+            RateLimitResult::Denied { retry_after } => {
+                let msg = ctx.i18n.t_with(
+                    "rate_limit.post_denied",
+                    &[("seconds", &retry_after.as_secs().to_string())],
+                );
+                ctx.send_line(session, &msg).await?;
+                return Ok(());
+            }
+            RateLimitResult::Allowed => {}
+        }
 
         ctx.send_line(session, "").await?;
         ctx.send_line(
@@ -818,6 +862,8 @@ impl BoardScreen {
 
         match board_service.create_flat_post(board_id, user_id, &title, &body, user_role) {
             Ok(_) => {
+                // Record successful action for rate limiting
+                ctx.rate_limiters.post.record(user_id);
                 ctx.send_line(session, ctx.i18n.t("board.post_created"))
                     .await?;
             }

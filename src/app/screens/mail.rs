@@ -7,6 +7,7 @@ use super::ScreenResult;
 use crate::db::UserRepository;
 use crate::error::Result;
 use crate::mail::{MailRepository, NewMail};
+use crate::rate_limit::RateLimitResult;
 use crate::server::TelnetSession;
 
 /// Mail screen handler.
@@ -220,6 +221,19 @@ impl MailScreen {
         session: &mut TelnetSession,
         from_id: i64,
     ) -> Result<()> {
+        // Check rate limit
+        match ctx.rate_limiters.mail.check(from_id) {
+            RateLimitResult::Denied { retry_after } => {
+                let msg = ctx.i18n.t_with(
+                    "rate_limit.mail_denied",
+                    &[("seconds", &retry_after.as_secs().to_string())],
+                );
+                ctx.send_line(session, &msg).await?;
+                return Ok(());
+            }
+            RateLimitResult::Allowed => {}
+        }
+
         ctx.send_line(session, "").await?;
         ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("mail.compose")))
             .await?;
@@ -279,6 +293,8 @@ impl MailScreen {
 
         match MailRepository::create(ctx.db.conn(), &new_mail) {
             Ok(_) => {
+                // Record successful action for rate limiting
+                ctx.rate_limiters.mail.record(from_id);
                 ctx.send_line(session, ctx.i18n.t("mail.mail_sent")).await?;
             }
             Err(e) => {
@@ -298,6 +314,19 @@ impl MailScreen {
         original: &crate::mail::Mail,
         from_id: i64,
     ) -> Result<()> {
+        // Check rate limit
+        match ctx.rate_limiters.mail.check(from_id) {
+            RateLimitResult::Denied { retry_after } => {
+                let msg = ctx.i18n.t_with(
+                    "rate_limit.mail_denied",
+                    &[("seconds", &retry_after.as_secs().to_string())],
+                );
+                ctx.send_line(session, &msg).await?;
+                return Ok(());
+            }
+            RateLimitResult::Allowed => {}
+        }
+
         ctx.send_line(session, "").await?;
         ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("mail.reply")))
             .await?;
@@ -340,6 +369,8 @@ impl MailScreen {
 
         match MailRepository::create(ctx.db.conn(), &new_mail) {
             Ok(_) => {
+                // Record successful action for rate limiting
+                ctx.rate_limiters.mail.record(from_id);
                 ctx.send_line(session, ctx.i18n.t("mail.mail_sent")).await?;
             }
             Err(e) => {

@@ -17,6 +17,7 @@ use crate::config::Config;
 use crate::db::Database;
 use crate::error::Result;
 use crate::i18n::I18nManager;
+use crate::rate_limit::{RateLimitConfig, RateLimiters};
 use crate::server::{SessionManager, TelnetSession};
 use crate::template::TemplateLoader;
 use crate::terminal::TerminalProfile;
@@ -35,6 +36,8 @@ pub struct Application {
     session_manager: Arc<SessionManager>,
     /// Chat room manager.
     chat_manager: Arc<ChatRoomManager>,
+    /// Rate limiters for user actions.
+    rate_limiters: Arc<RateLimiters>,
 }
 
 impl Application {
@@ -47,6 +50,13 @@ impl Application {
         session_manager: Arc<SessionManager>,
         chat_manager: Arc<ChatRoomManager>,
     ) -> Self {
+        // Create rate limiters from config
+        let rate_limiters = Arc::new(RateLimiters::with_config(
+            RateLimitConfig::new(config.rate_limits.post_per_minute, 60),
+            RateLimitConfig::new(config.rate_limits.chat_per_10_seconds, 10),
+            RateLimitConfig::new(config.rate_limits.mail_per_minute, 60),
+        ));
+
         Self {
             db,
             config,
@@ -54,6 +64,7 @@ impl Application {
             template_loader,
             session_manager,
             chat_manager,
+            rate_limiters,
         }
     }
 
@@ -87,6 +98,11 @@ impl Application {
         &self.chat_manager
     }
 
+    /// Get the rate limiters.
+    pub fn rate_limiters(&self) -> &Arc<RateLimiters> {
+        &self.rate_limiters
+    }
+
     /// Create a session handler for a new connection.
     ///
     /// Uses the default terminal profile from config.
@@ -98,6 +114,7 @@ impl Application {
             Arc::clone(&self.template_loader),
             Arc::clone(&self.session_manager),
             Arc::clone(&self.chat_manager),
+            Arc::clone(&self.rate_limiters),
         )
     }
 
@@ -110,6 +127,7 @@ impl Application {
             Arc::clone(&self.template_loader),
             Arc::clone(&self.session_manager),
             Arc::clone(&self.chat_manager),
+            Arc::clone(&self.rate_limiters),
             profile,
         )
     }
@@ -133,6 +151,7 @@ impl Clone for Application {
             template_loader: Arc::clone(&self.template_loader),
             session_manager: Arc::clone(&self.session_manager),
             chat_manager: Arc::clone(&self.chat_manager),
+            rate_limiters: Arc::clone(&self.rate_limiters),
         }
     }
 }

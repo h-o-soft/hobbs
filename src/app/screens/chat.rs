@@ -11,6 +11,7 @@ use crate::chat::{
     ChatParticipant, ChatRoom, JoinResult, NewChatLog,
 };
 use crate::error::Result;
+use crate::rate_limit::RateLimitResult;
 use crate::server::TelnetSession;
 
 /// Maximum length for chat messages (in characters).
@@ -256,7 +257,22 @@ impl ChatScreen {
                                                     ctx.send_line(session, &format!("*** {}", msg)).await?;
                                                     continue;
                                                 }
+                                                // Check rate limit for logged-in users
+                                                if let Some(uid) = user_id {
+                                                    if let RateLimitResult::Denied { retry_after } = ctx.rate_limiters.chat.check(uid) {
+                                                        let msg = ctx.i18n.t_with(
+                                                            "rate_limit.chat_denied",
+                                                            &[("seconds", &retry_after.as_secs().to_string())],
+                                                        );
+                                                        ctx.send_line(session, &format!("*** {}", msg)).await?;
+                                                        continue;
+                                                    }
+                                                }
                                                 room.send_action(session_id, &action).await;
+                                                // Record rate limit for logged-in users
+                                                if let Some(uid) = user_id {
+                                                    ctx.rate_limiters.chat.record(uid);
+                                                }
                                                 // Echo to sender
                                                 ctx.send_line(session, &format!("* {} {}", nickname, action)).await?;
                                                 // Save to log
@@ -284,8 +300,23 @@ impl ChatScreen {
                                             ctx.send_line(session, &format!("*** {}", msg)).await?;
                                             continue;
                                         }
+                                        // Check rate limit for logged-in users
+                                        if let Some(uid) = user_id {
+                                            if let RateLimitResult::Denied { retry_after } = ctx.rate_limiters.chat.check(uid) {
+                                                let msg = ctx.i18n.t_with(
+                                                    "rate_limit.chat_denied",
+                                                    &[("seconds", &retry_after.as_secs().to_string())],
+                                                );
+                                                ctx.send_line(session, &format!("*** {}", msg)).await?;
+                                                continue;
+                                            }
+                                        }
                                         // Send the message
                                         room.send_message(session_id, &content).await;
+                                        // Record rate limit for logged-in users
+                                        if let Some(uid) = user_id {
+                                            ctx.rate_limiters.chat.record(uid);
+                                        }
                                         // Echo to sender
                                         ctx.send_line(session, &format!("<{}> {}", nickname, content)).await?;
                                         // Save to log
