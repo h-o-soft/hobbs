@@ -36,7 +36,6 @@ export const Layout: ParentComponent = (props) => {
                 <NavLink href="/mail" active={isActive('/mail')}>{t('nav.mail')}</NavLink>
                 <NavLink href="/chat" active={isActive('/chat')}>{t('nav.chat')}</NavLink>
                 <NavLink href="/files" active={isActive('/files')}>{t('nav.files')}</NavLink>
-                <NavLink href="/rss" active={isActive('/rss')}>{t('nav.rss')}</NavLink>
                 <Show when={auth.user?.role === 'sysop' || auth.user?.role === 'subop'}>
                   <NavLink href="/admin" active={isActive('/admin')}>{t('nav.admin')}</NavLink>
                 </Show>
@@ -91,7 +90,6 @@ export const Layout: ParentComponent = (props) => {
               <NavLink href="/mail" active={isActive('/mail')}>{t('nav.mail')}</NavLink>
               <NavLink href="/chat" active={isActive('/chat')}>{t('nav.chat')}</NavLink>
               <NavLink href="/files" active={isActive('/files')}>{t('nav.files')}</NavLink>
-              <NavLink href="/rss" active={isActive('/rss')}>{t('nav.rss')}</NavLink>
               <Show when={auth.user?.role === 'sysop' || auth.user?.role === 'subop'}>
                 <NavLink href="/admin" active={isActive('/admin')}>{t('nav.admin')}</NavLink>
               </Show>

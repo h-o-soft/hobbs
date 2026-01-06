@@ -28,7 +28,7 @@ export const HomePage: Component = () => {
             {t('home.welcome')}
           </h1>
           <p class="text-gray-400">
-            {t('home.welcomeUser', { name: auth.user?.nickname || '' })}
+            {t('home.welcomePrefix')}{auth.user?.nickname || ''}{t('home.welcomeSuffix')}
           </p>
           <Show when={auth.user && auth.user.unread_mail_count > 0}>
             <div class="mt-4">
