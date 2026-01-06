@@ -8,13 +8,14 @@ use std::sync::Arc;
 use utoipa;
 
 use crate::board::{
-    BoardRepository, BoardType, NewFlatPost, NewThread, NewThreadPost, PostRepository,
-    ThreadRepository,
+    BoardRepository, BoardService, BoardType, NewFlatPost, NewThread, NewThreadPost,
+    PostRepository, ThreadRepository,
 };
 use crate::db::{Role, UserRepository};
 use crate::web::dto::{
     ApiResponse, AuthorInfo, BoardResponse, CreateFlatPostRequest, CreatePostRequest,
     CreateThreadRequest, PaginatedResponse, PaginationQuery, PostResponse, ThreadResponse,
+    UpdatePostRequest,
 };
 use crate::web::error::ApiError;
 use crate::web::handlers::AppState;
@@ -933,6 +934,88 @@ pub async fn delete_post(
     }
 
     Ok(Json(ApiResponse::new(())))
+}
+
+/// PATCH /api/posts/:id - Update a post
+#[utoipa::path(
+    patch,
+    path = "/posts/{id}",
+    tag = "posts",
+    params(
+        ("id" = i64, Path, description = "Post ID")
+    ),
+    request_body = UpdatePostRequest,
+    responses(
+        (status = 200, description = "Post updated", body = PostResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Cannot edit other user's post"),
+        (status = 404, description = "Post not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn update_post(
+    State(state): State<Arc<AppState>>,
+    AuthUser(claims): AuthUser,
+    Path(post_id): Path<i64>,
+    Json(request): Json<UpdatePostRequest>,
+) -> Result<Json<ApiResponse<PostResponse>>, ApiError> {
+    let user_role = Role::from_str(&claims.role).unwrap_or(Role::Guest);
+
+    let post = {
+        let db = state.db.lock().await;
+        let service = BoardService::new(&*db);
+
+        service
+            .update_post(
+                post_id,
+                Some(claims.sub),
+                user_role,
+                request.title,
+                request.body,
+            )
+            .map_err(|e| {
+                tracing::error!("Failed to update post: {}", e);
+                match e {
+                    crate::HobbsError::NotFound(_) => ApiError::not_found("Post not found"),
+                    crate::HobbsError::Permission(_) => {
+                        ApiError::forbidden("You can only edit your own posts")
+                    }
+                    crate::HobbsError::Validation(msg) => ApiError::unprocessable(msg),
+                    _ => ApiError::internal("Failed to update post"),
+                }
+            })?
+    };
+
+    // Fetch author info
+    let author = {
+        let db = state.db.lock().await;
+        let user_repo = UserRepository::new(&*db);
+        user_repo.get_by_id(post.author_id).ok().flatten()
+    };
+
+    let response = PostResponse {
+        id: post.id,
+        thread_id: post.thread_id,
+        board_id: post.board_id,
+        title: post.title,
+        body: post.body,
+        author: author
+            .map(|u| AuthorInfo {
+                id: u.id,
+                username: u.username,
+                nickname: u.nickname,
+            })
+            .unwrap_or_else(|| AuthorInfo {
+                id: post.author_id,
+                username: "unknown".to_string(),
+                nickname: "Unknown".to_string(),
+            }),
+        created_at: post.created_at,
+    };
+
+    Ok(Json(ApiResponse::new(response)))
 }
 
 // Helper to parse Role from string

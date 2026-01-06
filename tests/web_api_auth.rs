@@ -145,7 +145,7 @@ async fn test_register_duplicate_username() {
     response.assert_status(axum::http::StatusCode::CONFLICT);
 
     let body: Value = response.json();
-    assert_eq!(body["error"]["code"], "CONFLICT");
+    assert_eq!(body["error"]["code"], "USERNAME_TAKEN");
 }
 
 #[tokio::test]
@@ -247,7 +247,7 @@ async fn test_login_wrong_password() {
     response.assert_status(axum::http::StatusCode::UNAUTHORIZED);
 
     let body: Value = response.json();
-    assert_eq!(body["error"]["code"], "UNAUTHORIZED");
+    assert_eq!(body["error"]["code"], "INVALID_CREDENTIALS");
 }
 
 #[tokio::test]
