@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
+use tower_http::compression::CompressionLayer;
 
 use crate::chat::ChatRoomManager;
 use crate::config::{FilesConfig, WebConfig};
@@ -113,6 +114,9 @@ impl WebServer {
             }
         }
 
+        // Add gzip compression layer
+        let router = router.layer(CompressionLayer::new());
+
         let listener = TcpListener::bind(self.addr).await?;
         let local_addr = listener.local_addr()?;
 
@@ -140,6 +144,9 @@ impl WebServer {
                 router = router.merge(static_router);
             }
         }
+
+        // Add gzip compression layer
+        let router = router.layer(CompressionLayer::new());
 
         let listener = TcpListener::bind(self.addr).await?;
         let local_addr = listener.local_addr()?;

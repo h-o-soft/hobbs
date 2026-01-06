@@ -33,7 +33,7 @@ axum = { version = "0.7", features = ["multipart", "ws"] }
 axum-extra = { version = "0.9", features = ["typed-header", "cookie"] }
 futures = "0.3"
 tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.5", features = ["cors", "trace", "fs", "set-header"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "fs", "set-header", "compression-gzip"] }
 jsonwebtoken = "9"
 governor = "0.6"
 mime_guess = "2"
