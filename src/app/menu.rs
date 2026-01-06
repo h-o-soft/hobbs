@@ -65,10 +65,10 @@ impl MenuAction {
             "W" | "8" => MenuAction::MemberList,
             "A" | "7" if is_admin => MenuAction::Admin,
             "H" | "?" => MenuAction::Help,
-            "L" if is_logged_in => MenuAction::Logout,
+            "Q" if is_logged_in => MenuAction::Logout,
             "L" if !is_logged_in => MenuAction::Login,
             "R" if !is_logged_in => MenuAction::Register,
-            "Q" | "G" => MenuAction::Quit,
+            "Q" | "G" if !is_logged_in => MenuAction::Quit,
             "" => MenuAction::Invalid(String::new()),
             other => MenuAction::Invalid(other.to_string()),
         }
@@ -110,7 +110,7 @@ impl MenuAction {
             MenuAction::MemberList => "W",
             MenuAction::Admin => "A",
             MenuAction::Help => "H",
-            MenuAction::Logout => "L",
+            MenuAction::Logout => "Q",
             MenuAction::Login => "L",
             MenuAction::Register => "R",
             MenuAction::Quit => "Q",
@@ -295,7 +295,8 @@ mod tests {
 
     #[test]
     fn test_parse_logout() {
-        assert_eq!(MenuAction::parse("L", true, false), MenuAction::Logout);
+        // Q logs out for logged-in users
+        assert_eq!(MenuAction::parse("Q", true, false), MenuAction::Logout);
     }
 
     #[test]
@@ -310,8 +311,15 @@ mod tests {
 
     #[test]
     fn test_parse_quit() {
-        assert_eq!(MenuAction::parse("Q", true, false), MenuAction::Quit);
-        assert_eq!(MenuAction::parse("G", true, false), MenuAction::Quit);
+        // Q and G quit for guests only
+        assert_eq!(MenuAction::parse("Q", false, false), MenuAction::Quit);
+        assert_eq!(MenuAction::parse("G", false, false), MenuAction::Quit);
+        // For logged-in users, Q is logout, G is invalid
+        assert_eq!(MenuAction::parse("Q", true, false), MenuAction::Logout);
+        assert_eq!(
+            MenuAction::parse("G", true, false),
+            MenuAction::Invalid("G".to_string())
+        );
     }
 
     #[test]
