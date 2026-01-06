@@ -1,7 +1,10 @@
 //! Router configuration for Web API.
 
 use axum::{
-    middleware,
+    body::Body,
+    http::{header, Request, StatusCode},
+    middleware::{self, Next},
+    response::Response,
     routing::{delete, get, post, put},
     Router,
 };
@@ -278,10 +281,64 @@ pub fn create_swagger_router() -> Router {
     Router::new().merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()))
 }
 
+/// Middleware to add Cache-Control headers for static files.
+///
+/// - index.html and fallback: no-cache (always revalidate)
+/// - Assets with hash (js, css in /assets/): max-age=31536000, immutable (1 year)
+/// - Other static files: max-age=3600 (1 hour)
+async fn static_cache_headers(request: Request<Body>, next: Next) -> Response {
+    let path = request.uri().path().to_string();
+    let mut response = next.run(request).await;
+
+    // Only add cache headers for successful responses
+    if response.status() != StatusCode::OK {
+        return response;
+    }
+
+    let cache_control = if path == "/" || path.ends_with(".html") || path.ends_with("/") {
+        // HTML files: always revalidate
+        "no-cache"
+    } else if path.starts_with("/assets/") {
+        // Vite-built assets with content hash: cache forever
+        "public, max-age=31536000, immutable"
+    } else if path.ends_with(".js")
+        || path.ends_with(".css")
+        || path.ends_with(".woff2")
+        || path.ends_with(".woff")
+        || path.ends_with(".ttf")
+    {
+        // Other JS/CSS/fonts: long cache but not immutable
+        "public, max-age=86400"
+    } else if path.ends_with(".png")
+        || path.ends_with(".jpg")
+        || path.ends_with(".jpeg")
+        || path.ends_with(".gif")
+        || path.ends_with(".svg")
+        || path.ends_with(".ico")
+    {
+        // Images: cache for 1 week
+        "public, max-age=604800"
+    } else {
+        // Default: cache for 1 hour
+        "public, max-age=3600"
+    };
+
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, cache_control.parse().unwrap());
+
+    response
+}
+
 /// Create a static file serving router for SPA.
 ///
 /// This serves static files from the specified directory and falls back to
 /// index.html for unknown routes (SPA routing support).
+///
+/// Includes Cache-Control headers:
+/// - index.html: no-cache
+/// - /assets/* (hashed files): max-age=31536000, immutable
+/// - Other files: appropriate caching based on type
 pub fn create_static_router<P: AsRef<Path>>(static_path: P) -> Option<Router> {
     let path = static_path.as_ref();
 
@@ -308,7 +365,11 @@ pub fn create_static_router<P: AsRef<Path>>(static_path: P) -> Option<Router> {
     // Create ServeDir with fallback to index.html for SPA routing
     let serve_dir = ServeDir::new(path).not_found_service(ServeFile::new(&index_path));
 
-    Some(Router::new().fallback_service(serve_dir))
+    Some(
+        Router::new()
+            .fallback_service(serve_dir)
+            .layer(middleware::from_fn(static_cache_headers)),
+    )
 }
 
 #[cfg(test)]

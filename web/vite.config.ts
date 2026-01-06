@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import solid from 'vite-plugin-solid'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [solid()],
   server: {
     port: 5173,
@@ -15,6 +15,21 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // Source maps only in development (disable in production for security/size)
+    sourcemap: mode === 'development',
+    // Optimize chunk splitting
+    rollupOptions: {
+      output: {
+        // Manual chunk splitting for better caching
+        manualChunks: {
+          // Vendor chunk for SolidJS core
+          'solid-vendor': ['solid-js', 'solid-js/web', 'solid-js/store'],
+          // Router chunk
+          'router': ['@solidjs/router'],
+        },
+      },
+    },
+    // Increase chunk size warning limit (default is 500kb)
+    chunkSizeWarningLimit: 600,
   },
-})
+}))
