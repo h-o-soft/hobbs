@@ -17,6 +17,7 @@ Telnetプロトコルで接続するレトロなパソコン通信BBSホスト�
 | ドアゲーム | Luaスクリプトによる拡張機能（じゃんけん、数当て、おみくじ等） |
 | ゲストアクセス | 会員登録なしでの一部コンテンツ閲覧 |
 | 国際化 | 日本語・英語の2言語対応 |
+| Web UI | REST API + SPA によるブラウザアクセス（オプション） |
 
 ## 技術仕様
 
@@ -33,6 +34,7 @@ Telnetプロトコルで接続するレトロなパソコン通信BBSホスト�
 
 - Rust 1.70以上
 - SQLite 3.x（bundled版を使用するため個別インストール不要）
+- Node.js 18以上（Web UI をビルドする場合）
 
 ## インストール
 
@@ -128,6 +130,42 @@ telnet localhost 2323
 
 # または専用Telnetクライアント（Tera Term, PuTTY等）を使用
 ```
+
+### Web UI セットアップ（オプション）
+
+Telnet に加えて、ブラウザからアクセスできる Web UI を有効にできます。
+
+```bash
+# 1. フロントエンドのビルド
+cd web
+npm ci
+npm run build
+cd ..
+
+# 2. config.toml に Web 設定を追加
+```
+
+```toml
+[web]
+enabled = true
+host = "0.0.0.0"
+port = 8080
+serve_static = true
+static_path = "web/dist"
+jwt_secret = ""  # 環境変数 HOBBS_JWT_SECRET で設定推奨
+```
+
+```bash
+# 3. 環境変数で JWT 秘密鍵を設定（必須）
+export HOBBS_JWT_SECRET=$(openssl rand -base64 32)
+
+# 4. サーバー起動
+./target/release/hobbs
+```
+
+ブラウザで `http://localhost:8080` にアクセスできます。
+
+詳細は [運用ガイド](docs/operation_guide.md) を参照してください。
 
 ### 初回セットアップ
 
