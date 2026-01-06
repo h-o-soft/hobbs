@@ -62,12 +62,12 @@ impl<'a> UserRepository<'a> {
         }
     }
 
-    /// Get a user by username.
+    /// Get a user by username (case-insensitive).
     pub fn get_by_username(&self, username: &str) -> Result<Option<User>> {
         let result = self.db.conn().query_row(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
                     encoding, language, auto_paging, created_at, last_login, is_active
-             FROM users WHERE username = ?",
+             FROM users WHERE username = ? COLLATE NOCASE",
             [username],
             Self::row_to_user,
         );
@@ -229,10 +229,10 @@ impl<'a> UserRepository<'a> {
         Ok(count)
     }
 
-    /// Check if a username is already taken.
+    /// Check if a username is already taken (case-insensitive).
     pub fn username_exists(&self, username: &str) -> Result<bool> {
         let exists: bool = self.db.conn().query_row(
-            "SELECT EXISTS(SELECT 1 FROM users WHERE username = ?)",
+            "SELECT EXISTS(SELECT 1 FROM users WHERE username = ? COLLATE NOCASE)",
             [username],
             |row| row.get(0),
         )?;
@@ -545,6 +545,69 @@ mod tests {
 
         assert!(repo.username_exists("testuser").unwrap());
         assert!(!repo.username_exists("other").unwrap());
+    }
+
+    #[test]
+    fn test_get_by_username_case_insensitive() {
+        let db = setup_db();
+        let repo = UserRepository::new(&db);
+
+        let new_user = NewUser::new("TestUser", "hashedpw", "Test User");
+        repo.create(&new_user).unwrap();
+
+        // Should find with exact case
+        let found = repo.get_by_username("TestUser").unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().username, "TestUser");
+
+        // Should find with lowercase
+        let found_lower = repo.get_by_username("testuser").unwrap();
+        assert!(found_lower.is_some());
+        assert_eq!(found_lower.unwrap().username, "TestUser");
+
+        // Should find with uppercase
+        let found_upper = repo.get_by_username("TESTUSER").unwrap();
+        assert!(found_upper.is_some());
+        assert_eq!(found_upper.unwrap().username, "TestUser");
+
+        // Should find with mixed case
+        let found_mixed = repo.get_by_username("tEsTuSeR").unwrap();
+        assert!(found_mixed.is_some());
+        assert_eq!(found_mixed.unwrap().username, "TestUser");
+    }
+
+    #[test]
+    fn test_username_exists_case_insensitive() {
+        let db = setup_db();
+        let repo = UserRepository::new(&db);
+
+        repo.create(&NewUser::new("TestUser", "pw", "Test"))
+            .unwrap();
+
+        // Should detect existence regardless of case
+        assert!(repo.username_exists("TestUser").unwrap());
+        assert!(repo.username_exists("testuser").unwrap());
+        assert!(repo.username_exists("TESTUSER").unwrap());
+        assert!(repo.username_exists("tEsTuSeR").unwrap());
+        assert!(!repo.username_exists("other").unwrap());
+    }
+
+    #[test]
+    fn test_create_duplicate_username_different_case() {
+        let db = setup_db();
+        let repo = UserRepository::new(&db);
+
+        let new_user = NewUser::new("TestUser", "hashedpw", "Test User");
+        repo.create(&new_user).unwrap();
+
+        // Attempting to create user with same name but different case should fail
+        let duplicate_lower = NewUser::new("testuser", "otherpw", "Other User");
+        let result = repo.create(&duplicate_lower);
+        assert!(result.is_err());
+
+        let duplicate_upper = NewUser::new("TESTUSER", "otherpw", "Other User");
+        let result = repo.create(&duplicate_upper);
+        assert!(result.is_err());
     }
 
     #[test]
