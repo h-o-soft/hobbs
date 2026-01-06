@@ -5,7 +5,7 @@ use axum::{
     http::{header, Request, StatusCode},
     middleware::{self, Next},
     response::Response,
-    routing::{delete, get, post, put},
+    routing::{delete, get, patch, post, put},
     Router,
 };
 use std::path::Path;
@@ -47,6 +47,7 @@ use super::handlers::{
     // Mail handlers
     delete_mail,
     delete_post,
+    update_post,
     download_file,
     get_board,
     // RSS handlers
@@ -149,7 +150,9 @@ pub fn create_router(
         .route("/:id/posts", post(create_thread_post));
 
     // Post routes
-    let post_routes = Router::new().route("/:id", delete(delete_post));
+    let post_routes = Router::new()
+        .route("/:id", delete(delete_post))
+        .route("/:id", patch(update_post));
 
     // Mail routes
     let mail_routes = Router::new()

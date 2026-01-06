@@ -66,3 +66,19 @@ export async function createFlatPost(
 ): Promise<Post> {
   return api.post<Post>(`/boards/${boardId}/posts`, data);
 }
+
+export async function deletePost(postId: number): Promise<void> {
+  return api.delete(`/posts/${postId}`);
+}
+
+export interface UpdatePostRequest {
+  title?: string;
+  body: string;
+}
+
+export async function updatePost(
+  postId: number,
+  data: UpdatePostRequest
+): Promise<Post> {
+  return api.patch<Post>(`/posts/${postId}`, data);
+}

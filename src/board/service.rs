@@ -454,6 +454,58 @@ impl<'a> BoardService<'a> {
         post_repo.delete(post_id)
     }
 
+    // ========== Update Operations ==========
+
+    /// Update a post by ID.
+    ///
+    /// Permission rules:
+    /// - The post author can edit their own post
+    /// - SubOp or higher can edit any post
+    pub fn update_post(
+        &self,
+        post_id: i64,
+        user_id: Option<i64>,
+        user_role: Role,
+        title: Option<String>,
+        body: String,
+    ) -> Result<Post> {
+        // Validate input
+        if let Some(ref t) = title {
+            if !t.is_empty() {
+                validate_title(t)?;
+            }
+        }
+        validate_body(&body)?;
+
+        let post_repo = PostRepository::new(self.db);
+        let post = post_repo
+            .get_by_id(post_id)?
+            .ok_or_else(|| HobbsError::NotFound("post".to_string()))?;
+
+        // Check board access
+        self.get_board(post.board_id, user_role)?;
+
+        // Check edit permission
+        let is_owner = user_id.is_some() && user_id == Some(post.author_id);
+        let is_operator = user_role >= Role::SubOp;
+
+        if !is_owner && !is_operator {
+            return Err(HobbsError::Permission(
+                "この投稿を編集する権限がありません".to_string(),
+            ));
+        }
+
+        let mut update = super::post::PostUpdate::new();
+        if title.is_some() {
+            update.title = Some(title);
+        }
+        update.body = Some(body);
+
+        post_repo
+            .update(post_id, &update)?
+            .ok_or_else(|| HobbsError::NotFound("post".to_string()))
+    }
+
     /// Delete a thread by ID.
     ///
     /// Permission rules:

@@ -136,6 +136,19 @@ pub struct CreateFlatPostRequest {
     pub body: String,
 }
 
+/// Update post request.
+#[derive(Debug, Deserialize, ToSchema, Validate)]
+pub struct UpdatePostRequest {
+    /// Post title (optional, for flat board posts).
+    #[validate(length(max = 50, message = "Title must be at most 50 characters"))]
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Post body.
+    #[validate(length(min = 1, max = 10000, message = "Body must be 1-10000 characters"))]
+    #[validate(custom(function = "not_empty_trimmed"))]
+    pub body: String,
+}
+
 // ============================================================================
 // Mail DTOs
 // ============================================================================

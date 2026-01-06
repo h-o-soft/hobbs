@@ -97,6 +97,10 @@ export const dict = {
     createThreadFailed: 'Failed to create thread',
     createPostFailed: 'Failed to post',
     replyPlaceholder: 'Enter your reply...',
+    editPost: 'Edit Post',
+    confirmDeletePost: 'Are you sure you want to delete this post?',
+    deletePostFailed: 'Failed to delete post',
+    editPostFailed: 'Failed to edit post',
   },
 
   // Mail
