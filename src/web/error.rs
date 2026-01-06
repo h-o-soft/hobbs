@@ -6,6 +6,7 @@ use axum::{
     Json,
 };
 use serde::Serialize;
+use std::collections::HashMap;
 
 /// API error codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -21,6 +22,8 @@ pub enum ErrorCode {
     NotFound,
     /// Conflict (409).
     Conflict,
+    /// Validation error (422) - for field-level validation errors.
+    ValidationError,
     /// Unprocessable entity (422).
     UnprocessableEntity,
     /// Internal server error (500).
@@ -36,6 +39,7 @@ impl ErrorCode {
             ErrorCode::Forbidden => StatusCode::FORBIDDEN,
             ErrorCode::NotFound => StatusCode::NOT_FOUND,
             ErrorCode::Conflict => StatusCode::CONFLICT,
+            ErrorCode::ValidationError => StatusCode::UNPROCESSABLE_ENTITY,
             ErrorCode::UnprocessableEntity => StatusCode::UNPROCESSABLE_ENTITY,
             ErrorCode::InternalError => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -56,6 +60,9 @@ pub struct ErrorDetail {
     pub code: ErrorCode,
     /// Human-readable message.
     pub message: String,
+    /// Field-level validation error details (only present for validation errors).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<HashMap<String, Vec<String>>>,
 }
 
 /// API error type.
@@ -63,6 +70,7 @@ pub struct ErrorDetail {
 pub struct ApiError {
     code: ErrorCode,
     message: String,
+    details: Option<HashMap<String, Vec<String>>>,
 }
 
 impl ApiError {
@@ -71,6 +79,20 @@ impl ApiError {
         Self {
             code,
             message: message.into(),
+            details: None,
+        }
+    }
+
+    /// Create a new API error with field-level details.
+    pub fn with_details(
+        code: ErrorCode,
+        message: impl Into<String>,
+        details: HashMap<String, Vec<String>>,
+    ) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            details: Some(details),
         }
     }
 
@@ -108,6 +130,31 @@ impl ApiError {
     pub fn internal(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::InternalError, message)
     }
+
+    /// Create a validation error with field-level details.
+    pub fn validation(details: HashMap<String, Vec<String>>) -> Self {
+        Self::with_details(ErrorCode::ValidationError, "Validation failed", details)
+    }
+
+    /// Create a validation error from validator::ValidationErrors.
+    pub fn from_validation_errors(errors: validator::ValidationErrors) -> Self {
+        let mut details: HashMap<String, Vec<String>> = HashMap::new();
+
+        for (field, field_errors) in errors.field_errors() {
+            let messages: Vec<String> = field_errors
+                .iter()
+                .map(|e| {
+                    e.message
+                        .as_ref()
+                        .map(|m| m.to_string())
+                        .unwrap_or_else(|| format!("Invalid value for {}", field))
+                })
+                .collect();
+            details.insert(field.to_string(), messages);
+        }
+
+        Self::validation(details)
+    }
 }
 
 impl IntoResponse for ApiError {
@@ -117,6 +164,7 @@ impl IntoResponse for ApiError {
             error: ErrorDetail {
                 code: self.code,
                 message: self.message,
+                details: self.details,
             },
         };
         (status, Json(body)).into_response()
@@ -161,6 +209,10 @@ mod tests {
         assert_eq!(ErrorCode::NotFound.status_code(), StatusCode::NOT_FOUND);
         assert_eq!(ErrorCode::Conflict.status_code(), StatusCode::CONFLICT);
         assert_eq!(
+            ErrorCode::ValidationError.status_code(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        assert_eq!(
             ErrorCode::UnprocessableEntity.status_code(),
             StatusCode::UNPROCESSABLE_ENTITY
         );
@@ -192,5 +244,30 @@ mod tests {
 
         let err = ApiError::internal("error");
         assert_eq!(err.code, ErrorCode::InternalError);
+    }
+
+    #[test]
+    fn test_validation_error() {
+        let mut details = HashMap::new();
+        details.insert("username".to_string(), vec!["Too short".to_string()]);
+        details.insert(
+            "email".to_string(),
+            vec!["Invalid format".to_string(), "Required".to_string()],
+        );
+
+        let err = ApiError::validation(details);
+        assert_eq!(err.code, ErrorCode::ValidationError);
+        assert_eq!(err.message, "Validation failed");
+        assert!(err.details.is_some());
+
+        let details = err.details.unwrap();
+        assert_eq!(
+            details.get("username").unwrap(),
+            &vec!["Too short".to_string()]
+        );
+        assert_eq!(
+            details.get("email").unwrap(),
+            &vec!["Invalid format".to_string(), "Required".to_string()]
+        );
     }
 }

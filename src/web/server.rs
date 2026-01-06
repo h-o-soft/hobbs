@@ -14,7 +14,9 @@ use crate::Database;
 
 use super::handlers::{AppState, SharedDatabase};
 use super::middleware::JwtState;
-use super::router::{create_health_router, create_router, create_static_router, create_swagger_router};
+use super::router::{
+    create_health_router, create_router, create_static_router, create_swagger_router,
+};
 
 /// Web server for the API.
 pub struct WebServer {

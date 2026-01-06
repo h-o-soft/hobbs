@@ -278,7 +278,8 @@ async fn health_check() -> &'static str {
 
 /// Create the Swagger UI router for API documentation.
 pub fn create_swagger_router() -> Router {
-    Router::new().merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()))
+    Router::new()
+        .merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()))
 }
 
 /// Middleware to add Cache-Control headers for static files.
