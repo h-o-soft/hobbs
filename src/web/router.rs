@@ -56,6 +56,7 @@ use super::handlers::{
     get_item,
     get_mail,
     get_my_profile,
+    get_user_by_username,
     get_thread,
     get_unread_count,
     get_user,
@@ -165,6 +166,7 @@ pub fn create_router(
         .route("/me", get(get_my_profile))
         .route("/me", put(update_my_profile))
         .route("/me/password", post(change_password))
+        .route("/by-username/:username", get(get_user_by_username))
         .route("/:id", get(get_user));
 
     // RSS routes

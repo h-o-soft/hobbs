@@ -256,6 +256,59 @@ pub async fn update_my_profile(
     Ok(Json(ApiResponse::new(response)))
 }
 
+/// GET /api/users/by-username/:username - Get user profile by username.
+#[utoipa::path(
+    get,
+    path = "/users/by-username/{username}",
+    tag = "users",
+    params(
+        ("username" = String, Path, description = "Username")
+    ),
+    responses(
+        (status = 200, description = "User profile", body = UserDetailResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "User not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_user_by_username(
+    State(state): State<Arc<AppState>>,
+    AuthUser(_claims): AuthUser,
+    Path(username): Path<String>,
+) -> Result<Json<ApiResponse<UserDetailResponse>>, ApiError> {
+    let user = {
+        let db = state.db.lock().await;
+        let user_repo = UserRepository::new(&*db);
+
+        user_repo
+            .get_by_username(&username)
+            .map_err(|e| {
+                tracing::error!("Failed to get user: {}", e);
+                ApiError::internal("Failed to get user")
+            })?
+            .ok_or_else(|| ApiError::not_found("User not found"))?
+    };
+
+    // Only show active users
+    if !user.is_active {
+        return Err(ApiError::not_found("User not found"));
+    }
+
+    let response = UserDetailResponse {
+        id: user.id,
+        username: user.username,
+        nickname: user.nickname,
+        role: user.role.as_str().to_string(),
+        profile: user.profile,
+        created_at: user.created_at,
+        last_login_at: user.last_login,
+    };
+
+    Ok(Json(ApiResponse::new(response)))
+}
+
 /// POST /api/users/me/password - Change current user's password.
 #[utoipa::path(
     post,

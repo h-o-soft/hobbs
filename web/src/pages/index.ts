@@ -7,3 +7,4 @@ export { ChatPage } from './Chat';
 export { FilesPage, FolderDetailPage } from './Files';
 export { RssPage, RssDetailPage } from './Rss';
 export { AdminPage } from './Admin';
+export { ProfilePage, ProfileEditPage, UserProfilePage } from './Profile';

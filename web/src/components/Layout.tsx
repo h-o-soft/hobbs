@@ -52,9 +52,12 @@ export const Layout: ParentComponent = (props) => {
                       {auth.user!.unread_mail_count}通
                     </span>
                   </Show>
-                  <span class="text-sm text-gray-400">
+                  <A
+                    href="/profile"
+                    class="text-sm text-gray-400 hover:text-neon-cyan transition-colors"
+                  >
                     {auth.user?.nickname}
-                  </span>
+                  </A>
                   <button
                     onClick={handleLogout}
                     class="text-sm text-gray-500 hover:text-neon-pink transition-colors"
