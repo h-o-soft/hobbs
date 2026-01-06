@@ -13,7 +13,7 @@ use crate::Database;
 
 use super::handlers::{AppState, SharedDatabase};
 use super::middleware::JwtState;
-use super::router::{create_health_router, create_router};
+use super::router::{create_health_router, create_router, create_static_router};
 
 /// Web server for the API.
 pub struct WebServer {
@@ -23,8 +23,8 @@ pub struct WebServer {
     app_state: Arc<AppState>,
     /// JWT state.
     jwt_state: Arc<JwtState>,
-    /// CORS origins.
-    cors_origins: Vec<String>,
+    /// Web configuration.
+    web_config: WebConfig,
     /// Chat room manager.
     chat_manager: Option<Arc<ChatRoomManager>>,
 }
@@ -65,7 +65,7 @@ impl WebServer {
             addr,
             app_state: Arc::new(app_state),
             jwt_state,
-            cors_origins: config.cors_origins.clone(),
+            web_config: config.clone(),
             chat_manager: None,
         }
     }
@@ -97,13 +97,20 @@ impl WebServer {
 
     /// Run the web server.
     pub async fn run(self) -> Result<(), std::io::Error> {
-        let router = create_router(
+        let mut router = create_router(
             self.app_state,
             self.jwt_state,
             self.chat_manager,
-            &self.cors_origins,
+            &self.web_config,
         )
         .merge(create_health_router());
+
+        // Add static file serving if enabled
+        if self.web_config.serve_static {
+            if let Some(static_router) = create_static_router(&self.web_config.static_path) {
+                router = router.merge(static_router);
+            }
+        }
 
         let listener = TcpListener::bind(self.addr).await?;
         let local_addr = listener.local_addr()?;
@@ -117,13 +124,20 @@ impl WebServer {
     ///
     /// This is useful for testing when binding to port 0.
     pub async fn run_with_addr(self) -> Result<SocketAddr, std::io::Error> {
-        let router = create_router(
+        let mut router = create_router(
             self.app_state,
             self.jwt_state,
             self.chat_manager,
-            &self.cors_origins,
+            &self.web_config,
         )
         .merge(create_health_router());
+
+        // Add static file serving if enabled
+        if self.web_config.serve_static {
+            if let Some(static_router) = create_static_router(&self.web_config.static_path) {
+                router = router.merge(static_router);
+            }
+        }
 
         let listener = TcpListener::bind(self.addr).await?;
         let local_addr = listener.local_addr()?;
@@ -155,6 +169,8 @@ mod tests {
             jwt_refresh_token_expiry_days: 7,
             serve_static: false,
             static_path: "web/dist".to_string(),
+            login_rate_limit: 5,
+            api_rate_limit: 100,
         }
     }
 

@@ -10,15 +10,23 @@ use hobbs::{
 };
 
 fn main() {
-    // Load configuration
-    let config = match Config::load("config.toml") {
+    // Load configuration with environment variable overrides
+    let config = match Config::load_with_env("config.toml") {
         Ok(config) => config,
         Err(e) => {
             eprintln!("Failed to load config.toml: {e}");
             eprintln!("Using default configuration.");
-            Config::default()
+            let mut default_config = Config::default();
+            default_config.apply_env_overrides();
+            default_config
         }
     };
+
+    // Validate configuration
+    if let Err(e) = config.validate() {
+        eprintln!("Configuration error: {e}");
+        std::process::exit(1);
+    }
 
     // Initialize logging
     if let Err(e) = hobbs::logging::init(&config.logging) {

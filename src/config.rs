@@ -387,6 +387,12 @@ pub struct WebConfig {
     /// Path to static files directory.
     #[serde(default = "default_static_path")]
     pub static_path: String,
+    /// Rate limit for login endpoint (requests per minute).
+    #[serde(default = "default_login_rate_limit")]
+    pub login_rate_limit: u32,
+    /// Rate limit for general API endpoints (requests per minute).
+    #[serde(default = "default_api_rate_limit")]
+    pub api_rate_limit: u32,
 }
 
 fn default_web_enabled() -> bool {
@@ -413,6 +419,14 @@ fn default_static_path() -> String {
     "web/dist".to_string()
 }
 
+fn default_login_rate_limit() -> u32 {
+    5 // 5 requests per minute
+}
+
+fn default_api_rate_limit() -> u32 {
+    100 // 100 requests per minute
+}
+
 impl Default for WebConfig {
     fn default() -> Self {
         Self {
@@ -425,6 +439,8 @@ impl Default for WebConfig {
             jwt_refresh_token_expiry_days: default_jwt_refresh_expiry(),
             serve_static: false,
             static_path: default_static_path(),
+            login_rate_limit: default_login_rate_limit(),
+            api_rate_limit: default_api_rate_limit(),
         }
     }
 }
@@ -471,9 +487,44 @@ impl Config {
         Self::parse(&content)
     }
 
+    /// Load configuration from a TOML file and apply environment variable overrides.
+    pub fn load_with_env<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let mut config = Self::load(path)?;
+        config.apply_env_overrides();
+        Ok(config)
+    }
+
     /// Parse configuration from a TOML string.
     pub fn parse(s: &str) -> Result<Self> {
         toml::from_str(s).map_err(|e| HobbsError::Validation(format!("config parse error: {e}")))
+    }
+
+    /// Apply environment variable overrides to the configuration.
+    ///
+    /// Supported environment variables:
+    /// - `HOBBS_JWT_SECRET`: Override the JWT secret key
+    pub fn apply_env_overrides(&mut self) {
+        // JWT secret from environment variable (highest priority)
+        if let Ok(jwt_secret) = std::env::var("HOBBS_JWT_SECRET") {
+            if !jwt_secret.is_empty() {
+                self.web.jwt_secret = jwt_secret;
+            }
+        }
+    }
+
+    /// Validate the configuration.
+    ///
+    /// Returns an error if:
+    /// - Web UI is enabled but JWT secret is not set
+    pub fn validate(&self) -> Result<()> {
+        if self.web.enabled && self.web.jwt_secret.is_empty() {
+            return Err(HobbsError::Validation(
+                "Web UI is enabled but jwt_secret is not set. \
+                 Set it in config.toml or via HOBBS_JWT_SECRET environment variable."
+                    .to_string(),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -699,5 +750,78 @@ name = "Partial BBS"
 
         assert!(result.is_err());
         assert!(matches!(result, Err(HobbsError::Io(_))));
+    }
+
+    #[test]
+    fn test_apply_env_overrides_jwt_secret() {
+        // Save original value if exists
+        let original = std::env::var("HOBBS_JWT_SECRET").ok();
+
+        // Set env var
+        std::env::set_var("HOBBS_JWT_SECRET", "env-secret-key");
+
+        let mut config = Config::default();
+        config.apply_env_overrides();
+
+        assert_eq!(config.web.jwt_secret, "env-secret-key");
+
+        // Restore original
+        if let Some(val) = original {
+            std::env::set_var("HOBBS_JWT_SECRET", val);
+        } else {
+            std::env::remove_var("HOBBS_JWT_SECRET");
+        }
+    }
+
+    #[test]
+    fn test_apply_env_overrides_empty_value() {
+        // Save original value if exists
+        let original = std::env::var("HOBBS_JWT_SECRET").ok();
+
+        // Set empty env var
+        std::env::set_var("HOBBS_JWT_SECRET", "");
+
+        let mut config = Config::default();
+        config.web.jwt_secret = "original-secret".to_string();
+        config.apply_env_overrides();
+
+        // Should not override with empty string
+        assert_eq!(config.web.jwt_secret, "original-secret");
+
+        // Restore original
+        if let Some(val) = original {
+            std::env::set_var("HOBBS_JWT_SECRET", val);
+        } else {
+            std::env::remove_var("HOBBS_JWT_SECRET");
+        }
+    }
+
+    #[test]
+    fn test_validate_web_enabled_no_secret() {
+        let mut config = Config::default();
+        config.web.enabled = true;
+        config.web.jwt_secret = String::new();
+
+        let result = config.validate();
+        assert!(result.is_err());
+        if let Err(HobbsError::Validation(msg)) = result {
+            assert!(msg.contains("jwt_secret"));
+        }
+    }
+
+    #[test]
+    fn test_validate_web_enabled_with_secret() {
+        let mut config = Config::default();
+        config.web.enabled = true;
+        config.web.jwt_secret = "secret".to_string();
+
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_web_disabled() {
+        let config = Config::default();
+        // web.enabled is false by default, no secret needed
+        assert!(config.validate().is_ok());
     }
 }

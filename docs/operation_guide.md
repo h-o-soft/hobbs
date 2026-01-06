@@ -5,9 +5,10 @@
 ## 目次
 
 1. [サーバー運用手順](#サーバー運用手順)
-2. [バックアップ・リストア](#バックアップリストア)
-3. [トラブルシューティング](#トラブルシューティング)
-4. [セキュリティ](#セキュリティ)
+2. [Web UI設定](#web-ui設定)
+3. [バックアップ・リストア](#バックアップリストア)
+4. [トラブルシューティング](#トラブルシューティング)
+5. [セキュリティ](#セキュリティ)
 
 ---
 
@@ -82,6 +83,153 @@ WantedBy=multi-user.target
 sudo systemctl daemon-reload
 sudo systemctl enable hobbs
 sudo systemctl start hobbs
+```
+
+---
+
+## Web UI設定
+
+HOBBSはTelnetに加えて、REST API + SPAベースのWeb UIを提供します。
+
+### 設定項目
+
+`config.toml` の `[web]` セクション:
+
+```toml
+[web]
+# Web UIを有効にする
+enabled = true
+
+# バインドするホストアドレス
+host = "0.0.0.0"
+
+# Web APIのポート番号
+port = 8080
+
+# CORS許可オリジン（開発環境用）
+cors_origins = ["http://localhost:5173"]
+
+# JWT秘密鍵（必須、環境変数で上書き可能）
+jwt_secret = ""
+
+# アクセストークンの有効期限（秒）
+jwt_access_token_expiry_secs = 900  # 15分
+
+# リフレッシュトークンの有効期限（日）
+jwt_refresh_token_expiry_days = 7
+
+# 静的ファイル配信を有効にする
+serve_static = true
+
+# 静的ファイルのパス
+static_path = "web/dist"
+
+# ログインのレート制限（回/分）
+login_rate_limit = 5
+
+# 一般APIのレート制限（回/分）
+api_rate_limit = 100
+```
+
+### 環境変数
+
+以下の環境変数で設定を上書きできます（推奨）：
+
+| 環境変数 | 説明 |
+|----------|------|
+| `HOBBS_JWT_SECRET` | JWT秘密鍵（本番環境では必須） |
+
+### 本番環境での設定
+
+1. **JWT秘密鍵の設定**（必須）
+
+   JWT秘密鍵は環境変数で設定することを推奨します：
+
+   ```bash
+   # ランダムな秘密鍵を生成
+   openssl rand -base64 32
+
+   # 環境変数として設定
+   export HOBBS_JWT_SECRET="生成した秘密鍵"
+   ```
+
+   systemdサービスの場合:
+   ```ini
+   [Service]
+   Environment="HOBBS_JWT_SECRET=your-secret-key"
+   ```
+
+2. **CORS設定**
+
+   本番環境では、正しいオリジンのみを許可：
+   ```toml
+   cors_origins = ["https://your-domain.com"]
+   ```
+
+3. **HTTPSの設定**
+
+   本番環境ではリバースプロキシ（nginx/Caddy）でHTTPSを終端することを推奨します。
+
+   nginx設定例:
+   ```nginx
+   server {
+       listen 443 ssl;
+       server_name your-domain.com;
+
+       ssl_certificate /path/to/cert.pem;
+       ssl_certificate_key /path/to/key.pem;
+
+       location /api/ {
+           proxy_pass http://127.0.0.1:8080;
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+       }
+
+       location / {
+           root /opt/hobbs/web/dist;
+           try_files $uri $uri/ /index.html;
+       }
+   }
+   ```
+
+### セキュリティ機能
+
+Web UIには以下のセキュリティ機能が組み込まれています：
+
+1. **レート制限**
+   - ログイン: 5回/分（デフォルト）
+   - 一般API: 100回/分（デフォルト）
+   - IPアドレスベースで制限
+
+2. **セキュリティヘッダー**
+   - `X-Content-Type-Options: nosniff`
+   - `X-Frame-Options: DENY`
+   - `Referrer-Policy: strict-origin-when-cross-origin`
+   - `Cache-Control: no-store, max-age=0`
+
+3. **JWT認証**
+   - アクセストークン（短期、15分）
+   - リフレッシュトークン（長期、7日）
+   - トークンの自動更新
+
+### ヘルスチェック
+
+Web APIのヘルスチェックエンドポイント：
+
+```bash
+curl http://localhost:8080/health
+# レスポンス: OK
+```
+
+### ログ
+
+Web API関連のログは標準のログファイルに出力されます：
+
+```bash
+# リアルタイム監視
+tail -f logs/hobbs.log | grep "web\|api\|http"
 ```
 
 ---
