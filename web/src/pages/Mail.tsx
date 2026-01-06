@@ -1,5 +1,5 @@
 import { type Component, createResource, createSignal, For, Show } from 'solid-js';
-import { PageLoading, Pagination, Button, Input, Textarea, Modal, Alert, Empty } from '../components';
+import { PageLoading, Pagination, Button, Input, Textarea, Modal, Alert, Empty, UserLink } from '../components';
 import * as mailApi from '../api/mail';
 import type { MailListItem, Mail } from '../types';
 
@@ -154,8 +154,20 @@ export const MailPage: Component = () => {
               <div class="border-b border-neon-cyan/20 pb-4">
                 <h3 class="text-lg font-medium text-gray-200">{mail().subject}</h3>
                 <div class="text-sm text-gray-500 mt-2 space-y-1">
-                  <p>From: {mail().sender.nickname} ({mail().sender.username})</p>
-                  <p>To: {mail().recipient.nickname} ({mail().recipient.username})</p>
+                  <p>
+                    From:{' '}
+                    <UserLink
+                      username={mail().sender.username}
+                      displayName={mail().sender.nickname}
+                    />
+                  </p>
+                  <p>
+                    To:{' '}
+                    <UserLink
+                      username={mail().recipient.username}
+                      displayName={mail().recipient.nickname}
+                    />
+                  </p>
                   <p>Date: {formatDate(mail().created_at)}</p>
                 </div>
               </div>

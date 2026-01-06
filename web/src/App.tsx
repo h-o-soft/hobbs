@@ -15,6 +15,9 @@ const ChatPage = lazy(() => import('./pages/Chat').then(m => ({ default: m.ChatP
 const FilesPage = lazy(() => import('./pages/Files').then(m => ({ default: m.FilesPage })));
 const FolderDetailPage = lazy(() => import('./pages/Files').then(m => ({ default: m.FolderDetailPage })));
 const AdminPage = lazy(() => import('./pages/Admin').then(m => ({ default: m.AdminPage })));
+const ProfilePage = lazy(() => import('./pages/Profile').then(m => ({ default: m.ProfilePage })));
+const ProfileEditPage = lazy(() => import('./pages/Profile').then(m => ({ default: m.ProfileEditPage })));
+const UserProfilePage = lazy(() => import('./pages/Profile').then(m => ({ default: m.UserProfilePage })));
 
 // Protected route wrapper
 const ProtectedRoute: Component<{ children: any }> = (props) => {
@@ -138,6 +141,23 @@ const App: Component = () => {
         <Route path="/files/:id" component={() => (
           <ProtectedRoute>
             <FolderDetailPage />
+          </ProtectedRoute>
+        )} />
+
+        {/* Profile Routes */}
+        <Route path="/profile" component={() => (
+          <ProtectedRoute>
+            <ProfilePage />
+          </ProtectedRoute>
+        )} />
+        <Route path="/profile/edit" component={() => (
+          <ProtectedRoute>
+            <ProfileEditPage />
+          </ProtectedRoute>
+        )} />
+        <Route path="/users/:username" component={() => (
+          <ProtectedRoute>
+            <UserProfilePage />
           </ProtectedRoute>
         )} />
 

@@ -1,6 +1,6 @@
 import { type Component, createResource, createSignal, For, Show } from 'solid-js';
 import { A, useParams } from '@solidjs/router';
-import { PageLoading, Pagination, Button, Textarea, Modal, Alert, Empty } from '../components';
+import { PageLoading, Pagination, Button, Textarea, Modal, Alert, Empty, UserLink } from '../components';
 import * as fileApi from '../api/file';
 
 // Folder List Page
@@ -133,7 +133,10 @@ export const FolderDetailPage: Component = () => {
                           <h3 class="font-medium text-gray-200 truncate">{file.filename}</h3>
                           <div class="flex items-center space-x-4 text-xs text-gray-500 mt-1">
                             <span>{formatFileSize(file.size)}</span>
-                            <span>{file.uploader.nickname}</span>
+                            <UserLink
+                              username={file.uploader.username}
+                              displayName={file.uploader.nickname}
+                            />
                             <span>{formatDate(file.created_at)}</span>
                             <span>{file.downloads} DL</span>
                           </div>

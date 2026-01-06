@@ -1,6 +1,6 @@
 import { type Component, createResource, createSignal, For, Show } from 'solid-js';
 import { A, useParams } from '@solidjs/router';
-import { PageLoading, Pagination, Button, Input, Textarea, Modal, Alert, Empty } from '../components';
+import { PageLoading, Pagination, Button, Input, Textarea, Modal, Alert, Empty, UserLink } from '../components';
 import * as boardApi from '../api/board';
 
 // Board List Page
@@ -204,7 +204,11 @@ export const BoardDetailPage: Component = () => {
                           <span class="badge-cyan hidden">
                             {(flatPosts()!.meta.page - 1) * flatPosts()!.meta.per_page + index() + 1}
                           </span>
-                          <span class="text-sm text-gray-400 font-light">{post.author.nickname}</span>
+                          <UserLink
+                            username={post.author.username}
+                            displayName={post.author.nickname}
+                            class="text-sm font-light"
+                          />
                         </div>
                         <span class="text-xs text-gray-500">{formatDate(post.created_at)}</span>
                       </div>
@@ -295,7 +299,11 @@ export const ThreadDetailPage: Component = () => {
           </div>
           <h1 class="text-2xl font-display font-bold text-neon-cyan">{thread()!.title}</h1>
           <p class="text-sm text-gray-500 mt-1">
-            {thread()!.author.nickname} - {formatDate(thread()!.created_at)}
+            <UserLink
+              username={thread()!.author.username}
+              displayName={thread()!.author.nickname}
+            />
+            {' '}- {formatDate(thread()!.created_at)}
           </p>
         </div>
 
@@ -311,7 +319,11 @@ export const ThreadDetailPage: Component = () => {
                       <span class="badge-cyan hidden">
                         {(posts()!.meta.page - 1) * posts()!.meta.per_page + index() + 1}
                       </span>
-                      <span class="text-sm text-gray-400 font-light">{post.author.nickname}</span>
+                      <UserLink
+                        username={post.author.username}
+                        displayName={post.author.nickname}
+                        class="text-sm font-light"
+                      />
                     </div>
                     <span class="text-xs text-gray-500">{formatDate(post.created_at)}</span>
                   </div>

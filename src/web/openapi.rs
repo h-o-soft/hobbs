@@ -51,6 +51,7 @@ use super::handlers::{
     __path_get_thread,
     __path_get_unread_count,
     __path_get_user,
+    __path_get_user_by_username,
     __path_list_boards,
     __path_list_files,
     __path_list_flat_posts,
@@ -154,6 +155,7 @@ impl Modify for SecurityAddon {
         // Users
         list_users,
         get_user,
+        get_user_by_username,
         get_my_profile,
         update_my_profile,
         change_password,

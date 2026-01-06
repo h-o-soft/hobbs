@@ -72,19 +72,22 @@ async fn test_logout() {
     // Send logout command (Q for Quit/Logout from main menu)
     client.send_line("Q").await.unwrap();
 
-    // Should receive goodbye message and connection closes
+    // After logout, we should be back at the entry menu (not disconnected)
     let response = client
         .recv_timeout(Duration::from_secs(2))
         .await
         .unwrap_or_default();
     assert!(
-        response.contains("Thank you")
-            || response.contains("goodbye")
-            || response.contains("さようなら")
-            || response.is_empty(),
-        "Should receive goodbye message after logout: {:?}",
+        response.contains("Login")
+            || response.contains("Register")
+            || response.contains("Guest")
+            || response.contains("Select:"),
+        "Should return to entry menu after logout: {:?}",
         response
     );
+
+    // Now press Q to actually quit
+    client.send_line("Q").await.unwrap();
 }
 
 /// Test registration flow.
