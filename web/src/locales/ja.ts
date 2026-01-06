@@ -60,12 +60,12 @@ export const dict = {
     registerHere: '新規登録',
     hasAccount: 'すでにアカウントをお持ちの方は',
     loginHere: 'ログイン',
-    subtitle: 'Hobbyist Bulletin Board System',
+    subtitle: 'Powered by HOBBS',
   },
 
   // Home
   home: {
-    welcome: 'Welcome to HOBBS',
+    welcome: 'Welcome to Beryl BBS',
     welcomePrefix: 'ようこそ、',
     welcomeSuffix: ' さん',
     boardList: '掲示板一覧',

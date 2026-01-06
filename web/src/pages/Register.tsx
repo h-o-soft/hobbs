@@ -54,7 +54,7 @@ export const RegisterPage: Component = () => {
         {/* Logo */}
         <div class="text-center mb-8">
           <h1 class="font-display text-4xl font-bold text-neon-cyan text-neon-glow-intense animate-pulse-neon">
-            HOBBS
+            Beryl BBS
           </h1>
           <p class="text-gray-500 mt-2">{t('auth.register')}</p>
         </div>

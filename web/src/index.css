@@ -4,14 +4,14 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap');
 
 @theme {
-  /* Neon cyberpunk color palette */
+  /* Beryl (aquamarine/emerald) inspired neon color palette */
   --color-neon-pink: #ff00ff;
-  --color-neon-cyan: #00ffff;
+  --color-neon-cyan: #00e5c4;  /* Beryl/Aquamarine teal */
   --color-neon-green: #39ff14;
   --color-neon-yellow: #ffff00;
   --color-neon-orange: #ff6600;
-  --color-neon-purple: #9d00ff;
-  --color-neon-blue: #00f0ff;
+  --color-neon-purple: #7b68ee;  /* Medium slate blue - complements beryl */
+  --color-neon-blue: #00d4aa;  /* Beryl green-blue */
 
   --color-cyber-dark: #0a0a0f;
   --color-cyber-darker: #050508;
@@ -24,9 +24,9 @@
 
   /* Box shadows */
   --shadow-neon-pink: 0 0 5px #ff00ff, 0 0 20px #ff00ff, 0 0 40px #ff00ff;
-  --shadow-neon-cyan: 0 0 5px #00ffff, 0 0 20px #00ffff, 0 0 40px #00ffff;
+  --shadow-neon-cyan: 0 0 5px #00e5c4, 0 0 20px #00e5c4, 0 0 40px #00e5c4;
   --shadow-neon-green: 0 0 5px #39ff14, 0 0 20px #39ff14, 0 0 40px #39ff14;
-  --shadow-neon-purple: 0 0 5px #9d00ff, 0 0 20px #9d00ff, 0 0 40px #9d00ff;
+  --shadow-neon-purple: 0 0 5px #7b68ee, 0 0 20px #7b68ee, 0 0 40px #7b68ee;
 
   /* Animations */
   --animate-pulse-neon: pulse-neon 2s ease-in-out infinite;
@@ -59,8 +59,8 @@ body {
   font-family: var(--font-mono);
   min-height: 100vh;
   background:
-    radial-gradient(ellipse at top, rgba(157, 0, 255, 0.1), transparent 50%),
-    radial-gradient(ellipse at bottom, rgba(0, 255, 255, 0.05), transparent 50%),
+    radial-gradient(ellipse at top, rgba(123, 104, 238, 0.1), transparent 50%),
+    radial-gradient(ellipse at bottom, rgba(0, 229, 196, 0.05), transparent 50%),
     linear-gradient(180deg, #050508 0%, #0a0a0f 50%, #050508 100%);
 }
 
@@ -74,12 +74,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(157, 0, 255, 0.3);
+  background-color: rgba(123, 104, 238, 0.3);
   border-radius: 0.25rem;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(157, 0, 255, 0.5);
+  background-color: rgba(123, 104, 238, 0.5);
 }
 
 /* Custom utility classes using @utility */
@@ -99,10 +99,10 @@ body {
 }
 
 @utility border-neon {
-  border: 1px solid rgba(0, 255, 255, 0.5);
+  border: 1px solid rgba(0, 229, 196, 0.5);
   box-shadow:
-    0 0 5px rgba(0, 255, 255, 0.3),
-    inset 0 0 5px rgba(0, 255, 255, 0.1);
+    0 0 5px rgba(0, 229, 196, 0.3),
+    inset 0 0 5px rgba(0, 229, 196, 0.1);
 }
 
 @utility card {
@@ -110,10 +110,10 @@ body {
   backdrop-filter: blur(4px);
   border-radius: 0.5rem;
   padding: 1.5rem;
-  border: 1px solid rgba(0, 255, 255, 0.2);
+  border: 1px solid rgba(0, 229, 196, 0.2);
   box-shadow:
-    0 0 20px rgba(0, 255, 255, 0.05),
-    inset 0 0 30px rgba(0, 255, 255, 0.02);
+    0 0 20px rgba(0, 229, 196, 0.05),
+    inset 0 0 30px rgba(0, 229, 196, 0.02);
 }
 
 @utility card-hover {
@@ -121,16 +121,16 @@ body {
   backdrop-filter: blur(4px);
   border-radius: 0.5rem;
   padding: 1.5rem;
-  border: 1px solid rgba(0, 255, 255, 0.2);
+  border: 1px solid rgba(0, 229, 196, 0.2);
   box-shadow:
-    0 0 20px rgba(0, 255, 255, 0.05),
-    inset 0 0 30px rgba(0, 255, 255, 0.02);
+    0 0 20px rgba(0, 229, 196, 0.05),
+    inset 0 0 30px rgba(0, 229, 196, 0.02);
   transition: all 0.3s;
   &:hover {
-    border-color: rgba(0, 255, 255, 0.4);
+    border-color: rgba(0, 229, 196, 0.4);
     box-shadow:
-      0 0 30px rgba(0, 255, 255, 0.1),
-      inset 0 0 30px rgba(0, 255, 255, 0.05);
+      0 0 30px rgba(0, 229, 196, 0.1),
+      inset 0 0 30px rgba(0, 229, 196, 0.05);
   }
 }
 
@@ -150,16 +150,16 @@ body {
   border-radius: 0.25rem;
   font-weight: 500;
   transition: all 0.2s;
-  background-color: rgba(0, 255, 255, 0.2);
+  background-color: rgba(0, 229, 196, 0.2);
   color: var(--color-neon-cyan);
-  border: 1px solid rgba(0, 255, 255, 0.5);
+  border: 1px solid rgba(0, 229, 196, 0.5);
   &:hover {
-    background-color: rgba(0, 255, 255, 0.3);
+    background-color: rgba(0, 229, 196, 0.3);
     box-shadow: var(--shadow-neon-cyan);
   }
   &:focus {
     outline: none;
-    box-shadow: 0 0 0 2px var(--color-cyber-dark), 0 0 0 4px rgba(0, 255, 255, 0.5);
+    box-shadow: 0 0 0 2px var(--color-cyber-dark), 0 0 0 4px rgba(0, 229, 196, 0.5);
   }
 }
 
@@ -168,16 +168,16 @@ body {
   border-radius: 0.25rem;
   font-weight: 500;
   transition: all 0.2s;
-  background-color: rgba(157, 0, 255, 0.2);
+  background-color: rgba(123, 104, 238, 0.2);
   color: var(--color-neon-purple);
-  border: 1px solid rgba(157, 0, 255, 0.5);
+  border: 1px solid rgba(123, 104, 238, 0.5);
   &:hover {
-    background-color: rgba(157, 0, 255, 0.3);
+    background-color: rgba(123, 104, 238, 0.3);
     box-shadow: var(--shadow-neon-purple);
   }
   &:focus {
     outline: none;
-    box-shadow: 0 0 0 2px var(--color-cyber-dark), 0 0 0 4px rgba(157, 0, 255, 0.5);
+    box-shadow: 0 0 0 2px var(--color-cyber-dark), 0 0 0 4px rgba(123, 104, 238, 0.5);
   }
 }
 
@@ -222,7 +222,7 @@ body {
   padding: 0.5rem 1rem;
   border-radius: 0.25rem;
   background-color: var(--color-cyber-darker);
-  border: 1px solid rgba(0, 255, 255, 0.3);
+  border: 1px solid rgba(0, 229, 196, 0.3);
   color: var(--color-gray-100);
   transition: all 0.2s;
   &::placeholder {
@@ -230,8 +230,8 @@ body {
   }
   &:focus {
     outline: none;
-    border-color: rgba(0, 255, 255, 0.6);
-    box-shadow: 0 0 0 1px rgba(0, 255, 255, 0.3), 0 0 10px rgba(0, 255, 255, 0.1);
+    border-color: rgba(0, 229, 196, 0.6);
+    box-shadow: 0 0 0 1px rgba(0, 229, 196, 0.3), 0 0 10px rgba(0, 229, 196, 0.1);
   }
 }
 
@@ -251,7 +251,7 @@ body {
   border-radius: 0.25rem;
   font-size: 0.75rem;
   font-weight: 500;
-  background-color: rgba(0, 255, 255, 0.2);
+  background-color: rgba(0, 229, 196, 0.2);
   color: var(--color-neon-cyan);
 }
 
@@ -284,13 +284,13 @@ body {
   border-radius: 0.25rem;
   font-size: 0.75rem;
   font-weight: 500;
-  background-color: rgba(157, 0, 255, 0.2);
+  background-color: rgba(123, 104, 238, 0.2);
   color: var(--color-neon-purple);
 }
 
 @utility grid-bg {
   background-image:
-    linear-gradient(rgba(0, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 255, 255, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(0, 229, 196, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 229, 196, 0.03) 1px, transparent 1px);
   background-size: 50px 50px;
 }

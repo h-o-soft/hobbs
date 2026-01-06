@@ -26,7 +26,7 @@ export const Layout: ParentComponent = (props) => {
           <div class="flex items-center justify-between h-16">
             {/* Logo */}
             <A href="/" class="font-display text-2xl font-bold text-neon-cyan text-neon-glow">
-              HOBBS
+              Beryl BBS
             </A>
 
             {/* Navigation */}
@@ -106,8 +106,8 @@ export const Layout: ParentComponent = (props) => {
       {/* Footer */}
       <footer class="border-t border-neon-cyan/10 py-4">
         <div class="container mx-auto px-4 text-center text-xs text-gray-600">
-          <span class="text-neon-purple/60">HOBBS</span>
-          {' '}- Hobbyist Bulletin Board System
+          <span class="text-neon-purple/60">Beryl BBS</span>
+          {' '}- Powered by HOBBS
         </div>
       </footer>
     </div>
