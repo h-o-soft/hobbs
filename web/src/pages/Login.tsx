@@ -6,7 +6,7 @@ import { Input, Button, Alert } from '../components';
 import { ApiError } from '../api/client';
 
 export const LoginPage: Component = () => {
-  const { t } = useI18n();
+  const { t, translateError } = useI18n();
   const [, { login }] = useAuth();
   const navigate = useNavigate();
 
@@ -25,7 +25,7 @@ export const LoginPage: Component = () => {
       navigate('/');
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.message);
+        setError(translateError(err.code, err.message));
       } else {
         setError(t('auth.loginFailed'));
       }

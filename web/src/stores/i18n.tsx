@@ -14,6 +14,8 @@ type I18nContextValue = {
   setLocale: (locale: Locale) => void;
   /** Translation function */
   t: i18n.Translator<Dictionary>;
+  /** Translate API error code */
+  translateError: (code: string, fallback?: string) => string;
 };
 
 const I18nContext = createContext<I18nContextValue>();
@@ -57,10 +59,21 @@ export const I18nProvider: ParentComponent = (props) => {
     }
   };
 
+  const translateError = (code: string, fallback?: string): string => {
+    const key = `apiErrors.${code}` as any;
+    const translated = t(key);
+    // If translation returns the key itself (not found), use fallback
+    if (translated === key || translated === undefined) {
+      return fallback || t('errors.generic');
+    }
+    return translated;
+  };
+
   const value: I18nContextValue = {
     locale,
     setLocale,
     t,
+    translateError,
   };
 
   return (

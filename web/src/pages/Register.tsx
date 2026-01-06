@@ -6,7 +6,7 @@ import { Input, Button, Alert } from '../components';
 import { ApiError } from '../api/client';
 
 export const RegisterPage: Component = () => {
-  const { t } = useI18n();
+  const { t, translateError } = useI18n();
   const [, { register }] = useAuth();
   const navigate = useNavigate();
 
@@ -39,7 +39,7 @@ export const RegisterPage: Component = () => {
       navigate('/');
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.message);
+        setError(translateError(err.code, err.message));
       } else {
         setError(t('auth.registerFailed'));
       }

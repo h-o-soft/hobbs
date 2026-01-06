@@ -270,6 +270,23 @@ export const dict = {
     serverError: 'Server error occurred',
   },
 
+  // API Error Codes (mapped from backend error codes)
+  apiErrors: {
+    INVALID_CREDENTIALS: 'Invalid username or password',
+    ACCOUNT_DISABLED: 'This account has been disabled',
+    USER_NOT_FOUND: 'User not found',
+    USERNAME_TAKEN: 'Username is already taken',
+    INVALID_REFRESH_TOKEN: 'Session is invalid. Please log in again',
+    REFRESH_TOKEN_EXPIRED: 'Session has expired. Please log in again',
+    UNAUTHORIZED: 'Authentication required',
+    FORBIDDEN: 'Access denied',
+    NOT_FOUND: 'Not found',
+    CONFLICT: 'Conflict occurred',
+    BAD_REQUEST: 'Bad request',
+    VALIDATION_ERROR: 'Validation error',
+    INTERNAL_ERROR: 'Server error occurred',
+  },
+
   // Pagination
   pagination: {
     previous: 'Previous',

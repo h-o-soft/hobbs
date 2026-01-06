@@ -270,6 +270,23 @@ export const dict = {
     serverError: 'サーバーエラーが発生しました',
   },
 
+  // API Error Codes (mapped from backend error codes)
+  apiErrors: {
+    INVALID_CREDENTIALS: 'ユーザーIDまたはパスワードが正しくありません',
+    ACCOUNT_DISABLED: 'このアカウントは無効化されています',
+    USER_NOT_FOUND: 'ユーザーが見つかりません',
+    USERNAME_TAKEN: 'このユーザーIDは既に使用されています',
+    INVALID_REFRESH_TOKEN: 'セッションが無効です。再ログインしてください',
+    REFRESH_TOKEN_EXPIRED: 'セッションの有効期限が切れました。再ログインしてください',
+    UNAUTHORIZED: '認証が必要です',
+    FORBIDDEN: 'アクセスが拒否されました',
+    NOT_FOUND: '見つかりません',
+    CONFLICT: '競合が発生しました',
+    BAD_REQUEST: 'リクエストが不正です',
+    VALIDATION_ERROR: '入力内容に誤りがあります',
+    INTERNAL_ERROR: 'サーバーエラーが発生しました',
+  },
+
   // Pagination
   pagination: {
     previous: '前へ',

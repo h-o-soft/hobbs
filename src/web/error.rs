@@ -16,18 +16,30 @@ pub enum ErrorCode {
     BadRequest,
     /// Unauthorized (401).
     Unauthorized,
+    /// Invalid credentials (401).
+    InvalidCredentials,
     /// Forbidden (403).
     Forbidden,
+    /// Account disabled (403).
+    AccountDisabled,
     /// Not found (404).
     NotFound,
+    /// User not found (404).
+    UserNotFound,
     /// Conflict (409).
     Conflict,
+    /// Username already taken (409).
+    UsernameTaken,
     /// Validation error (422) - for field-level validation errors.
     ValidationError,
     /// Unprocessable entity (422).
     UnprocessableEntity,
     /// Internal server error (500).
     InternalError,
+    /// Invalid refresh token (401).
+    InvalidRefreshToken,
+    /// Refresh token expired (401).
+    RefreshTokenExpired,
 }
 
 impl ErrorCode {
@@ -36,9 +48,15 @@ impl ErrorCode {
         match self {
             ErrorCode::BadRequest => StatusCode::BAD_REQUEST,
             ErrorCode::Unauthorized => StatusCode::UNAUTHORIZED,
+            ErrorCode::InvalidCredentials => StatusCode::UNAUTHORIZED,
+            ErrorCode::InvalidRefreshToken => StatusCode::UNAUTHORIZED,
+            ErrorCode::RefreshTokenExpired => StatusCode::UNAUTHORIZED,
             ErrorCode::Forbidden => StatusCode::FORBIDDEN,
+            ErrorCode::AccountDisabled => StatusCode::FORBIDDEN,
             ErrorCode::NotFound => StatusCode::NOT_FOUND,
+            ErrorCode::UserNotFound => StatusCode::NOT_FOUND,
             ErrorCode::Conflict => StatusCode::CONFLICT,
+            ErrorCode::UsernameTaken => StatusCode::CONFLICT,
             ErrorCode::ValidationError => StatusCode::UNPROCESSABLE_ENTITY,
             ErrorCode::UnprocessableEntity => StatusCode::UNPROCESSABLE_ENTITY,
             ErrorCode::InternalError => StatusCode::INTERNAL_SERVER_ERROR,
@@ -106,9 +124,29 @@ impl ApiError {
         Self::new(ErrorCode::Unauthorized, message)
     }
 
+    /// Create an invalid credentials error.
+    pub fn invalid_credentials() -> Self {
+        Self::new(ErrorCode::InvalidCredentials, "Invalid credentials")
+    }
+
+    /// Create an invalid refresh token error.
+    pub fn invalid_refresh_token() -> Self {
+        Self::new(ErrorCode::InvalidRefreshToken, "Invalid refresh token")
+    }
+
+    /// Create a refresh token expired error.
+    pub fn refresh_token_expired() -> Self {
+        Self::new(ErrorCode::RefreshTokenExpired, "Refresh token expired")
+    }
+
     /// Create a forbidden error.
     pub fn forbidden(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::Forbidden, message)
+    }
+
+    /// Create an account disabled error.
+    pub fn account_disabled() -> Self {
+        Self::new(ErrorCode::AccountDisabled, "Account is disabled")
     }
 
     /// Create a not found error.
@@ -116,9 +154,19 @@ impl ApiError {
         Self::new(ErrorCode::NotFound, message)
     }
 
+    /// Create a user not found error.
+    pub fn user_not_found() -> Self {
+        Self::new(ErrorCode::UserNotFound, "User not found")
+    }
+
     /// Create a conflict error.
     pub fn conflict(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::Conflict, message)
+    }
+
+    /// Create a username taken error.
+    pub fn username_taken() -> Self {
+        Self::new(ErrorCode::UsernameTaken, "Username already taken")
     }
 
     /// Create an unprocessable entity error.
