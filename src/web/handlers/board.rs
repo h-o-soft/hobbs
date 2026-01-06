@@ -5,6 +5,7 @@ use axum::{
     Json,
 };
 use std::sync::Arc;
+use utoipa;
 
 use crate::board::{
     BoardRepository, BoardType, NewFlatPost, NewThread, NewThreadPost, PostRepository,
@@ -20,6 +21,14 @@ use crate::web::handlers::AppState;
 use crate::web::middleware::{AuthUser, OptionalAuthUser};
 
 /// GET /api/boards - List all accessible boards.
+#[utoipa::path(
+    get,
+    path = "/boards",
+    tag = "boards",
+    responses(
+        (status = 200, description = "List of accessible boards", body = Vec<BoardResponse>)
+    )
+)]
 pub async fn list_boards(
     State(state): State<Arc<AppState>>,
     OptionalAuthUser(auth): OptionalAuthUser,
@@ -68,6 +77,18 @@ pub async fn list_boards(
 }
 
 /// GET /api/boards/:id - Get board details.
+#[utoipa::path(
+    get,
+    path = "/boards/{id}",
+    tag = "boards",
+    params(
+        ("id" = i64, Path, description = "Board ID")
+    ),
+    responses(
+        (status = 200, description = "Board details", body = BoardResponse),
+        (status = 404, description = "Board not found")
+    )
+)]
 pub async fn get_board(
     State(state): State<Arc<AppState>>,
     OptionalAuthUser(auth): OptionalAuthUser,
@@ -121,6 +142,21 @@ pub async fn get_board(
 }
 
 /// GET /api/boards/:id/threads - List threads in a board.
+#[utoipa::path(
+    get,
+    path = "/boards/{id}/threads",
+    tag = "boards",
+    params(
+        ("id" = i64, Path, description = "Board ID"),
+        ("page" = Option<u32>, Query, description = "Page number"),
+        ("per_page" = Option<u32>, Query, description = "Items per page")
+    ),
+    responses(
+        (status = 200, description = "List of threads", body = Vec<ThreadResponse>),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Board not found")
+    )
+)]
 pub async fn list_threads(
     State(state): State<Arc<AppState>>,
     OptionalAuthUser(auth): OptionalAuthUser,
@@ -214,6 +250,24 @@ pub async fn list_threads(
 }
 
 /// POST /api/boards/:id/threads - Create a new thread.
+#[utoipa::path(
+    post,
+    path = "/boards/{id}/threads",
+    tag = "boards",
+    params(
+        ("id" = i64, Path, description = "Board ID")
+    ),
+    request_body = CreateThreadRequest,
+    responses(
+        (status = 200, description = "Thread created", body = ThreadResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Access denied")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn create_thread(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -310,6 +364,22 @@ pub async fn create_thread(
 }
 
 /// GET /api/boards/:id/posts - List posts in a flat board.
+#[utoipa::path(
+    get,
+    path = "/boards/{id}/posts",
+    tag = "boards",
+    params(
+        ("id" = i64, Path, description = "Board ID"),
+        ("page" = Option<u32>, Query, description = "Page number"),
+        ("per_page" = Option<u32>, Query, description = "Items per page")
+    ),
+    responses(
+        (status = 200, description = "List of posts", body = Vec<PostResponse>),
+        (status = 400, description = "Board type mismatch"),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Board not found")
+    )
+)]
 pub async fn list_flat_posts(
     State(state): State<Arc<AppState>>,
     OptionalAuthUser(auth): OptionalAuthUser,
@@ -405,6 +475,24 @@ pub async fn list_flat_posts(
 }
 
 /// POST /api/boards/:id/posts - Create a post in a flat board.
+#[utoipa::path(
+    post,
+    path = "/boards/{id}/posts",
+    tag = "boards",
+    params(
+        ("id" = i64, Path, description = "Board ID")
+    ),
+    request_body = CreateFlatPostRequest,
+    responses(
+        (status = 200, description = "Post created", body = PostResponse),
+        (status = 400, description = "Invalid input or board type mismatch"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Access denied")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn create_flat_post(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -486,6 +574,19 @@ pub async fn create_flat_post(
 }
 
 /// GET /api/threads/:id - Get thread details.
+#[utoipa::path(
+    get,
+    path = "/threads/{id}",
+    tag = "threads",
+    params(
+        ("id" = i64, Path, description = "Thread ID")
+    ),
+    responses(
+        (status = 200, description = "Thread details", body = ThreadResponse),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Thread not found")
+    )
+)]
 pub async fn get_thread(
     State(state): State<Arc<AppState>>,
     OptionalAuthUser(auth): OptionalAuthUser,
@@ -554,6 +655,21 @@ pub async fn get_thread(
 }
 
 /// GET /api/threads/:id/posts - List posts in a thread.
+#[utoipa::path(
+    get,
+    path = "/threads/{id}/posts",
+    tag = "threads",
+    params(
+        ("id" = i64, Path, description = "Thread ID"),
+        ("page" = Option<u32>, Query, description = "Page number"),
+        ("per_page" = Option<u32>, Query, description = "Items per page")
+    ),
+    responses(
+        (status = 200, description = "List of posts", body = Vec<PostResponse>),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Thread not found")
+    )
+)]
 pub async fn list_thread_posts(
     State(state): State<Arc<AppState>>,
     OptionalAuthUser(auth): OptionalAuthUser,
@@ -653,6 +769,25 @@ pub async fn list_thread_posts(
 }
 
 /// POST /api/threads/:id/posts - Reply to a thread.
+#[utoipa::path(
+    post,
+    path = "/threads/{id}/posts",
+    tag = "threads",
+    params(
+        ("id" = i64, Path, description = "Thread ID")
+    ),
+    request_body = CreatePostRequest,
+    responses(
+        (status = 200, description = "Post created", body = PostResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Thread not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn create_thread_post(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -740,6 +875,23 @@ pub async fn create_thread_post(
 }
 
 /// DELETE /api/posts/:id - Delete a post.
+#[utoipa::path(
+    delete,
+    path = "/posts/{id}",
+    tag = "posts",
+    params(
+        ("id" = i64, Path, description = "Post ID")
+    ),
+    responses(
+        (status = 200, description = "Post deleted"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Cannot delete other user's post"),
+        (status = 404, description = "Post not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn delete_post(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,

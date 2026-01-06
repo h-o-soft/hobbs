@@ -5,6 +5,7 @@ use axum::{
     Json,
 };
 use std::sync::Arc;
+use utoipa;
 
 use crate::db::UserRepository;
 use crate::mail::{MailRepository, MailUpdate, NewMail};
@@ -17,6 +18,22 @@ use crate::web::handlers::AppState;
 use crate::web::middleware::AuthUser;
 
 /// GET /api/mail/inbox - List received mails.
+#[utoipa::path(
+    get,
+    path = "/mail/inbox",
+    tag = "mail",
+    params(
+        ("page" = Option<u32>, Query, description = "Page number"),
+        ("per_page" = Option<u32>, Query, description = "Items per page")
+    ),
+    responses(
+        (status = 200, description = "List of received mails", body = Vec<MailListResponse>),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn list_inbox(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -102,6 +119,22 @@ pub async fn list_inbox(
 }
 
 /// GET /api/mail/sent - List sent mails.
+#[utoipa::path(
+    get,
+    path = "/mail/sent",
+    tag = "mail",
+    params(
+        ("page" = Option<u32>, Query, description = "Page number"),
+        ("per_page" = Option<u32>, Query, description = "Items per page")
+    ),
+    responses(
+        (status = 200, description = "List of sent mails", body = Vec<MailListResponse>),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn list_sent(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -187,6 +220,23 @@ pub async fn list_sent(
 }
 
 /// GET /api/mail/:id - Get mail details.
+#[utoipa::path(
+    get,
+    path = "/mail/{id}",
+    tag = "mail",
+    params(
+        ("id" = i64, Path, description = "Mail ID")
+    ),
+    responses(
+        (status = 200, description = "Mail details", body = MailDetailResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Mail not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn get_mail(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -274,6 +324,21 @@ pub async fn get_mail(
 }
 
 /// POST /api/mail - Send a mail.
+#[utoipa::path(
+    post,
+    path = "/mail",
+    tag = "mail",
+    request_body = SendMailRequest,
+    responses(
+        (status = 200, description = "Mail sent", body = MailDetailResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Recipient not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn send_mail(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -361,6 +426,23 @@ pub async fn send_mail(
 }
 
 /// DELETE /api/mail/:id - Delete a mail.
+#[utoipa::path(
+    delete,
+    path = "/mail/{id}",
+    tag = "mail",
+    params(
+        ("id" = i64, Path, description = "Mail ID")
+    ),
+    responses(
+        (status = 200, description = "Mail deleted"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Mail not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn delete_mail(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -398,6 +480,18 @@ pub async fn delete_mail(
 }
 
 /// GET /api/mail/unread-count - Get unread mail count.
+#[utoipa::path(
+    get,
+    path = "/mail/unread-count",
+    tag = "mail",
+    responses(
+        (status = 200, description = "Unread mail count", body = UnreadCountResponse),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn get_unread_count(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,

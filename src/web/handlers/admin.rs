@@ -5,6 +5,7 @@ use axum::{
     Json,
 };
 use std::sync::Arc;
+use utoipa;
 
 use crate::auth::hash_password;
 use crate::board::{BoardRepository, BoardType, BoardUpdate, NewBoard};
@@ -45,6 +46,23 @@ fn require_sysop(claims: &crate::web::middleware::JwtClaims) -> Result<Role, Api
 // ============================================================================
 
 /// GET /api/admin/users - List all users (admin).
+#[utoipa::path(
+    get,
+    path = "/admin/users",
+    tag = "admin",
+    params(
+        ("page" = Option<u32>, Query, description = "Page number"),
+        ("per_page" = Option<u32>, Query, description = "Items per page")
+    ),
+    responses(
+        (status = 200, description = "List of all users", body = Vec<AdminUserResponse>),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Admin access required")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn admin_list_users(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -97,6 +115,25 @@ pub async fn admin_list_users(
 }
 
 /// PUT /api/admin/users/:id - Update user info (admin).
+#[utoipa::path(
+    put,
+    path = "/admin/users/{id}",
+    tag = "admin",
+    params(
+        ("id" = i64, Path, description = "User ID")
+    ),
+    request_body = AdminUpdateUserRequest,
+    responses(
+        (status = 200, description = "User updated", body = AdminUserResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Admin access required"),
+        (status = 404, description = "User not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn admin_update_user(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -161,6 +198,25 @@ pub async fn admin_update_user(
 }
 
 /// PUT /api/admin/users/:id/role - Update user role (SysOp only).
+#[utoipa::path(
+    put,
+    path = "/admin/users/{id}/role",
+    tag = "admin",
+    params(
+        ("id" = i64, Path, description = "User ID")
+    ),
+    request_body = AdminUpdateRoleRequest,
+    responses(
+        (status = 200, description = "Role updated", body = AdminUserResponse),
+        (status = 400, description = "Invalid role or cannot change own role"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "SysOp access required"),
+        (status = 404, description = "User not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn admin_update_role(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -209,6 +265,25 @@ pub async fn admin_update_role(
 }
 
 /// PUT /api/admin/users/:id/status - Update user status (admin).
+#[utoipa::path(
+    put,
+    path = "/admin/users/{id}/status",
+    tag = "admin",
+    params(
+        ("id" = i64, Path, description = "User ID")
+    ),
+    request_body = AdminUpdateStatusRequest,
+    responses(
+        (status = 200, description = "Status updated", body = AdminUserResponse),
+        (status = 400, description = "Cannot change own status"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Admin access required"),
+        (status = 404, description = "User not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn admin_update_status(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -252,6 +327,25 @@ pub async fn admin_update_status(
 }
 
 /// POST /api/admin/users/:id/reset-password - Reset user password (admin).
+#[utoipa::path(
+    post,
+    path = "/admin/users/{id}/reset-password",
+    tag = "admin",
+    params(
+        ("id" = i64, Path, description = "User ID")
+    ),
+    request_body = AdminResetPasswordRequest,
+    responses(
+        (status = 200, description = "Password reset"),
+        (status = 400, description = "Password too short"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Admin access required"),
+        (status = 404, description = "User not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn admin_reset_password(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -295,6 +389,19 @@ pub async fn admin_reset_password(
 // ============================================================================
 
 /// GET /api/admin/boards - List all boards (admin).
+#[utoipa::path(
+    get,
+    path = "/admin/boards",
+    tag = "admin",
+    responses(
+        (status = 200, description = "List of all boards", body = Vec<AdminBoardResponse>),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Admin access required")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn admin_list_boards(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -330,6 +437,21 @@ pub async fn admin_list_boards(
 }
 
 /// POST /api/admin/boards - Create a board (admin).
+#[utoipa::path(
+    post,
+    path = "/admin/boards",
+    tag = "admin",
+    request_body = AdminCreateBoardRequest,
+    responses(
+        (status = 200, description = "Board created", body = AdminBoardResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Admin access required")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn admin_create_board(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -393,6 +515,25 @@ pub async fn admin_create_board(
 }
 
 /// PUT /api/admin/boards/:id - Update a board (admin).
+#[utoipa::path(
+    put,
+    path = "/admin/boards/{id}",
+    tag = "admin",
+    params(
+        ("id" = i64, Path, description = "Board ID")
+    ),
+    request_body = AdminUpdateBoardRequest,
+    responses(
+        (status = 200, description = "Board updated", body = AdminBoardResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Admin access required"),
+        (status = 404, description = "Board not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn admin_update_board(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -472,6 +613,23 @@ pub async fn admin_update_board(
 }
 
 /// DELETE /api/admin/boards/:id - Delete a board (admin).
+#[utoipa::path(
+    delete,
+    path = "/admin/boards/{id}",
+    tag = "admin",
+    params(
+        ("id" = i64, Path, description = "Board ID")
+    ),
+    responses(
+        (status = 200, description = "Board deleted"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Admin access required"),
+        (status = 404, description = "Board not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn admin_delete_board(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -501,6 +659,19 @@ pub async fn admin_delete_board(
 // ============================================================================
 
 /// GET /api/admin/folders - List all folders (admin).
+#[utoipa::path(
+    get,
+    path = "/admin/folders",
+    tag = "admin",
+    responses(
+        (status = 200, description = "List of all folders", body = Vec<AdminFolderResponse>),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Admin access required")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn admin_list_folders(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -544,6 +715,21 @@ pub async fn admin_list_folders(
 }
 
 /// POST /api/admin/folders - Create a folder (admin).
+#[utoipa::path(
+    post,
+    path = "/admin/folders",
+    tag = "admin",
+    request_body = AdminCreateFolderRequest,
+    responses(
+        (status = 200, description = "Folder created", body = AdminFolderResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Admin access required")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn admin_create_folder(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -604,6 +790,25 @@ pub async fn admin_create_folder(
 }
 
 /// PUT /api/admin/folders/:id - Update a folder (admin).
+#[utoipa::path(
+    put,
+    path = "/admin/folders/{id}",
+    tag = "admin",
+    params(
+        ("id" = i64, Path, description = "Folder ID")
+    ),
+    request_body = AdminUpdateFolderRequest,
+    responses(
+        (status = 200, description = "Folder updated", body = AdminFolderResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Admin access required"),
+        (status = 404, description = "Folder not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn admin_update_folder(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -679,6 +884,24 @@ pub async fn admin_update_folder(
 }
 
 /// DELETE /api/admin/folders/:id - Delete a folder (admin).
+#[utoipa::path(
+    delete,
+    path = "/admin/folders/{id}",
+    tag = "admin",
+    params(
+        ("id" = i64, Path, description = "Folder ID")
+    ),
+    responses(
+        (status = 200, description = "Folder deleted"),
+        (status = 400, description = "Cannot delete folder with files"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Admin access required"),
+        (status = 404, description = "Folder not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn admin_delete_folder(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,

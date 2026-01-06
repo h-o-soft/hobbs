@@ -10,6 +10,8 @@ use std::sync::Arc;
 use tower::ServiceBuilder;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 use crate::chat::ChatRoomManager;
 use crate::config::WebConfig;
@@ -82,6 +84,7 @@ use super::middleware::{
     api_rate_limit, create_cors_layer, jwt_auth, login_rate_limit, security_headers, JwtState,
     RateLimitState,
 };
+use super::openapi::ApiDoc;
 use super::ws::{chat_ws_handler, ChatWsState};
 
 /// Create the main API router.
@@ -268,6 +271,11 @@ pub fn create_health_router() -> Router {
 /// Health check handler.
 async fn health_check() -> &'static str {
     "OK"
+}
+
+/// Create the Swagger UI router for API documentation.
+pub fn create_swagger_router() -> Router {
+    Router::new().merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()))
 }
 
 /// Create a static file serving router for SPA.

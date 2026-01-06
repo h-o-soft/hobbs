@@ -37,6 +37,8 @@ tower-http = { version = "0.5", features = ["cors", "trace", "fs", "set-header"]
 jsonwebtoken = "9"
 governor = "0.6"
 mime_guess = "2"
+utoipa = { version = "4", features = ["axum_extras", "chrono"] }
+utoipa-swagger-ui = { version = "7", features = ["axum"] }
 
 [dev-dependencies]
 tempfile = "3"
