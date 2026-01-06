@@ -94,6 +94,7 @@ pub enum AdminError {
 ///     created_at: "2024-01-01".to_string(),
 ///     last_login: None,
 ///     is_active: true,
+///     auto_paging: false,
 /// };
 ///
 /// assert!(require_admin(Some(&subop)).is_ok());
