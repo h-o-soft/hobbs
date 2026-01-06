@@ -1,14 +1,30 @@
-import { type Component, createResource, createSignal, For, Show } from 'solid-js';
+import { type Component, createResource, createSignal, For, Show, onMount } from 'solid-js';
+import { useSearchParams } from '@solidjs/router';
 import { PageLoading, Pagination, Button, Input, Textarea, Modal, Alert, Empty, UserLink } from '../components';
 import * as mailApi from '../api/mail';
 import type { MailListItem, Mail } from '../types';
 
 export const MailPage: Component = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = createSignal<'inbox' | 'sent'>('inbox');
   const [page, setPage] = createSignal(1);
   const [selectedMail, setSelectedMail] = createSignal<Mail | null>(null);
   const [showCompose, setShowCompose] = createSignal(false);
   const [replyTo, setReplyTo] = createSignal<Mail | null>(null);
+  const [defaultRecipient, setDefaultRecipient] = createSignal<string>('');
+
+  // Handle ?to=username query parameter
+  onMount(() => {
+    const toParam = searchParams.to;
+    if (toParam) {
+      // Handle both string and string[] cases
+      const recipient = Array.isArray(toParam) ? toParam[0] : toParam;
+      setDefaultRecipient(recipient);
+      setShowCompose(true);
+      // Clear the query parameter
+      setSearchParams({ to: undefined });
+    }
+  });
 
   const [inbox, { refetch: refetchInbox }] = createResource(
     () => ({ tab: activeTab(), page: page() }),
@@ -62,6 +78,7 @@ export const MailPage: Component = () => {
   const handleComposed = () => {
     setShowCompose(false);
     setReplyTo(null);
+    setDefaultRecipient('');
     refetchSent();
   };
 
@@ -192,14 +209,15 @@ export const MailPage: Component = () => {
       {/* Compose Modal */}
       <Modal
         isOpen={showCompose()}
-        onClose={() => { setShowCompose(false); setReplyTo(null); }}
+        onClose={() => { setShowCompose(false); setReplyTo(null); setDefaultRecipient(''); }}
         title={replyTo() ? '返信' : '新規メール'}
         size="lg"
       >
         <ComposeForm
           replyTo={replyTo()}
+          defaultRecipient={defaultRecipient()}
           onSuccess={handleComposed}
-          onCancel={() => { setShowCompose(false); setReplyTo(null); }}
+          onCancel={() => { setShowCompose(false); setReplyTo(null); setDefaultRecipient(''); }}
         />
       </Modal>
     </div>
@@ -229,12 +247,13 @@ const TabButton: Component<TabButtonProps> = (props) => {
 
 interface ComposeFormProps {
   replyTo: Mail | null;
+  defaultRecipient?: string;
   onSuccess: () => void;
   onCancel: () => void;
 }
 
 const ComposeForm: Component<ComposeFormProps> = (props) => {
-  const [to, setTo] = createSignal(props.replyTo?.sender.username || '');
+  const [to, setTo] = createSignal(props.replyTo?.sender.username || props.defaultRecipient || '');
   const [subject, setSubject] = createSignal(
     props.replyTo ? `Re: ${props.replyTo.subject}` : ''
   );

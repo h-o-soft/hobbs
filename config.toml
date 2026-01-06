@@ -78,6 +78,6 @@ jwt_access_token_expiry_secs = 900
 # Refresh token expiry in days (default: 7)
 jwt_refresh_token_expiry_days = 7
 # Whether to serve static files (SPA)
-serve_static = false
+serve_static = true
 # Path to static files directory
 static_path = "web/dist"
