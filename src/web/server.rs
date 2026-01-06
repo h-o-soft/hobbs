@@ -13,7 +13,7 @@ use crate::Database;
 
 use super::handlers::{AppState, SharedDatabase};
 use super::middleware::JwtState;
-use super::router::{create_health_router, create_router, create_static_router};
+use super::router::{create_health_router, create_router, create_static_router, create_swagger_router};
 
 /// Web server for the API.
 pub struct WebServer {
@@ -103,7 +103,8 @@ impl WebServer {
             self.chat_manager,
             &self.web_config,
         )
-        .merge(create_health_router());
+        .merge(create_health_router())
+        .merge(create_swagger_router());
 
         // Add static file serving if enabled
         if self.web_config.serve_static {
@@ -130,7 +131,8 @@ impl WebServer {
             self.chat_manager,
             &self.web_config,
         )
-        .merge(create_health_router());
+        .merge(create_health_router())
+        .merge(create_swagger_router());
 
         // Add static file serving if enabled
         if self.web_config.serve_static {

@@ -4,6 +4,7 @@ use axum::{extract::State, Json};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use utoipa;
 
 use crate::chat::ChatRoomManager;
 use crate::db::{NewRefreshToken, NewUser, RefreshTokenRepository, UserRepository};
@@ -101,6 +102,17 @@ impl AppState {
 }
 
 /// POST /api/auth/login - User login.
+#[utoipa::path(
+    post,
+    path = "/auth/login",
+    tag = "auth",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Login successful", body = LoginResponse),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Invalid credentials")
+    )
+)]
 pub async fn login(
     State(state): State<Arc<AppState>>,
     Json(req): Json<LoginRequest>,
@@ -172,6 +184,15 @@ pub async fn login(
 }
 
 /// POST /api/auth/logout - User logout.
+#[utoipa::path(
+    post,
+    path = "/auth/logout",
+    tag = "auth",
+    request_body = LogoutRequest,
+    responses(
+        (status = 200, description = "Logout successful")
+    )
+)]
 pub async fn logout(
     State(state): State<Arc<AppState>>,
     Json(req): Json<LogoutRequest>,
@@ -185,6 +206,16 @@ pub async fn logout(
 }
 
 /// POST /api/auth/refresh - Refresh access token.
+#[utoipa::path(
+    post,
+    path = "/auth/refresh",
+    tag = "auth",
+    request_body = RefreshRequest,
+    responses(
+        (status = 200, description = "Token refreshed", body = RefreshResponse),
+        (status = 401, description = "Invalid or expired refresh token")
+    )
+)]
 pub async fn refresh(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RefreshRequest>,
@@ -252,6 +283,17 @@ pub async fn refresh(
 }
 
 /// POST /api/auth/register - User registration.
+#[utoipa::path(
+    post,
+    path = "/auth/register",
+    tag = "auth",
+    request_body = RegisterRequest,
+    responses(
+        (status = 200, description = "Registration successful", body = LoginResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 422, description = "Validation error")
+    )
+)]
 pub async fn register(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RegisterRequest>,
@@ -330,6 +372,18 @@ pub async fn register(
 }
 
 /// GET /api/auth/me - Get current user info.
+#[utoipa::path(
+    get,
+    path = "/auth/me",
+    tag = "auth",
+    responses(
+        (status = 200, description = "Current user info", body = MeResponse),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn me(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,

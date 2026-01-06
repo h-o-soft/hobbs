@@ -1,13 +1,14 @@
 //! Request DTOs for Web API.
 
 use serde::Deserialize;
+use utoipa::ToSchema;
 
 // ============================================================================
 // Auth DTOs
 // ============================================================================
 
 /// Login request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct LoginRequest {
     /// Username.
     pub username: String,
@@ -16,21 +17,21 @@ pub struct LoginRequest {
 }
 
 /// Logout request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct LogoutRequest {
     /// Refresh token to invalidate.
     pub refresh_token: String,
 }
 
 /// Token refresh request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct RefreshRequest {
     /// Refresh token.
     pub refresh_token: String,
 }
 
 /// User registration request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct RegisterRequest {
     /// Username.
     pub username: String,
@@ -48,7 +49,7 @@ pub struct RegisterRequest {
 // ============================================================================
 
 /// Pagination query parameters.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct PaginationQuery {
     /// Page number (1-indexed).
     #[serde(default = "default_page")]
@@ -81,7 +82,7 @@ impl PaginationQuery {
 // ============================================================================
 
 /// Create thread request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateThreadRequest {
     /// Thread title.
     pub title: String,
@@ -90,14 +91,14 @@ pub struct CreateThreadRequest {
 }
 
 /// Create post request (for thread-based boards).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreatePostRequest {
     /// Post body.
     pub body: String,
 }
 
 /// Create flat post request (for flat boards).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateFlatPostRequest {
     /// Post title.
     pub title: String,
@@ -110,7 +111,7 @@ pub struct CreateFlatPostRequest {
 // ============================================================================
 
 /// Send mail request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct SendMailRequest {
     /// Recipient username or user ID.
     pub recipient: String,
@@ -125,7 +126,7 @@ pub struct SendMailRequest {
 // ============================================================================
 
 /// Update profile request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateProfileRequest {
     /// New nickname.
     #[serde(default)]
@@ -139,7 +140,7 @@ pub struct UpdateProfileRequest {
 }
 
 /// Change password request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ChangePasswordRequest {
     /// Current password.
     pub current_password: String,
@@ -152,7 +153,7 @@ pub struct ChangePasswordRequest {
 // ============================================================================
 
 /// Update user request (admin).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AdminUpdateUserRequest {
     /// New nickname.
     #[serde(default)]
@@ -166,28 +167,28 @@ pub struct AdminUpdateUserRequest {
 }
 
 /// Update user role request (admin).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AdminUpdateRoleRequest {
     /// New role (guest, member, subop, sysop).
     pub role: String,
 }
 
 /// Update user status request (admin).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AdminUpdateStatusRequest {
     /// Whether the user is active.
     pub is_active: bool,
 }
 
 /// Reset password request (admin).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AdminResetPasswordRequest {
     /// New password.
     pub new_password: String,
 }
 
 /// Create board request (admin).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AdminCreateBoardRequest {
     /// Board name.
     pub name: String,
@@ -221,7 +222,7 @@ fn default_member_role() -> String {
 }
 
 /// Update board request (admin).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AdminUpdateBoardRequest {
     /// Board name.
     #[serde(default)]
@@ -247,7 +248,7 @@ pub struct AdminUpdateBoardRequest {
 }
 
 /// Create folder request (admin).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AdminCreateFolderRequest {
     /// Folder name.
     pub name: String,
@@ -273,7 +274,7 @@ fn default_subop_role() -> String {
 }
 
 /// Update folder request (admin).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AdminUpdateFolderRequest {
     /// Folder name.
     #[serde(default)]
@@ -296,7 +297,7 @@ pub struct AdminUpdateFolderRequest {
 }
 
 /// Add RSS feed request (admin).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AdminAddFeedRequest {
     /// Feed URL.
     pub url: String,

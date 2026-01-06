@@ -1,13 +1,14 @@
 //! Response DTOs for Web API.
 
 use serde::Serialize;
+use utoipa::ToSchema;
 
 // ============================================================================
 // Generic Response Wrappers
 // ============================================================================
 
 /// Generic API response wrapper.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ApiResponse<T: Serialize> {
     /// Response data.
     pub data: T,
@@ -21,7 +22,7 @@ impl<T: Serialize> ApiResponse<T> {
 }
 
 /// Paginated response wrapper.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PaginatedResponse<T: Serialize> {
     /// Response data.
     pub data: Vec<T>,
@@ -44,7 +45,7 @@ impl<T: Serialize> PaginatedResponse<T> {
 }
 
 /// Pagination metadata.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PaginationMeta {
     /// Current page number.
     pub page: u32,
@@ -55,7 +56,7 @@ pub struct PaginationMeta {
 }
 
 /// Login response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct LoginResponse {
     /// Access token (JWT).
     pub access_token: String,
@@ -68,7 +69,7 @@ pub struct LoginResponse {
 }
 
 /// User information in responses.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UserInfo {
     /// User ID.
     pub id: i64,
@@ -81,7 +82,7 @@ pub struct UserInfo {
 }
 
 /// Token refresh response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct RefreshResponse {
     /// New access token.
     pub access_token: String,
@@ -92,7 +93,7 @@ pub struct RefreshResponse {
 }
 
 /// Current user response (for /api/auth/me).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MeResponse {
     /// User ID.
     pub id: i64,
@@ -119,7 +120,7 @@ pub struct MeResponse {
 // ============================================================================
 
 /// Board response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct BoardResponse {
     /// Board ID.
     pub id: i64,
@@ -143,7 +144,7 @@ pub struct BoardResponse {
 }
 
 /// Thread response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ThreadResponse {
     /// Thread ID.
     pub id: i64,
@@ -162,7 +163,7 @@ pub struct ThreadResponse {
 }
 
 /// Post response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PostResponse {
     /// Post ID.
     pub id: i64,
@@ -183,7 +184,7 @@ pub struct PostResponse {
 }
 
 /// Author information.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AuthorInfo {
     /// User ID.
     pub id: i64,
@@ -198,7 +199,7 @@ pub struct AuthorInfo {
 // ============================================================================
 
 /// Mail list item response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MailListResponse {
     /// Mail ID.
     pub id: i64,
@@ -215,7 +216,7 @@ pub struct MailListResponse {
 }
 
 /// Mail detail response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MailDetailResponse {
     /// Mail ID.
     pub id: i64,
@@ -234,7 +235,7 @@ pub struct MailDetailResponse {
 }
 
 /// Unread count response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UnreadCountResponse {
     /// Unread mail count.
     pub count: u64,
@@ -245,7 +246,7 @@ pub struct UnreadCountResponse {
 // ============================================================================
 
 /// User list response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UserListResponse {
     /// User ID.
     pub id: i64,
@@ -261,7 +262,7 @@ pub struct UserListResponse {
 }
 
 /// User detail response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UserDetailResponse {
     /// User ID.
     pub id: i64,
@@ -286,7 +287,7 @@ pub struct UserDetailResponse {
 // ============================================================================
 
 /// RSS feed response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct RssFeedResponse {
     /// Feed ID.
     pub id: i64,
@@ -308,7 +309,7 @@ pub struct RssFeedResponse {
 }
 
 /// RSS item response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct RssItemResponse {
     /// Item ID.
     pub id: i64,
@@ -335,7 +336,7 @@ pub struct RssItemResponse {
 // ============================================================================
 
 /// Folder response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct FolderResponse {
     /// Folder ID.
     pub id: i64,
@@ -358,7 +359,7 @@ pub struct FolderResponse {
 }
 
 /// File metadata response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct FileResponse {
     /// File ID.
     pub id: i64,
@@ -380,7 +381,7 @@ pub struct FileResponse {
 }
 
 /// File upload response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct FileUploadResponse {
     /// Uploaded file info.
     pub file: FileResponse,
@@ -391,7 +392,7 @@ pub struct FileUploadResponse {
 // ============================================================================
 
 /// Admin user response (includes more details).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AdminUserResponse {
     /// User ID.
     pub id: i64,
@@ -414,7 +415,7 @@ pub struct AdminUserResponse {
 }
 
 /// Admin board response (includes more details).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AdminBoardResponse {
     /// Board ID.
     pub id: i64,
@@ -438,7 +439,7 @@ pub struct AdminBoardResponse {
 }
 
 /// Admin folder response (includes more details).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AdminFolderResponse {
     /// Folder ID.
     pub id: i64,
