@@ -8,6 +8,7 @@ use axum::{
     Json,
 };
 use std::sync::Arc;
+use utoipa;
 
 use crate::db::{Role, UserRepository};
 use crate::file::{FileRepository, FolderRepository, NewFile};
@@ -20,6 +21,18 @@ use crate::web::handlers::AppState;
 use crate::web::middleware::AuthUser;
 
 /// GET /api/folders - List all accessible folders.
+#[utoipa::path(
+    get,
+    path = "/folders",
+    tag = "folders",
+    responses(
+        (status = 200, description = "List of accessible folders", body = Vec<FolderResponse>),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn list_folders(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -63,6 +76,23 @@ pub async fn list_folders(
 }
 
 /// GET /api/folders/:id - Get folder details.
+#[utoipa::path(
+    get,
+    path = "/folders/{id}",
+    tag = "folders",
+    params(
+        ("id" = i64, Path, description = "Folder ID")
+    ),
+    responses(
+        (status = 200, description = "Folder details", body = FolderResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Folder not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn get_folder(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -108,6 +138,25 @@ pub async fn get_folder(
 }
 
 /// GET /api/folders/:id/files - List files in a folder.
+#[utoipa::path(
+    get,
+    path = "/folders/{id}/files",
+    tag = "files",
+    params(
+        ("id" = i64, Path, description = "Folder ID"),
+        ("page" = Option<u32>, Query, description = "Page number"),
+        ("per_page" = Option<u32>, Query, description = "Items per page")
+    ),
+    responses(
+        (status = 200, description = "List of files in folder", body = Vec<FileResponse>),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Folder not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn list_files(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -198,6 +247,26 @@ pub async fn list_files(
 }
 
 /// POST /api/folders/:id/files - Upload a file.
+///
+/// Request body: multipart/form-data with "file" and optional "description" fields.
+#[utoipa::path(
+    post,
+    path = "/folders/{id}/files",
+    tag = "files",
+    params(
+        ("id" = i64, Path, description = "Folder ID")
+    ),
+    responses(
+        (status = 200, description = "File uploaded", body = FileUploadResponse),
+        (status = 400, description = "Invalid input or file too large"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Upload permission denied"),
+        (status = 404, description = "Folder not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn upload_file(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -346,6 +415,23 @@ pub async fn upload_file(
 }
 
 /// GET /api/files/:id - Get file metadata.
+#[utoipa::path(
+    get,
+    path = "/files/{id}",
+    tag = "files",
+    params(
+        ("id" = i64, Path, description = "File ID")
+    ),
+    responses(
+        (status = 200, description = "File metadata", body = FileResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "File not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn get_file(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -414,6 +500,23 @@ pub async fn get_file(
 }
 
 /// GET /api/files/:id/download - Download a file.
+#[utoipa::path(
+    get,
+    path = "/files/{id}/download",
+    tag = "files",
+    params(
+        ("id" = i64, Path, description = "File ID")
+    ),
+    responses(
+        (status = 200, description = "File content", content_type = "application/octet-stream"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "File not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn download_file(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -487,6 +590,23 @@ pub async fn download_file(
 }
 
 /// DELETE /api/files/:id - Delete a file.
+#[utoipa::path(
+    delete,
+    path = "/files/{id}",
+    tag = "files",
+    params(
+        ("id" = i64, Path, description = "File ID")
+    ),
+    responses(
+        (status = 200, description = "File deleted"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Delete permission denied"),
+        (status = 404, description = "File not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn delete_file(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,

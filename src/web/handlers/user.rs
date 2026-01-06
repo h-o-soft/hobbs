@@ -5,6 +5,7 @@ use axum::{
     Json,
 };
 use std::sync::Arc;
+use utoipa;
 
 use crate::auth::{hash_password, verify_password};
 use crate::db::{UserRepository, UserUpdate};
@@ -17,6 +18,22 @@ use crate::web::handlers::AppState;
 use crate::web::middleware::AuthUser;
 
 /// GET /api/users - List all users (paginated).
+#[utoipa::path(
+    get,
+    path = "/users",
+    tag = "users",
+    params(
+        ("page" = Option<u32>, Query, description = "Page number"),
+        ("per_page" = Option<u32>, Query, description = "Items per page")
+    ),
+    responses(
+        (status = 200, description = "List of users", body = Vec<UserListResponse>),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn list_users(
     State(state): State<Arc<AppState>>,
     AuthUser(_claims): AuthUser,
@@ -65,6 +82,22 @@ pub async fn list_users(
 }
 
 /// GET /api/users/:id - Get user profile by ID.
+#[utoipa::path(
+    get,
+    path = "/users/{id}",
+    tag = "users",
+    params(
+        ("id" = i64, Path, description = "User ID")
+    ),
+    responses(
+        (status = 200, description = "User profile", body = UserDetailResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "User not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn get_user(
     State(state): State<Arc<AppState>>,
     AuthUser(_claims): AuthUser,
@@ -102,6 +135,18 @@ pub async fn get_user(
 }
 
 /// GET /api/users/me - Get current user's profile.
+#[utoipa::path(
+    get,
+    path = "/users/me",
+    tag = "users",
+    responses(
+        (status = 200, description = "Current user's profile", body = UserDetailResponse),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn get_my_profile(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -133,6 +178,20 @@ pub async fn get_my_profile(
 }
 
 /// PUT /api/users/me - Update current user's profile.
+#[utoipa::path(
+    put,
+    path = "/users/me",
+    tag = "users",
+    request_body = UpdateProfileRequest,
+    responses(
+        (status = 200, description = "Profile updated", body = UserDetailResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn update_my_profile(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
@@ -198,6 +257,20 @@ pub async fn update_my_profile(
 }
 
 /// POST /api/users/me/password - Change current user's password.
+#[utoipa::path(
+    post,
+    path = "/users/me/password",
+    tag = "users",
+    request_body = ChangePasswordRequest,
+    responses(
+        (status = 200, description = "Password changed"),
+        (status = 400, description = "Invalid password"),
+        (status = 401, description = "Current password is incorrect")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn change_password(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
