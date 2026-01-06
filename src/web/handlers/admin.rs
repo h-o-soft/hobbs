@@ -11,13 +11,11 @@ use crate::auth::hash_password;
 use crate::board::{BoardRepository, BoardType, BoardUpdate, NewBoard};
 use crate::db::{Role, UserRepository, UserUpdate};
 use crate::file::{FileRepository, FolderRepository, FolderUpdate, NewFolder};
-use crate::rss::{NewRssFeed, RssFeedRepository};
 use crate::web::dto::{
-    AdminAddFeedRequest, AdminBoardResponse, AdminCreateBoardRequest, AdminCreateFolderRequest,
-    AdminFolderResponse, AdminResetPasswordRequest, AdminUpdateBoardRequest,
-    AdminUpdateFolderRequest, AdminUpdateRoleRequest, AdminUpdateStatusRequest,
-    AdminUpdateUserRequest, AdminUserResponse, ApiResponse, PaginatedResponse, PaginationQuery,
-    RssFeedResponse,
+    AdminBoardResponse, AdminCreateBoardRequest, AdminCreateFolderRequest, AdminFolderResponse,
+    AdminResetPasswordRequest, AdminUpdateBoardRequest, AdminUpdateFolderRequest,
+    AdminUpdateRoleRequest, AdminUpdateStatusRequest, AdminUpdateUserRequest, AdminUserResponse,
+    ApiResponse, PaginatedResponse, PaginationQuery,
 };
 use crate::web::error::ApiError;
 use crate::web::handlers::AppState;
@@ -933,78 +931,5 @@ pub async fn admin_delete_folder(
     Ok(Json(ApiResponse::new(())))
 }
 
-// ============================================================================
-// RSS Feed Management
-// ============================================================================
-
-/// POST /api/admin/rss/feeds - Add a new RSS feed (admin).
-pub async fn admin_add_feed(
-    State(state): State<Arc<AppState>>,
-    AuthUser(claims): AuthUser,
-    Json(req): Json<AdminAddFeedRequest>,
-) -> Result<Json<ApiResponse<RssFeedResponse>>, ApiError> {
-    require_subop(&claims)?;
-
-    // Validate URL
-    if req.url.trim().is_empty() {
-        return Err(ApiError::bad_request("Feed URL is required"));
-    }
-
-    // Parse URL to validate format
-    let parsed_url =
-        url::Url::parse(&req.url).map_err(|_| ApiError::bad_request("Invalid URL format"))?;
-
-    // Only allow http/https
-    if parsed_url.scheme() != "http" && parsed_url.scheme() != "https" {
-        return Err(ApiError::bad_request("Only HTTP/HTTPS URLs are allowed"));
-    }
-
-    // Use URL as temporary title until feed is fetched and parsed
-    let title = req.title.as_deref().unwrap_or(&req.url);
-    let new_feed = NewRssFeed::new(&req.url, title, claims.sub);
-
-    let feed = {
-        let db = state.db.lock().await;
-
-        RssFeedRepository::create(db.conn(), &new_feed).map_err(|e| {
-            tracing::error!("Failed to add RSS feed: {}", e);
-            ApiError::internal("Failed to add RSS feed")
-        })?
-    };
-
-    let response = RssFeedResponse {
-        id: feed.id,
-        url: feed.url,
-        title: feed.title,
-        description: feed.description,
-        site_url: feed.site_url,
-        last_fetched_at: feed.last_fetched_at.map(|dt| dt.to_rfc3339()),
-        is_active: feed.is_active,
-    };
-
-    Ok(Json(ApiResponse::new(response)))
-}
-
-/// DELETE /api/admin/rss/feeds/:id - Delete an RSS feed (admin).
-pub async fn admin_delete_feed(
-    State(state): State<Arc<AppState>>,
-    AuthUser(claims): AuthUser,
-    Path(feed_id): Path<i64>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
-    require_subop(&claims)?;
-
-    {
-        let db = state.db.lock().await;
-
-        let deleted = RssFeedRepository::delete(db.conn(), feed_id).map_err(|e| {
-            tracing::error!("Failed to delete RSS feed: {}", e);
-            ApiError::internal("Failed to delete RSS feed")
-        })?;
-
-        if !deleted {
-            return Err(ApiError::not_found("Feed not found"));
-        }
-    }
-
-    Ok(Json(ApiResponse::new(())))
-}
+// Note: Admin RSS management has been removed.
+// RSS is now a personal feature where each user manages their own feeds.

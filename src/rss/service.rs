@@ -352,12 +352,11 @@ mod tests {
     #[test]
     fn test_list_feeds_with_unread() {
         let db = setup_db();
-        let sysop = create_sysop(&db);
         let member = create_member(&db);
         let service = RssService::new(&db);
 
-        // Create feed and items
-        let feed = create_test_feed(&db, sysop.id);
+        // Create feed and items for member (personal RSS model)
+        let feed = create_test_feed(&db, member.id);
         create_test_items(&db, feed.id, 5);
 
         // List feeds for member (should show 5 unread)
@@ -383,10 +382,9 @@ mod tests {
         let feed = create_test_feed(&db, sysop.id);
         create_test_items(&db, feed.id, 5);
 
-        // Guest sees 0 unread (no tracking)
+        // Guest (None) cannot see any feeds in personal RSS model
         let feeds = service.list_feeds(None).unwrap();
-        assert_eq!(feeds.len(), 1);
-        assert_eq!(feeds[0].unread_count, 0);
+        assert_eq!(feeds.len(), 0);
     }
 
     #[test]

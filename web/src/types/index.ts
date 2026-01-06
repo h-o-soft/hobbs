@@ -202,10 +202,10 @@ export interface RssFeed {
   url: string;
   title: string;
   description?: string;
+  site_url?: string;
+  last_fetched_at?: string;
+  is_active: boolean;
   unread_count: number;
-  last_updated?: string;
-  error_count: number;
-  last_error?: string;
 }
 
 export interface RssItem {
@@ -214,8 +214,8 @@ export interface RssItem {
   title: string;
   link?: string;
   description?: string;
-  pub_date?: string;
-  is_read: boolean;
+  author?: string;
+  published_at?: string;
 }
 
 // Admin types

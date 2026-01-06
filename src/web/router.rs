@@ -21,11 +21,9 @@ use crate::config::WebConfig;
 
 use super::handlers::{
     // Admin handlers
-    admin_add_feed,
     admin_create_board,
     admin_create_folder,
     admin_delete_board,
-    admin_delete_feed,
     admin_delete_folder,
     admin_list_boards,
     admin_list_folders,
@@ -51,6 +49,8 @@ use super::handlers::{
     download_file,
     get_board,
     // RSS handlers
+    add_feed,
+    delete_feed,
     get_feed,
     get_file,
     get_folder,
@@ -172,9 +172,11 @@ pub fn create_router(
         .route("/by-username/:username", get(get_user_by_username))
         .route("/:id", get(get_user));
 
-    // RSS routes
+    // RSS routes (personal RSS reader)
     let rss_routes = Router::new()
         .route("/", get(list_feeds))
+        .route("/feeds", post(add_feed))
+        .route("/feeds/:id", delete(delete_feed))
         .route("/:id", get(get_feed))
         .route("/:id/items", get(list_items))
         .route("/:feed_id/items/:item_id", get(get_item))
@@ -213,15 +215,11 @@ pub fn create_router(
         .route("/:id", put(admin_update_folder))
         .route("/:id", delete(admin_delete_folder));
 
-    let admin_rss_routes = Router::new()
-        .route("/feeds", post(admin_add_feed))
-        .route("/feeds/:id", delete(admin_delete_feed));
-
+    // Note: Admin RSS routes removed - RSS is now personal per-user
     let admin_routes = Router::new()
         .nest("/users", admin_user_routes)
         .nest("/boards", admin_board_routes)
-        .nest("/folders", admin_folder_routes)
-        .nest("/rss", admin_rss_routes);
+        .nest("/folders", admin_folder_routes);
 
     // Chat WebSocket routes (if chat manager is provided)
     let chat_routes = if let Some(ref manager) = chat_manager {

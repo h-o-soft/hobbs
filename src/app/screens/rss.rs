@@ -4,7 +4,10 @@ use super::common::ScreenContext;
 use super::ScreenResult;
 use crate::datetime::format_datetime;
 use crate::error::Result;
-use crate::rss::{RssFeedRepository, RssItemRepository, RssReadPositionRepository};
+use crate::rss::{
+    fetch_feed, validate_url, NewRssFeed, NewRssItem, RssFeedRepository, RssItemRepository,
+    RssReadPositionRepository, MAX_ITEMS_PER_FEED,
+};
 use crate::server::TelnetSession;
 
 /// RSS screen handler.
@@ -87,20 +90,39 @@ impl RssScreen {
             )
             .await?;
 
-            // Prompt
-            ctx.send(session, &format!("[Q]={}: ", ctx.i18n.t("common.back")))
-                .await?;
+            // Prompt - show add/delete options for logged-in users
+            let prompt = if user_id.is_some() {
+                format!(
+                    "[A]={} [D]={} [Q]={}: ",
+                    ctx.i18n.t("rss.add_feed"),
+                    ctx.i18n.t("rss.delete_feed"),
+                    ctx.i18n.t("common.back")
+                )
+            } else {
+                format!("[Q]={}: ", ctx.i18n.t("common.back"))
+            };
+            ctx.send(session, &prompt).await?;
 
             let input = ctx.read_line(session).await?;
             let input = input.trim();
 
             match input.to_ascii_lowercase().as_str() {
                 "q" | "" => return Ok(ScreenResult::Back),
+                "a" if user_id.is_some() => {
+                    Self::add_feed(ctx, session).await?;
+                }
+                "d" if user_id.is_some() => {
+                    Self::delete_feed(ctx, session, &feeds).await?;
+                }
                 _ => {
                     if let Some(num) = ctx.parse_number(input) {
                         let idx = num as usize - 1;
                         if idx < feeds.len() {
-                            Self::show_feed(ctx, session, feeds[idx].feed.id).await?;
+                            // Check ownership before showing feed
+                            let feed = &feeds[idx].feed;
+                            if Some(feed.created_by) == user_id || user_id.is_none() {
+                                Self::show_feed(ctx, session, feed.id).await?;
+                            }
                         }
                     }
                 }
@@ -523,6 +545,210 @@ impl RssScreen {
             RssReadPositionRepository::mark_all_as_read(ctx.db.conn(), user_id, feed_id)?;
             ctx.send_line(session, ctx.i18n.t("rss.marked_all_read"))
                 .await?;
+        }
+
+        Ok(())
+    }
+
+    /// Add a new RSS feed.
+    async fn add_feed(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
+        let user_id = match session.user_id() {
+            Some(id) => id,
+            None => return Ok(()),
+        };
+
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("rss.add_feed")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        // Get URL
+        ctx.send(session, &format!("{}: ", ctx.i18n.t("rss.enter_url")))
+            .await?;
+        let url = ctx.read_line(session).await?;
+        let url = url.trim();
+
+        if url.is_empty() {
+            return Ok(());
+        }
+
+        // Validate URL
+        if let Err(e) = validate_url(url) {
+            ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("common.error"), e))
+                .await?;
+            ctx.send(session, ctx.i18n.t("common.press_enter")).await?;
+            ctx.read_line(session).await?;
+            return Ok(());
+        }
+
+        // Check if already subscribed
+        if RssFeedRepository::get_by_user_url(ctx.db.conn(), user_id, url)?.is_some() {
+            ctx.send_line(session, ctx.i18n.t("rss.already_subscribed"))
+                .await?;
+            ctx.send(session, ctx.i18n.t("common.press_enter")).await?;
+            ctx.read_line(session).await?;
+            return Ok(());
+        }
+
+        // Fetch and parse feed
+        ctx.send_line(session, ctx.i18n.t("rss.fetching")).await?;
+
+        match fetch_feed(url).await {
+            Ok(parsed) => {
+                // Create feed record
+                let mut new_feed = NewRssFeed::new(url, &parsed.title, user_id);
+                if let Some(desc) = parsed.description {
+                    new_feed = new_feed.with_description(desc);
+                }
+                if let Some(site_url) = parsed.site_url {
+                    new_feed = new_feed.with_site_url(site_url);
+                }
+
+                match RssFeedRepository::create(ctx.db.conn(), &new_feed) {
+                    Ok(feed) => {
+                        // Store initial items
+                        for item in parsed.items.into_iter().take(MAX_ITEMS_PER_FEED) {
+                            let mut new_item = NewRssItem::new(feed.id, &item.guid, &item.title);
+                            if let Some(link) = item.link {
+                                new_item = new_item.with_link(link);
+                            }
+                            if let Some(desc) = item.description {
+                                new_item = new_item.with_description(desc);
+                            }
+                            if let Some(author) = item.author {
+                                new_item = new_item.with_author(author);
+                            }
+                            if let Some(pub_date) = item.published_at {
+                                new_item = new_item.with_published_at(pub_date);
+                            }
+                            let _ = RssItemRepository::create_or_ignore(ctx.db.conn(), &new_item);
+                        }
+
+                        ctx.send_line(
+                            session,
+                            &ctx.i18n
+                                .t_with("rss.feed_added", &[("title", &feed.title)]),
+                        )
+                        .await?;
+                    }
+                    Err(e) => {
+                        ctx.send_line(
+                            session,
+                            &format!("{}: {}", ctx.i18n.t("common.error"), e),
+                        )
+                        .await?;
+                    }
+                }
+            }
+            Err(e) => {
+                ctx.send_line(
+                    session,
+                    &ctx.i18n.t_with("rss.fetch_error", &[("error", &e.to_string())]),
+                )
+                .await?;
+            }
+        }
+
+        ctx.send(session, ctx.i18n.t("common.press_enter")).await?;
+        ctx.read_line(session).await?;
+
+        Ok(())
+    }
+
+    /// Delete an RSS feed.
+    async fn delete_feed(
+        ctx: &mut ScreenContext,
+        session: &mut TelnetSession,
+        feeds: &[crate::rss::RssFeedWithUnread],
+    ) -> Result<()> {
+        let user_id = match session.user_id() {
+            Some(id) => id,
+            None => return Ok(()),
+        };
+
+        if feeds.is_empty() {
+            ctx.send_line(session, ctx.i18n.t("rss.no_feeds")).await?;
+            ctx.send(session, ctx.i18n.t("common.press_enter")).await?;
+            ctx.read_line(session).await?;
+            return Ok(());
+        }
+
+        ctx.send_line(session, "").await?;
+        ctx.send_line(
+            session,
+            &format!("=== {} ===", ctx.i18n.t("rss.delete_feed")),
+        )
+        .await?;
+        ctx.send_line(session, "").await?;
+
+        // Show numbered list
+        for (i, feed_with_unread) in feeds.iter().enumerate() {
+            let feed = &feed_with_unread.feed;
+            ctx.send_line(session, &format!("  {}: {}", i + 1, feed.title))
+                .await?;
+        }
+        ctx.send_line(session, "").await?;
+
+        // Get selection
+        ctx.send(
+            session,
+            &format!("{}: ", ctx.i18n.t("rss.enter_feed_number")),
+        )
+        .await?;
+        let input = ctx.read_line(session).await?;
+        let input = input.trim();
+
+        if input.is_empty() {
+            return Ok(());
+        }
+
+        if let Some(num) = ctx.parse_number(input) {
+            let idx = num as usize - 1;
+            if idx < feeds.len() {
+                let feed = &feeds[idx].feed;
+
+                // Check ownership
+                if feed.created_by != user_id {
+                    ctx.send_line(session, ctx.i18n.t("rss.not_your_feed"))
+                        .await?;
+                    ctx.send(session, ctx.i18n.t("common.press_enter")).await?;
+                    ctx.read_line(session).await?;
+                    return Ok(());
+                }
+
+                // Confirm
+                ctx.send(
+                    session,
+                    &ctx.i18n.t_with("rss.confirm_delete", &[("title", &feed.title)]),
+                )
+                .await?;
+                let confirm = ctx.read_line(session).await?;
+
+                if confirm.trim().eq_ignore_ascii_case("y") {
+                    match RssFeedRepository::delete(ctx.db.conn(), feed.id) {
+                        Ok(_) => {
+                            ctx.send_line(
+                                session,
+                                &ctx.i18n
+                                    .t_with("rss.feed_deleted", &[("title", &feed.title)]),
+                            )
+                            .await?;
+                        }
+                        Err(e) => {
+                            ctx.send_line(
+                                session,
+                                &format!("{}: {}", ctx.i18n.t("common.error"), e),
+                            )
+                            .await?;
+                        }
+                    }
+                    ctx.send(session, ctx.i18n.t("common.press_enter")).await?;
+                    ctx.read_line(session).await?;
+                }
+            }
         }
 
         Ok(())
