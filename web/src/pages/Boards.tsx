@@ -3,6 +3,8 @@ import { A, useParams } from '@solidjs/router';
 import { PageLoading, Pagination, Button, Input, Textarea, Modal, Alert, Empty, UserLink } from '../components';
 import * as boardApi from '../api/board';
 import { useI18n } from '../stores/i18n';
+import { useAuth } from '../stores/auth';
+import type { Post } from '../types';
 
 // Board List Page
 export const BoardsPage: Component = () => {
@@ -57,12 +59,21 @@ export const BoardsPage: Component = () => {
 // Board Detail Page (Thread list or Flat posts)
 export const BoardDetailPage: Component = () => {
   const { t } = useI18n();
+  const [auth] = useAuth();
   const params = useParams<{ id: string }>();
   const [page, setPage] = createSignal(1);
   const [showNewThread, setShowNewThread] = createSignal(false);
   const [showNewPost, setShowNewPost] = createSignal(false);
+  const [editingPost, setEditingPost] = createSignal<Post | null>(null);
 
   const boardId = () => parseInt(params.id);
+
+  const canEditPost = (post: Post) => {
+    if (!auth.user) return false;
+    const isAuthor = post.author.id === auth.user.id;
+    const isAdmin = auth.user.role === 'sysop' || auth.user.role === 'subop';
+    return isAuthor || isAdmin;
+  };
 
   const [board] = createResource(boardId, boardApi.getBoard);
 
@@ -89,6 +100,21 @@ export const BoardDetailPage: Component = () => {
 
   const handlePostCreated = () => {
     setShowNewPost(false);
+    refetchPosts();
+  };
+
+  const handleDeletePost = async (postId: number) => {
+    if (!confirm(t('boards.confirmDeletePost'))) return;
+    try {
+      await boardApi.deletePost(postId);
+      refetchPosts();
+    } catch (err) {
+      alert(t('boards.deletePostFailed'));
+    }
+  };
+
+  const handleEditSuccess = () => {
+    setEditingPost(null);
     refetchPosts();
   };
 
@@ -213,7 +239,15 @@ export const BoardDetailPage: Component = () => {
                             class="text-sm font-light"
                           />
                         </div>
-                        <span class="text-xs text-gray-500">{formatDate(post.created_at)}</span>
+                        <div class="flex items-center space-x-2">
+                          <span class="text-xs text-gray-500">{formatDate(post.created_at)}</span>
+                          <Show when={canEditPost(post)}>
+                            <PostActions
+                              onEdit={() => setEditingPost(post)}
+                              onDelete={() => handleDeletePost(post.id)}
+                            />
+                          </Show>
+                        </div>
                       </div>
                       <Show when={post.title}>
                         <h3 class="font-bold text-neon-cyan mb-2">{post.title}</h3>
@@ -260,6 +294,24 @@ export const BoardDetailPage: Component = () => {
             onCancel={() => setShowNewPost(false)}
           />
         </Modal>
+
+        {/* Edit Post Modal */}
+        <Modal
+          isOpen={editingPost() !== null}
+          onClose={() => setEditingPost(null)}
+          title={t('boards.editPost')}
+          size="lg"
+        >
+          <Show when={editingPost()}>
+            {(post) => (
+              <EditPostForm
+                post={post()}
+                onSuccess={handleEditSuccess}
+                onCancel={() => setEditingPost(null)}
+              />
+            )}
+          </Show>
+        </Modal>
       </Show>
     </div>
   );
@@ -268,10 +320,19 @@ export const BoardDetailPage: Component = () => {
 // Thread Detail Page
 export const ThreadDetailPage: Component = () => {
   const { t } = useI18n();
+  const [auth] = useAuth();
   const params = useParams<{ id: string }>();
   const [page, setPage] = createSignal(1);
+  const [editingPost, setEditingPost] = createSignal<Post | null>(null);
 
   const threadId = () => parseInt(params.id);
+
+  const canEditPost = (post: Post) => {
+    if (!auth.user) return false;
+    const isAuthor = post.author.id === auth.user.id;
+    const isAdmin = auth.user.role === 'sysop' || auth.user.role === 'subop';
+    return isAuthor || isAdmin;
+  };
 
   const [thread] = createResource(threadId, boardApi.getThread);
 
@@ -285,6 +346,21 @@ export const ThreadDetailPage: Component = () => {
   };
 
   const handlePostCreated = () => {
+    refetch();
+  };
+
+  const handleDeletePost = async (postId: number) => {
+    if (!confirm(t('boards.confirmDeletePost'))) return;
+    try {
+      await boardApi.deletePost(postId);
+      refetch();
+    } catch (err) {
+      alert(t('boards.deletePostFailed'));
+    }
+  };
+
+  const handleEditSuccess = () => {
+    setEditingPost(null);
     refetch();
   };
 
@@ -329,7 +405,15 @@ export const ThreadDetailPage: Component = () => {
                         class="text-sm font-light"
                       />
                     </div>
-                    <span class="text-xs text-gray-500">{formatDate(post.created_at)}</span>
+                    <div class="flex items-center space-x-2">
+                      <span class="text-xs text-gray-500">{formatDate(post.created_at)}</span>
+                      <Show when={canEditPost(post)}>
+                        <PostActions
+                          onEdit={() => setEditingPost(post)}
+                          onDelete={() => handleDeletePost(post.id)}
+                        />
+                      </Show>
+                    </div>
                   </div>
                   <div class="text-gray-300 whitespace-pre-wrap">{post.body}</div>
                 </div>
@@ -354,6 +438,24 @@ export const ThreadDetailPage: Component = () => {
             />
           </div>
         </Show>
+
+        {/* Edit Post Modal */}
+        <Modal
+          isOpen={editingPost() !== null}
+          onClose={() => setEditingPost(null)}
+          title={t('boards.editPost')}
+          size="lg"
+        >
+          <Show when={editingPost()}>
+            {(post) => (
+              <EditPostForm
+                post={post()}
+                onSuccess={handleEditSuccess}
+                onCancel={() => setEditingPost(null)}
+              />
+            )}
+          </Show>
+        </Modal>
       </Show>
     </div>
   );
@@ -555,6 +657,131 @@ const NewFlatPostForm: Component<NewFlatPostFormProps> = (props) => {
         </Button>
         <Button type="submit" variant="primary" loading={loading()}>
           {t('common.send')}
+        </Button>
+      </div>
+    </form>
+  );
+};
+
+// Post Actions Dropdown
+interface PostActionsProps {
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+const PostActions: Component<PostActionsProps> = (props) => {
+  const { t } = useI18n();
+  const [open, setOpen] = createSignal(false);
+
+  return (
+    <div class="relative">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(!open());
+        }}
+        class="p-1 text-gray-500 hover:text-neon-cyan transition-colors"
+      >
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+        </svg>
+      </button>
+      <Show when={open()}>
+        <div
+          class="absolute right-0 mt-1 w-32 bg-cyber-dark border border-neon-cyan/30 rounded shadow-lg z-10"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              setOpen(false);
+              props.onEdit();
+            }}
+            class="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-neon-cyan/10 hover:text-neon-cyan transition-colors"
+          >
+            {t('common.edit')}
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false);
+              props.onDelete();
+            }}
+            class="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-neon-pink/10 hover:text-neon-pink transition-colors"
+          >
+            {t('common.delete')}
+          </button>
+        </div>
+      </Show>
+    </div>
+  );
+};
+
+// Edit Post Form Component
+interface EditPostFormProps {
+  post: Post;
+  onSuccess: () => void;
+  onCancel: () => void;
+}
+
+const EditPostForm: Component<EditPostFormProps> = (props) => {
+  const { t } = useI18n();
+  const [title, setTitle] = createSignal(props.post.title || '');
+  const [body, setBody] = createSignal(props.post.body);
+  const [error, setError] = createSignal('');
+  const [loading, setLoading] = createSignal(false);
+
+  const handleSubmit = async (e: Event) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      await boardApi.updatePost(props.post.id, {
+        title: title() || undefined,
+        body: body(),
+      });
+      props.onSuccess();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError(t('boards.editPostFailed'));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} class="space-y-4">
+      <Show when={error()}>
+        <Alert type="error" onClose={() => setError('')}>
+          {error()}
+        </Alert>
+      </Show>
+
+      <Show when={props.post.title !== undefined}>
+        <Input
+          label={t('boards.postTitle')}
+          value={title()}
+          onInput={(e) => setTitle(e.currentTarget.value)}
+          maxLength={50}
+        />
+      </Show>
+
+      <Textarea
+        label={t('boards.postBody')}
+        value={body()}
+        onInput={(e) => setBody(e.currentTarget.value)}
+        required
+        rows={8}
+      />
+
+      <div class="flex justify-end space-x-3">
+        <Button type="button" variant="secondary" onClick={props.onCancel}>
+          {t('common.cancel')}
+        </Button>
+        <Button type="submit" variant="primary" loading={loading()}>
+          {t('common.save')}
         </Button>
       </div>
     </form>

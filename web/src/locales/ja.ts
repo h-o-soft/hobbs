@@ -97,6 +97,10 @@ export const dict = {
     createThreadFailed: 'スレッドの作成に失敗しました',
     createPostFailed: '投稿に失敗しました',
     replyPlaceholder: '返信を入力...',
+    editPost: '投稿を編集',
+    confirmDeletePost: 'この投稿を削除しますか？',
+    deletePostFailed: '投稿の削除に失敗しました',
+    editPostFailed: '投稿の編集に失敗しました',
   },
 
   // Mail
