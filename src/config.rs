@@ -257,6 +257,42 @@ impl Default for TerminalConfig {
     }
 }
 
+/// Rate limiting configuration for user actions.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RateLimitsConfig {
+    /// Maximum posts per minute.
+    #[serde(default = "default_post_rate_limit")]
+    pub post_per_minute: u32,
+    /// Maximum chat messages per 10 seconds.
+    #[serde(default = "default_chat_rate_limit")]
+    pub chat_per_10_seconds: u32,
+    /// Maximum mails per minute.
+    #[serde(default = "default_mail_rate_limit")]
+    pub mail_per_minute: u32,
+}
+
+fn default_post_rate_limit() -> u32 {
+    5
+}
+
+fn default_chat_rate_limit() -> u32 {
+    10
+}
+
+fn default_mail_rate_limit() -> u32 {
+    3
+}
+
+impl Default for RateLimitsConfig {
+    fn default() -> Self {
+        Self {
+            post_per_minute: default_post_rate_limit(),
+            chat_per_10_seconds: default_chat_rate_limit(),
+            mail_per_minute: default_mail_rate_limit(),
+        }
+    }
+}
+
 /// RSS configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RssConfig {
@@ -472,6 +508,9 @@ pub struct Config {
     /// Terminal configuration.
     #[serde(default)]
     pub terminal: TerminalConfig,
+    /// Rate limiting configuration.
+    #[serde(default)]
+    pub rate_limits: RateLimitsConfig,
     /// RSS configuration.
     #[serde(default)]
     pub rss: RssConfig,

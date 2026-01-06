@@ -561,3 +561,8 @@ total = "Total"
 view_in_browser = "View in browser: {{url}}"
 press_enter_next = "[Enter] for next, [Q] to quit"
 reading_complete = "All unread articles have been read"
+
+[rate_limit]
+post_denied = "Posting too fast. Please wait {{seconds}} seconds"
+chat_denied = "Chatting too fast. Please wait {{seconds}} seconds"
+mail_denied = "Sending too fast. Please wait {{seconds}} seconds"

@@ -15,6 +15,7 @@ pub mod file;
 pub mod i18n;
 pub mod logging;
 pub mod mail;
+pub mod rate_limit;
 pub mod rss;
 pub mod screen;
 pub mod script;
@@ -94,4 +95,5 @@ pub use script::{
     BbsApi, ExecutionResult, ResourceLimits, Script, ScriptContext, ScriptEngine, ScriptLoader,
     ScriptMetadata, ScriptRepository, ScriptService, SyncResult,
 };
+pub use rate_limit::{ActionRateLimiter, RateLimitConfig, RateLimitResult, RateLimiters};
 pub use xmodem::{xmodem_receive, xmodem_send, TransferError, TransferResult};

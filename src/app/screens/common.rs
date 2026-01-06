@@ -12,6 +12,7 @@ use crate::config::Config;
 use crate::db::Database;
 use crate::error::{HobbsError, Result};
 use crate::i18n::I18n;
+use crate::rate_limit::RateLimiters;
 use crate::server::{
     encode_for_client, CharacterEncoding, EchoMode, InputResult, LineBuffer, SessionManager,
     TelnetSession,
@@ -40,6 +41,8 @@ pub struct ScreenContext {
     pub chat_manager: Arc<ChatRoomManager>,
     /// Session manager.
     pub session_manager: Arc<SessionManager>,
+    /// Rate limiters for user actions.
+    pub rate_limiters: Arc<RateLimiters>,
     /// Lines since last pause (for auto-paging).
     lines_since_pause: Cell<usize>,
     /// Auto-paging enabled flag.
@@ -59,6 +62,7 @@ impl ScreenContext {
         encoding: CharacterEncoding,
         chat_manager: Arc<ChatRoomManager>,
         session_manager: Arc<SessionManager>,
+        rate_limiters: Arc<RateLimiters>,
     ) -> Self {
         // Calculate paging threshold
         let paging_threshold = if config.terminal.paging_lines > 0 {
@@ -77,6 +81,7 @@ impl ScreenContext {
             line_buffer: LineBuffer::with_encoding(1024, encoding),
             chat_manager,
             session_manager,
+            rate_limiters,
             lines_since_pause: Cell::new(0),
             auto_paging_enabled: config.terminal.auto_paging,
             paging_threshold,
@@ -93,6 +98,7 @@ impl ScreenContext {
         encoding: CharacterEncoding,
         chat_manager: Arc<ChatRoomManager>,
         session_manager: Arc<SessionManager>,
+        rate_limiters: Arc<RateLimiters>,
         auto_paging: bool,
     ) -> Self {
         // Calculate paging threshold
@@ -112,6 +118,7 @@ impl ScreenContext {
             line_buffer: LineBuffer::with_encoding(1024, encoding),
             chat_manager,
             session_manager,
+            rate_limiters,
             lines_since_pause: Cell::new(0),
             auto_paging_enabled: auto_paging,
             paging_threshold,

@@ -13,6 +13,7 @@ use super::menu::{MenuAction, MenuItems};
 use crate::auth::{verify_password, LimitResult, LoginLimiter, RegistrationRequest};
 use crate::chat::ChatRoomManager;
 use crate::config::Config;
+use crate::rate_limit::RateLimiters;
 use crate::datetime::format_datetime_default;
 use crate::db::{Database, Role, UserRepository};
 use crate::error::{HobbsError, Result};
@@ -40,6 +41,8 @@ pub struct SessionHandler {
     session_manager: Arc<SessionManager>,
     /// Chat room manager.
     chat_manager: Arc<ChatRoomManager>,
+    /// Rate limiters for user actions.
+    rate_limiters: Arc<RateLimiters>,
     /// Terminal profile.
     profile: TerminalProfile,
     /// Screen renderer.
@@ -67,6 +70,7 @@ impl SessionHandler {
         template_loader: Arc<TemplateLoader>,
         session_manager: Arc<SessionManager>,
         chat_manager: Arc<ChatRoomManager>,
+        rate_limiters: Arc<RateLimiters>,
     ) -> Self {
         // Use default profile from config
         let profile = TerminalProfile::from_name(&config.terminal.default_profile);
@@ -86,6 +90,7 @@ impl SessionHandler {
             template_loader,
             session_manager,
             chat_manager,
+            rate_limiters,
             profile,
             screen,
             i18n,
@@ -104,6 +109,7 @@ impl SessionHandler {
         template_loader: Arc<TemplateLoader>,
         session_manager: Arc<SessionManager>,
         chat_manager: Arc<ChatRoomManager>,
+        rate_limiters: Arc<RateLimiters>,
         profile: TerminalProfile,
     ) -> Self {
         let screen = create_screen_from_profile(&profile);
@@ -122,6 +128,7 @@ impl SessionHandler {
             template_loader,
             session_manager,
             chat_manager,
+            rate_limiters,
             profile,
             screen,
             i18n,
@@ -934,6 +941,7 @@ Select language / Gengo sentaku:
             self.line_buffer.encoding(),
             Arc::clone(&self.chat_manager),
             Arc::clone(&self.session_manager),
+            Arc::clone(&self.rate_limiters),
         )
     }
 
@@ -1097,6 +1105,7 @@ enum MenuResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rate_limit::RateLimiters;
 
     // Integration tests would require a full server setup
     // Unit tests for helper functions can be added here
@@ -1153,6 +1162,7 @@ main = "Main Menu""#,
 
         let session_manager = Arc::new(SessionManager::new(300));
         let chat_manager = Arc::new(ChatRoomManager::new());
+        let rate_limiters = Arc::new(RateLimiters::new());
         let profile = TerminalProfile::default();
 
         // Create handler
@@ -1163,6 +1173,7 @@ main = "Main Menu""#,
             template_loader,
             session_manager,
             chat_manager,
+            rate_limiters,
             profile,
         );
 
@@ -1226,6 +1237,7 @@ value = "English value""#,
 
         let session_manager = Arc::new(SessionManager::new(300));
         let chat_manager = Arc::new(ChatRoomManager::new());
+        let rate_limiters = Arc::new(RateLimiters::new());
         let profile = TerminalProfile::default();
 
         // Create handler
@@ -1236,6 +1248,7 @@ value = "English value""#,
             template_loader,
             session_manager,
             chat_manager,
+            rate_limiters,
             profile,
         );
 
@@ -1291,6 +1304,7 @@ title = "Title""#,
 
         let session_manager = Arc::new(SessionManager::new(300));
         let chat_manager = Arc::new(ChatRoomManager::new());
+        let rate_limiters = Arc::new(RateLimiters::new());
         let profile = TerminalProfile::default();
 
         // Create handler
@@ -1301,6 +1315,7 @@ title = "Title""#,
             template_loader,
             session_manager,
             chat_manager,
+            rate_limiters,
             profile,
         );
 
