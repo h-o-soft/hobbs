@@ -134,6 +134,11 @@ impl ChatScreen {
             }
         }
 
+        // Disable auto-paging during chat to prevent "More" prompts
+        // from interrupting the message flow
+        let saved_auto_paging = ctx.auto_paging_enabled();
+        ctx.set_auto_paging(false);
+
         // Subscribe to messages
         let mut receiver = room.subscribe();
 
@@ -159,6 +164,9 @@ impl ChatScreen {
             &nickname,
         )
         .await;
+
+        // Restore auto-paging setting
+        ctx.set_auto_paging(saved_auto_paging);
 
         // Leave the room
         room.leave(&session_id).await;
