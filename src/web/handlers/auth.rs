@@ -127,17 +127,17 @@ pub async fn login(
         let db = state.db.lock().await;
         let repo = UserRepository::new(&*db);
         repo.get_by_username(&req.username)
-            .map_err(|_| ApiError::unauthorized("Invalid username or password"))?
-            .ok_or_else(|| ApiError::unauthorized("Invalid username or password"))?
+            .map_err(|_| ApiError::invalid_credentials())?
+            .ok_or_else(|| ApiError::invalid_credentials())?
     };
 
     // Verify password
     crate::verify_password(&req.password, &user.password)
-        .map_err(|_| ApiError::unauthorized("Invalid username or password"))?;
+        .map_err(|_| ApiError::invalid_credentials())?;
 
     // Check if user is active
     if !user.is_active {
-        return Err(ApiError::forbidden("Account is disabled"));
+        return Err(ApiError::account_disabled());
     }
 
     // Generate tokens
@@ -227,7 +227,7 @@ pub async fn refresh(
         let token = repo
             .get_valid_token(&req.refresh_token)
             .map_err(|_| ApiError::internal("Database error"))?
-            .ok_or_else(|| ApiError::unauthorized("Invalid or expired refresh token"))?;
+            .ok_or_else(|| ApiError::invalid_refresh_token())?;
         token.user_id
     };
 
@@ -237,12 +237,12 @@ pub async fn refresh(
         let repo = UserRepository::new(&*db);
         repo.get_by_id(user_id)
             .map_err(|_| ApiError::internal("Database error"))?
-            .ok_or_else(|| ApiError::unauthorized("User not found"))?
+            .ok_or_else(|| ApiError::user_not_found())?
     };
 
     // Check if user is active
     if !user.is_active {
-        return Err(ApiError::forbidden("Account is disabled"));
+        return Err(ApiError::account_disabled());
     }
 
     // Revoke old refresh token
@@ -327,7 +327,7 @@ pub async fn register(
         }
         repo.create(&new_user).map_err(|e| {
             if e.to_string().contains("UNIQUE") {
-                ApiError::conflict("Username already exists")
+                ApiError::username_taken()
             } else {
                 tracing::error!("User creation failed: {}", e);
                 ApiError::internal("Failed to create user")

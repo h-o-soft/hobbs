@@ -3,9 +3,11 @@ import { useParams, useNavigate } from '@solidjs/router';
 import { PageLoading, Pagination, Button, Input, Modal, Alert, Empty } from '../components';
 import * as rssApi from '../api/rss';
 import type { RssItem } from '../types';
+import { useI18n } from '../stores/i18n';
 
 // RSS Feed List Page
 export const RssPage: Component = () => {
+  const { t } = useI18n();
   const [showAddFeed, setShowAddFeed] = createSignal(false);
   const navigate = useNavigate();
 
@@ -18,7 +20,7 @@ export const RssPage: Component = () => {
 
   const handleDeleteFeed = async (id: number, e: Event) => {
     e.stopPropagation();
-    if (!confirm('このフィードを削除しますか？')) return;
+    if (!confirm(t('rss.confirmDelete'))) return;
     await rssApi.deleteFeed(id);
     refetch();
   };
@@ -38,13 +40,13 @@ export const RssPage: Component = () => {
     <div class="space-y-6">
       {/* Header */}
       <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-display font-bold text-neon-cyan">RSS</h1>
+        <h1 class="text-2xl font-display font-bold text-neon-cyan">{t('rss.title')}</h1>
         <div class="flex space-x-2">
           <Button variant="secondary" onClick={handleRefreshAll}>
-            全て更新
+            {t('rss.refreshAll')}
           </Button>
           <Button variant="primary" onClick={() => setShowAddFeed(true)}>
-            フィード追加
+            {t('rss.addFeed')}
           </Button>
         </div>
       </div>
@@ -55,11 +57,11 @@ export const RssPage: Component = () => {
           when={feeds() && feeds()!.length > 0}
           fallback={
             <Empty
-              title="RSSフィードがありません"
-              description="フィードを追加してニュースを購読しましょう"
+              title={t('rss.noFeeds')}
+              description={t('rss.noFeedsDesc')}
               action={
                 <Button variant="primary" onClick={() => setShowAddFeed(true)}>
-                  フィードを追加
+                  {t('rss.addFeed')}
                 </Button>
               }
             />
@@ -77,10 +79,10 @@ export const RssPage: Component = () => {
                       <div class="flex items-center space-x-2">
                         <h3 class="font-medium text-gray-200 truncate">{feed.title}</h3>
                         <Show when={feed.unread_count > 0}>
-                          <span class="badge-pink">{feed.unread_count} 未読</span>
+                          <span class="badge-pink">{feed.unread_count} {t('rss.unread')}</span>
                         </Show>
                         <Show when={feed.error_count > 0}>
-                          <span class="badge-pink">エラー</span>
+                          <span class="badge-pink">{t('rss.error')}</span>
                         </Show>
                       </div>
                       <Show when={feed.description}>
@@ -92,7 +94,7 @@ export const RssPage: Component = () => {
                       <button
                         onClick={(e) => handleRefreshFeed(feed.id, e)}
                         class="p-2 text-gray-500 hover:text-neon-cyan transition-colors"
-                        title="更新"
+                        title={t('rss.refresh')}
                       >
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -101,7 +103,7 @@ export const RssPage: Component = () => {
                       <button
                         onClick={(e) => handleDeleteFeed(feed.id, e)}
                         class="p-2 text-gray-500 hover:text-neon-pink transition-colors"
-                        title="削除"
+                        title={t('common.delete')}
                       >
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -120,7 +122,7 @@ export const RssPage: Component = () => {
       <Modal
         isOpen={showAddFeed()}
         onClose={() => setShowAddFeed(false)}
-        title="RSSフィード追加"
+        title={t('rss.addFeedTitle')}
       >
         <AddFeedForm
           onSuccess={handleAddSuccess}
@@ -133,6 +135,7 @@ export const RssPage: Component = () => {
 
 // RSS Feed Detail Page (Items)
 export const RssDetailPage: Component = () => {
+  const { t } = useI18n();
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [page, setPage] = createSignal(1);
@@ -170,7 +173,7 @@ export const RssDetailPage: Component = () => {
               onClick={() => navigate('/rss')}
               class="text-sm text-gray-500 hover:text-neon-cyan transition-colors mb-2"
             >
-              ← RSS一覧に戻る
+              ← {t('rss.backToList')}
             </button>
             <h1 class="text-2xl font-display font-bold text-neon-cyan">{feed()!.title}</h1>
             <Show when={feed()!.description}>
@@ -178,7 +181,7 @@ export const RssDetailPage: Component = () => {
             </Show>
           </div>
           <Button variant="secondary" onClick={handleMarkAllRead}>
-            全て既読にする
+            {t('rss.markAllRead')}
           </Button>
         </div>
 
@@ -187,7 +190,7 @@ export const RssDetailPage: Component = () => {
           <Show
             when={items()?.data && items()!.data.length > 0}
             fallback={
-              <Empty title="記事がありません" />
+              <Empty title={t('rss.noItems')} />
             }
           >
             <div class="space-y-2">
@@ -247,7 +250,7 @@ export const RssDetailPage: Component = () => {
                     rel="noopener noreferrer"
                     class="btn-primary inline-block"
                   >
-                    元記事を読む
+                    {t('rss.readOriginal')}
                   </a>
                 </Show>
               </div>
@@ -265,6 +268,7 @@ interface AddFeedFormProps {
 }
 
 const AddFeedForm: Component<AddFeedFormProps> = (props) => {
+  const { t } = useI18n();
   const [url, setUrl] = createSignal('');
   const [title, setTitle] = createSignal('');
   const [error, setError] = createSignal('');
@@ -282,7 +286,7 @@ const AddFeedForm: Component<AddFeedFormProps> = (props) => {
       });
       props.onSuccess();
     } catch (err: any) {
-      setError(err.message || 'フィードの追加に失敗しました');
+      setError(err.message || t('rss.addFailed'));
     } finally {
       setLoading(false);
     }
@@ -297,7 +301,7 @@ const AddFeedForm: Component<AddFeedFormProps> = (props) => {
       </Show>
 
       <Input
-        label="URL"
+        label={t('rss.url')}
         type="url"
         value={url()}
         onInput={(e) => setUrl(e.currentTarget.value)}
@@ -306,18 +310,18 @@ const AddFeedForm: Component<AddFeedFormProps> = (props) => {
       />
 
       <Input
-        label="タイトル (任意)"
+        label={t('rss.titleOptional')}
         value={title()}
         onInput={(e) => setTitle(e.currentTarget.value)}
-        placeholder="自動取得されます"
+        placeholder={t('rss.titleAutoFetch')}
       />
 
       <div class="flex justify-end space-x-3">
         <Button type="button" variant="secondary" onClick={props.onCancel}>
-          キャンセル
+          {t('common.cancel')}
         </Button>
         <Button type="submit" variant="primary" loading={loading()}>
-          追加
+          {t('common.add')}
         </Button>
       </div>
     </form>

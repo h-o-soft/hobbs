@@ -1,10 +1,12 @@
 import { type Component, createSignal } from 'solid-js';
 import { A, useNavigate } from '@solidjs/router';
 import { useAuth } from '../stores/auth';
+import { useI18n } from '../stores/i18n';
 import { Input, Button, Alert } from '../components';
 import { ApiError } from '../api/client';
 
 export const LoginPage: Component = () => {
+  const { t, translateError } = useI18n();
   const [, { login }] = useAuth();
   const navigate = useNavigate();
 
@@ -23,9 +25,9 @@ export const LoginPage: Component = () => {
       navigate('/');
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.message);
+        setError(translateError(err.code, err.message));
       } else {
-        setError('ログインに失敗しました');
+        setError(t('auth.loginFailed'));
       }
     } finally {
       setLoading(false);
@@ -40,12 +42,12 @@ export const LoginPage: Component = () => {
           <h1 class="font-display text-4xl font-bold text-neon-cyan text-neon-glow-intense animate-pulse-neon">
             HOBBS
           </h1>
-          <p class="text-gray-500 mt-2">Hobbyist Bulletin Board System</p>
+          <p class="text-gray-500 mt-2">{t('auth.subtitle')}</p>
         </div>
 
         {/* Login Form */}
         <div class="card">
-          <h2 class="text-xl font-medium text-neon-cyan mb-6">ログイン</h2>
+          <h2 class="text-xl font-medium text-neon-cyan mb-6">{t('auth.login')}</h2>
 
           {error() && (
             <div class="mb-4">
@@ -57,7 +59,7 @@ export const LoginPage: Component = () => {
 
           <form onSubmit={handleSubmit} class="space-y-4">
             <Input
-              label="ユーザーID"
+              label={t('auth.username')}
               type="text"
               value={username()}
               onInput={(e) => setUsername(e.currentTarget.value)}
@@ -66,7 +68,7 @@ export const LoginPage: Component = () => {
             />
 
             <Input
-              label="パスワード"
+              label={t('auth.password')}
               type="password"
               value={password()}
               onInput={(e) => setPassword(e.currentTarget.value)}
@@ -80,14 +82,14 @@ export const LoginPage: Component = () => {
               loading={loading()}
               class="w-full"
             >
-              ログイン
+              {t('auth.login')}
             </Button>
           </form>
 
           <div class="mt-6 text-center text-sm text-gray-500">
-            アカウントをお持ちでない方は{' '}
+            {t('auth.noAccount')}{' '}
             <A href="/register" class="text-neon-purple hover:text-neon-pink transition-colors">
-              新規登録
+              {t('auth.registerHere')}
             </A>
           </div>
         </div>

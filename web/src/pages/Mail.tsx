@@ -3,8 +3,10 @@ import { useSearchParams } from '@solidjs/router';
 import { PageLoading, Pagination, Button, Input, Textarea, Modal, Alert, Empty, UserLink } from '../components';
 import * as mailApi from '../api/mail';
 import type { MailListItem, Mail } from '../types';
+import { useI18n } from '../stores/i18n';
 
 export const MailPage: Component = () => {
+  const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = createSignal<'inbox' | 'sent'>('inbox');
   const [page, setPage] = createSignal(1);
@@ -65,7 +67,7 @@ export const MailPage: Component = () => {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('このメールを削除しますか？')) return;
+    if (!confirm(t('mail.confirmDelete'))) return;
     await mailApi.deleteMail(id);
     setSelectedMail(null);
     if (activeTab() === 'inbox') {
@@ -86,9 +88,9 @@ export const MailPage: Component = () => {
     <div class="space-y-6">
       {/* Header */}
       <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-display font-bold text-neon-cyan">メール</h1>
+        <h1 class="text-2xl font-display font-bold text-neon-cyan">{t('mail.title')}</h1>
         <Button variant="primary" onClick={() => setShowCompose(true)}>
-          新規作成
+          {t('mail.compose')}
         </Button>
       </div>
 
@@ -98,13 +100,13 @@ export const MailPage: Component = () => {
           active={activeTab() === 'inbox'}
           onClick={() => handleTabChange('inbox')}
         >
-          受信トレイ
+          {t('mail.inbox')}
         </TabButton>
         <TabButton
           active={activeTab() === 'sent'}
           onClick={() => handleTabChange('sent')}
         >
-          送信済み
+          {t('mail.sent')}
         </TabButton>
       </div>
 
@@ -114,7 +116,7 @@ export const MailPage: Component = () => {
           when={currentList()?.data && currentList()!.data.length > 0}
           fallback={
             <Empty
-              title={activeTab() === 'inbox' ? '受信メールがありません' : '送信済みメールがありません'}
+              title={activeTab() === 'inbox' ? t('mail.noInbox') : t('mail.noSent')}
             />
           }
         >
@@ -137,8 +139,8 @@ export const MailPage: Component = () => {
                       </div>
                       <p class="text-sm text-gray-500 mt-1">
                         {activeTab() === 'inbox'
-                          ? `From: ${mail.sender.nickname}`
-                          : `To: ${mail.recipient.nickname}`}
+                          ? `${t('mail.from')}: ${mail.sender.nickname}`
+                          : `${t('mail.to')}: ${mail.recipient.nickname}`}
                       </p>
                     </div>
                     <span class="text-xs text-gray-500 ml-4">
@@ -162,7 +164,7 @@ export const MailPage: Component = () => {
       <Modal
         isOpen={selectedMail() !== null}
         onClose={() => setSelectedMail(null)}
-        title="メール"
+        title={t('mail.title')}
         size="lg"
       >
         <Show when={selectedMail()}>
@@ -172,20 +174,20 @@ export const MailPage: Component = () => {
                 <h3 class="text-lg font-medium text-gray-200">{mail().subject}</h3>
                 <div class="text-sm text-gray-500 mt-2 space-y-1">
                   <p>
-                    From:{' '}
+                    {t('mail.from')}:{' '}
                     <UserLink
                       username={mail().sender.username}
                       displayName={mail().sender.nickname}
                     />
                   </p>
                   <p>
-                    To:{' '}
+                    {t('mail.to')}:{' '}
                     <UserLink
                       username={mail().recipient.username}
                       displayName={mail().recipient.nickname}
                     />
                   </p>
-                  <p>Date: {formatDate(mail().created_at)}</p>
+                  <p>{t('mail.date')}: {formatDate(mail().created_at)}</p>
                 </div>
               </div>
               <div class="text-gray-300 whitespace-pre-wrap">
@@ -193,11 +195,11 @@ export const MailPage: Component = () => {
               </div>
               <div class="flex justify-end space-x-3 pt-4">
                 <Button variant="danger" onClick={() => handleDelete(mail().id)}>
-                  削除
+                  {t('mail.delete')}
                 </Button>
                 <Show when={activeTab() === 'inbox'}>
                   <Button variant="primary" onClick={() => handleReply(mail())}>
-                    返信
+                    {t('mail.reply')}
                   </Button>
                 </Show>
               </div>
@@ -210,7 +212,7 @@ export const MailPage: Component = () => {
       <Modal
         isOpen={showCompose()}
         onClose={() => { setShowCompose(false); setReplyTo(null); setDefaultRecipient(''); }}
-        title={replyTo() ? '返信' : '新規メール'}
+        title={replyTo() ? t('mail.reply') : t('mail.newMail')}
         size="lg"
       >
         <ComposeForm
@@ -253,6 +255,7 @@ interface ComposeFormProps {
 }
 
 const ComposeForm: Component<ComposeFormProps> = (props) => {
+  const { t } = useI18n();
   const [to, setTo] = createSignal(props.replyTo?.sender.username || props.defaultRecipient || '');
   const [subject, setSubject] = createSignal(
     props.replyTo ? `Re: ${props.replyTo.subject}` : ''
@@ -281,7 +284,7 @@ const ComposeForm: Component<ComposeFormProps> = (props) => {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError('メールの送信に失敗しました');
+        setError(t('mail.sendFailed'));
       }
     } finally {
       setLoading(false);
@@ -297,21 +300,21 @@ const ComposeForm: Component<ComposeFormProps> = (props) => {
       </Show>
 
       <Input
-        label="宛先 (ユーザーID)"
+        label={t('mail.recipient')}
         value={to()}
         onInput={(e) => setTo(e.currentTarget.value)}
         required
       />
 
       <Input
-        label="件名"
+        label={t('mail.subject')}
         value={subject()}
         onInput={(e) => setSubject(e.currentTarget.value)}
         required
       />
 
       <Textarea
-        label="本文"
+        label={t('mail.body')}
         value={body()}
         onInput={(e) => setBody(e.currentTarget.value)}
         required
@@ -320,10 +323,10 @@ const ComposeForm: Component<ComposeFormProps> = (props) => {
 
       <div class="flex justify-end space-x-3">
         <Button type="button" variant="secondary" onClick={props.onCancel}>
-          キャンセル
+          {t('common.cancel')}
         </Button>
         <Button type="submit" variant="primary" loading={loading()}>
-          送信
+          {t('mail.send')}
         </Button>
       </div>
     </form>
