@@ -65,37 +65,25 @@ mod tests {
     async fn test_security_headers_added() {
         use axum::middleware;
 
-        let app =
-            Router::new()
-                .route("/", get(dummy_handler))
-                .layer(middleware::from_fn(security_headers));
+        let app = Router::new()
+            .route("/", get(dummy_handler))
+            .layer(middleware::from_fn(security_headers));
 
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
             .await
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
 
         let headers = response.headers();
-        assert_eq!(
-            headers.get("X-Content-Type-Options").unwrap(),
-            "nosniff"
-        );
+        assert_eq!(headers.get("X-Content-Type-Options").unwrap(), "nosniff");
         assert_eq!(headers.get("X-Frame-Options").unwrap(), "DENY");
         assert_eq!(
             headers.get("Referrer-Policy").unwrap(),
             "strict-origin-when-cross-origin"
         );
         assert_eq!(headers.get("X-XSS-Protection").unwrap(), "0");
-        assert_eq!(
-            headers.get("Cache-Control").unwrap(),
-            "no-store, max-age=0"
-        );
+        assert_eq!(headers.get("Cache-Control").unwrap(), "no-store, max-age=0");
     }
 }

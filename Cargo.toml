@@ -39,6 +39,7 @@ governor = "0.6"
 mime_guess = "2"
 utoipa = { version = "4", features = ["axum_extras", "chrono"] }
 utoipa-swagger-ui = { version = "7", features = ["axum"] }
+validator = { version = "0.18", features = ["derive"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -69,7 +69,8 @@ impl RateLimitState {
             return limiter.clone();
         }
 
-        let quota = Quota::per_minute(NonZeroU32::new(requests_per_minute).unwrap_or(NonZeroU32::MIN));
+        let quota =
+            Quota::per_minute(NonZeroU32::new(requests_per_minute).unwrap_or(NonZeroU32::MIN));
         let limiter = Arc::new(RateLimiter::direct(quota));
         write_guard.insert(ip.to_string(), limiter.clone());
         limiter
@@ -124,11 +125,7 @@ fn get_client_ip(req: &Request<Body>) -> String {
     }
 
     // Try X-Real-IP header
-    if let Some(real_ip) = req
-        .headers()
-        .get("X-Real-IP")
-        .and_then(|v| v.to_str().ok())
-    {
+    if let Some(real_ip) = req.headers().get("X-Real-IP").and_then(|v| v.to_str().ok()) {
         return real_ip.to_string();
     }
 

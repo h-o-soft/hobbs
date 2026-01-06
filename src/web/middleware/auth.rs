@@ -85,9 +85,7 @@ where
                 .and_then(|value| value.to_str().ok())
             {
                 // Check Bearer prefix
-                auth_header
-                    .strip_prefix("Bearer ")
-                    .map(|t| t.to_string())
+                auth_header.strip_prefix("Bearer ").map(|t| t.to_string())
             } else {
                 None
             };
