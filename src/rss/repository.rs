@@ -48,7 +48,7 @@ impl RssFeedRepository {
         .optional()
     }
 
-    /// Get a feed by URL.
+    /// Get a feed by URL (any user).
     pub fn get_by_url(conn: &Connection, url: &str) -> rusqlite::Result<Option<RssFeed>> {
         conn.query_row(
             r#"
@@ -59,6 +59,26 @@ impl RssFeedRepository {
             WHERE url = ?1
             "#,
             [url],
+            Self::map_row,
+        )
+        .optional()
+    }
+
+    /// Get a feed by URL for a specific user.
+    pub fn get_by_user_url(
+        conn: &Connection,
+        user_id: i64,
+        url: &str,
+    ) -> rusqlite::Result<Option<RssFeed>> {
+        conn.query_row(
+            r#"
+            SELECT id, url, title, description, site_url, last_fetched_at, last_item_at,
+                   fetch_interval, is_active, error_count, last_error, created_by,
+                   created_at, updated_at
+            FROM rss_feeds
+            WHERE created_by = ?1 AND url = ?2
+            "#,
+            params![user_id, url],
             Self::map_row,
         )
         .optional()
@@ -79,6 +99,25 @@ impl RssFeedRepository {
 
         let feeds = stmt
             .query_map([], Self::map_row)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(feeds)
+    }
+
+    /// List active feeds for a specific user (ordered by registration order).
+    pub fn list_active_by_user(conn: &Connection, user_id: i64) -> rusqlite::Result<Vec<RssFeed>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, url, title, description, site_url, last_fetched_at, last_item_at,
+                   fetch_interval, is_active, error_count, last_error, created_by,
+                   created_at, updated_at
+            FROM rss_feeds
+            WHERE is_active = 1 AND created_by = ?1
+            ORDER BY id ASC
+            "#,
+        )?;
+
+        let feeds = stmt
+            .query_map([user_id], Self::map_row)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(feeds)
     }
@@ -123,25 +162,30 @@ impl RssFeedRepository {
     }
 
     /// List active feeds with unread counts for a user (ordered by registration order).
+    /// Only returns feeds owned by the user (personal RSS reader).
     pub fn list_with_unread(
         conn: &Connection,
         user_id: Option<i64>,
     ) -> rusqlite::Result<Vec<RssFeedWithUnread>> {
+        // If no user_id, return empty list (guest cannot have feeds)
+        let user_id = match user_id {
+            Some(id) => id,
+            None => return Ok(Vec::new()),
+        };
+
         let mut stmt = conn.prepare(
             r#"
             SELECT f.id, f.url, f.title, f.description, f.site_url, f.last_fetched_at, f.last_item_at,
                    f.fetch_interval, f.is_active, f.error_count, f.last_error, f.created_by,
                    f.created_at, f.updated_at,
-                   CASE WHEN ?1 IS NULL THEN 0
-                        ELSE (SELECT COUNT(*) FROM rss_items i
-                              WHERE i.feed_id = f.id
-                              AND i.id > COALESCE(
-                                  (SELECT last_read_item_id FROM rss_read_positions
-                                   WHERE user_id = ?1 AND feed_id = f.id),
-                                  0))
-                   END as unread_count
+                   (SELECT COUNT(*) FROM rss_items i
+                    WHERE i.feed_id = f.id
+                    AND i.id > COALESCE(
+                        (SELECT last_read_item_id FROM rss_read_positions
+                         WHERE user_id = ?1 AND feed_id = f.id),
+                        0)) as unread_count
             FROM rss_feeds f
-            WHERE f.is_active = 1
+            WHERE f.is_active = 1 AND f.created_by = ?1
             ORDER BY f.id ASC
             "#,
         )?;
