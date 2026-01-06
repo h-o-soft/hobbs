@@ -2,22 +2,24 @@ import { type Component, createResource, createSignal, For, Show } from 'solid-j
 import { A, useParams } from '@solidjs/router';
 import { PageLoading, Pagination, Button, Textarea, Modal, Alert, Empty, UserLink } from '../components';
 import * as fileApi from '../api/file';
+import { useI18n } from '../stores/i18n';
 
 // Folder List Page
 export const FilesPage: Component = () => {
+  const { t } = useI18n();
   const [folders] = createResource(fileApi.getFolders);
 
   return (
     <div class="space-y-6">
-      <h1 class="text-2xl font-display font-bold text-neon-cyan">ファイル</h1>
+      <h1 class="text-2xl font-display font-bold text-neon-cyan">{t('files.title')}</h1>
 
       <Show when={!folders.loading} fallback={<PageLoading />}>
         <Show
           when={folders() && folders()!.length > 0}
           fallback={
             <Empty
-              title="フォルダがありません"
-              description="まだフォルダが作成されていません"
+              title={t('files.noFolders')}
+              description={t('files.noFoldersDesc')}
             />
           }
         >
@@ -39,7 +41,7 @@ export const FilesPage: Component = () => {
                       <Show when={folder.description}>
                         <p class="text-sm text-gray-500 mt-1 truncate">{folder.description}</p>
                       </Show>
-                      <p class="text-xs text-gray-600 mt-2">{folder.file_count} ファイル</p>
+                      <p class="text-xs text-gray-600 mt-2">{folder.file_count} {t('files.title')}</p>
                     </div>
                   </div>
                 </A>
@@ -54,6 +56,7 @@ export const FilesPage: Component = () => {
 
 // Folder Detail Page (File List)
 export const FolderDetailPage: Component = () => {
+  const { t } = useI18n();
   const params = useParams<{ id: string }>();
   const [page, setPage] = createSignal(1);
   const [showUpload, setShowUpload] = createSignal(false);
@@ -73,7 +76,7 @@ export const FolderDetailPage: Component = () => {
   };
 
   const handleDelete = async (fileId: number) => {
-    if (!confirm('このファイルを削除しますか？')) return;
+    if (!confirm(t('files.confirmDelete'))) return;
     await fileApi.deleteFile(fileId);
     refetch();
   };
@@ -85,7 +88,7 @@ export const FolderDetailPage: Component = () => {
         <div class="flex items-center justify-between">
           <div>
             <div class="flex items-center space-x-2 text-sm text-gray-500 mb-2">
-              <A href="/files" class="hover:text-neon-cyan transition-colors">ファイル</A>
+              <A href="/files" class="hover:text-neon-cyan transition-colors">{t('files.title')}</A>
               <span>/</span>
             </div>
             <h1 class="text-2xl font-display font-bold text-neon-cyan">{folder()!.name}</h1>
@@ -95,7 +98,7 @@ export const FolderDetailPage: Component = () => {
           </div>
           <Show when={folder()!.can_upload}>
             <Button variant="primary" onClick={() => setShowUpload(true)}>
-              アップロード
+              {t('files.upload')}
             </Button>
           </Show>
         </div>
@@ -106,12 +109,12 @@ export const FolderDetailPage: Component = () => {
             when={files()?.data && files()!.data.length > 0}
             fallback={
               <Empty
-                title="ファイルがありません"
-                description="最初のファイルをアップロードしてください"
+                title={t('files.noFiles')}
+                description={t('files.noFilesDesc')}
                 action={
                   <Show when={folder()!.can_upload}>
                     <Button variant="primary" onClick={() => setShowUpload(true)}>
-                      アップロード
+                      {t('files.upload')}
                     </Button>
                   </Show>
                 }
@@ -138,7 +141,7 @@ export const FolderDetailPage: Component = () => {
                               displayName={file.uploader.nickname}
                             />
                             <span>{formatDate(file.created_at)}</span>
-                            <span>{file.downloads} DL</span>
+                            <span>{file.downloads} {t('files.downloads')}</span>
                           </div>
                           <Show when={file.description}>
                             <p class="text-sm text-gray-500 mt-1">{file.description}</p>
@@ -151,14 +154,14 @@ export const FolderDetailPage: Component = () => {
                           class="btn-primary text-sm"
                           download={file.filename}
                         >
-                          ダウンロード
+                          {t('files.download')}
                         </a>
                         <Button
                           variant="danger"
                           onClick={() => handleDelete(file.id)}
                           class="text-sm"
                         >
-                          削除
+                          {t('common.delete')}
                         </Button>
                       </div>
                     </div>
@@ -179,7 +182,7 @@ export const FolderDetailPage: Component = () => {
         <Modal
           isOpen={showUpload()}
           onClose={() => setShowUpload(false)}
-          title="ファイルアップロード"
+          title={t('files.uploadTitle')}
         >
           <UploadForm
             folderId={folderId()}
@@ -199,6 +202,7 @@ interface UploadFormProps {
 }
 
 const UploadForm: Component<UploadFormProps> = (props) => {
+  const { t } = useI18n();
   const [file, setFile] = createSignal<File | null>(null);
   const [description, setDescription] = createSignal('');
   const [error, setError] = createSignal('');
@@ -223,7 +227,7 @@ const UploadForm: Component<UploadFormProps> = (props) => {
       await fileApi.uploadFile(props.folderId, f, description() || undefined);
       props.onSuccess();
     } catch (err: any) {
-      setError(err.message || 'アップロードに失敗しました');
+      setError(err.message || t('files.uploadFailed'));
     } finally {
       setLoading(false);
     }
@@ -238,7 +242,7 @@ const UploadForm: Component<UploadFormProps> = (props) => {
       </Show>
 
       <div class="space-y-1">
-        <label class="block text-sm text-gray-400">ファイル</label>
+        <label class="block text-sm text-gray-400">{t('files.fileLabel')}</label>
         <input
           type="file"
           onChange={handleFileChange}
@@ -249,12 +253,12 @@ const UploadForm: Component<UploadFormProps> = (props) => {
 
       <Show when={file()}>
         <div class="text-sm text-gray-400">
-          選択: {file()!.name} ({formatFileSize(file()!.size)})
+          {t('files.selected')}: {file()!.name} ({formatFileSize(file()!.size)})
         </div>
       </Show>
 
       <Textarea
-        label="説明 (任意)"
+        label={t('files.descriptionLabel')}
         value={description()}
         onInput={(e) => setDescription(e.currentTarget.value)}
         rows={3}
@@ -262,10 +266,10 @@ const UploadForm: Component<UploadFormProps> = (props) => {
 
       <div class="flex justify-end space-x-3">
         <Button type="button" variant="secondary" onClick={props.onCancel}>
-          キャンセル
+          {t('common.cancel')}
         </Button>
         <Button type="submit" variant="primary" loading={loading()} disabled={!file()}>
-          アップロード
+          {t('files.upload')}
         </Button>
       </div>
     </form>

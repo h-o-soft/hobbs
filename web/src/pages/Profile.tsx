@@ -3,11 +3,13 @@ import { useNavigate, useParams } from '@solidjs/router';
 import { PageLoading, Button, Input, Textarea, Alert } from '../components';
 import * as userApi from '../api/user';
 import { useAuth } from '../stores/auth';
+import { useI18n } from '../stores/i18n';
 
 /**
  * Profile page - Shows current user's own profile.
  */
 export const ProfilePage: Component = () => {
+  const { t } = useI18n();
   const navigate = useNavigate();
 
   const [profile] = createResource(async () => {
@@ -20,13 +22,7 @@ export const ProfilePage: Component = () => {
   };
 
   const getRoleLabel = (role: string) => {
-    switch (role) {
-      case 'sysop': return 'SysOp';
-      case 'subop': return 'SubOp';
-      case 'member': return 'Member';
-      case 'guest': return 'Guest';
-      default: return role;
-    }
+    return t(`roles.${role}` as any) || role;
   };
 
   return (
@@ -34,10 +30,10 @@ export const ProfilePage: Component = () => {
       {/* Header */}
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-display font-bold text-neon-cyan">
-          My Profile
+          {t('profile.myProfile')}
         </h1>
         <Button variant="primary" onClick={() => navigate('/profile/edit')}>
-          Edit
+          {t('profile.edit')}
         </Button>
       </div>
 
@@ -48,18 +44,18 @@ export const ProfilePage: Component = () => {
             <div class="card space-y-6">
               {/* Basic Info */}
               <div class="space-y-4">
-                <ProfileField label="Username" value={user().username} />
-                <ProfileField label="Nickname" value={user().nickname} />
-                <ProfileField label="Role" value={getRoleLabel(user().role)} />
-                <ProfileField label="Registered" value={formatDate(user().created_at)} />
-                <ProfileField label="Last Login" value={formatDate(user().last_login_at)} />
+                <ProfileField label={t('profile.username')} value={user().username} />
+                <ProfileField label={t('profile.nickname')} value={user().nickname} />
+                <ProfileField label={t('profile.role')} value={getRoleLabel(user().role)} />
+                <ProfileField label={t('profile.registered')} value={formatDate(user().created_at)} />
+                <ProfileField label={t('profile.lastLogin')} value={formatDate(user().last_login_at)} />
               </div>
 
               {/* Profile / Bio */}
               <div class="border-t border-neon-cyan/20 pt-4">
-                <h3 class="text-sm font-medium text-gray-400 mb-2">Bio</h3>
+                <h3 class="text-sm font-medium text-gray-400 mb-2">{t('profile.bio')}</h3>
                 <div class="text-gray-200 whitespace-pre-wrap">
-                  {user().profile || <span class="text-gray-500 italic">No bio set</span>}
+                  {user().profile || <span class="text-gray-500 italic">{t('profile.noBio')}</span>}
                 </div>
               </div>
             </div>
@@ -74,6 +70,7 @@ export const ProfilePage: Component = () => {
  * Profile edit page - Allows editing own profile.
  */
 export const ProfileEditPage: Component = () => {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [, authActions] = useAuth();
 
@@ -118,10 +115,10 @@ export const ProfileEditPage: Component = () => {
         nickname: nickname(),
         profile: bio(),
       });
-      setSuccess('Profile updated successfully');
+      setSuccess(t('profile.updateSuccess'));
       await authActions.checkAuth(); // Refresh auth state
     } catch (err: any) {
-      setError(err.message || 'Failed to update profile');
+      setError(err.message || t('profile.updateFailed'));
     } finally {
       setSaving(false);
     }
@@ -133,12 +130,12 @@ export const ProfileEditPage: Component = () => {
     setPasswordSuccess('');
 
     if (newPassword() !== confirmPassword()) {
-      setPasswordError('Passwords do not match');
+      setPasswordError(t('profile.passwordMismatch'));
       return;
     }
 
     if (newPassword().length < 8) {
-      setPasswordError('Password must be at least 8 characters');
+      setPasswordError(t('profile.passwordTooShort'));
       return;
     }
 
@@ -148,12 +145,12 @@ export const ProfileEditPage: Component = () => {
         current_password: currentPassword(),
         new_password: newPassword(),
       });
-      setPasswordSuccess('Password changed successfully');
+      setPasswordSuccess(t('profile.passwordChanged'));
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } catch (err: any) {
-      setPasswordError(err.message || 'Failed to change password');
+      setPasswordError(err.message || t('profile.passwordChangeFailed'));
     } finally {
       setSaving(false);
     }
@@ -164,10 +161,10 @@ export const ProfileEditPage: Component = () => {
       {/* Header */}
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-display font-bold text-neon-cyan">
-          Edit Profile
+          {t('profile.editProfile')}
         </h1>
         <Button variant="secondary" onClick={() => navigate('/profile')}>
-          Back
+          {t('common.back')}
         </Button>
       </div>
 
@@ -177,7 +174,7 @@ export const ProfileEditPage: Component = () => {
             <div class="space-y-8">
               {/* Profile Edit Form */}
               <form onSubmit={handleSaveProfile} class="card space-y-4">
-                <h2 class="text-lg font-medium text-neon-cyan">Profile Information</h2>
+                <h2 class="text-lg font-medium text-neon-cyan">{t('profile.profileInfo')}</h2>
 
                 <Show when={error()}>
                   <Alert type="error">{error()}</Alert>
@@ -187,13 +184,13 @@ export const ProfileEditPage: Component = () => {
                 </Show>
 
                 <Input
-                  label="Username"
+                  label={t('profile.username')}
                   value={user().username}
                   disabled
                 />
 
                 <Input
-                  label="Nickname"
+                  label={t('profile.nickname')}
                   value={nickname()}
                   onInput={(e) => setNickname(e.currentTarget.value)}
                   maxLength={20}
@@ -202,26 +199,26 @@ export const ProfileEditPage: Component = () => {
 
                 <div>
                   <label class="block text-sm font-medium text-gray-300 mb-1">
-                    Bio
+                    {t('profile.bio')}
                   </label>
                   <Textarea
                     value={bio()}
                     onInput={(e) => setBio(e.currentTarget.value)}
                     rows={5}
-                    placeholder="Write something about yourself..."
+                    placeholder={t('profile.bioPlaceholder')}
                   />
                 </div>
 
                 <div class="flex justify-end">
                   <Button type="submit" variant="primary" disabled={saving()}>
-                    {saving() ? 'Saving...' : 'Save Profile'}
+                    {saving() ? t('profile.saving') : t('profile.saveProfile')}
                   </Button>
                 </div>
               </form>
 
               {/* Password Change Form */}
               <form onSubmit={handleChangePassword} class="card space-y-4">
-                <h2 class="text-lg font-medium text-neon-cyan">Change Password</h2>
+                <h2 class="text-lg font-medium text-neon-cyan">{t('profile.changePassword')}</h2>
 
                 <Show when={passwordError()}>
                   <Alert type="error">{passwordError()}</Alert>
@@ -231,7 +228,7 @@ export const ProfileEditPage: Component = () => {
                 </Show>
 
                 <Input
-                  label="Current Password"
+                  label={t('profile.currentPassword')}
                   type="password"
                   value={currentPassword()}
                   onInput={(e) => setCurrentPassword(e.currentTarget.value)}
@@ -239,7 +236,7 @@ export const ProfileEditPage: Component = () => {
                 />
 
                 <Input
-                  label="New Password"
+                  label={t('profile.newPassword')}
                   type="password"
                   value={newPassword()}
                   onInput={(e) => setNewPassword(e.currentTarget.value)}
@@ -249,7 +246,7 @@ export const ProfileEditPage: Component = () => {
                 />
 
                 <Input
-                  label="Confirm New Password"
+                  label={t('profile.confirmNewPassword')}
                   type="password"
                   value={confirmPassword()}
                   onInput={(e) => setConfirmPassword(e.currentTarget.value)}
@@ -258,7 +255,7 @@ export const ProfileEditPage: Component = () => {
 
                 <div class="flex justify-end">
                   <Button type="submit" variant="primary" disabled={saving()}>
-                    {saving() ? 'Changing...' : 'Change Password'}
+                    {saving() ? t('profile.changingPassword') : t('profile.changePasswordBtn')}
                   </Button>
                 </div>
               </form>
@@ -274,6 +271,7 @@ export const ProfileEditPage: Component = () => {
  * User profile page - Shows another user's public profile.
  */
 export const UserProfilePage: Component = () => {
+  const { t } = useI18n();
   const params = useParams<{ username: string }>();
   const navigate = useNavigate();
 
@@ -290,13 +288,7 @@ export const UserProfilePage: Component = () => {
   };
 
   const getRoleLabel = (role: string) => {
-    switch (role) {
-      case 'sysop': return 'SysOp';
-      case 'subop': return 'SubOp';
-      case 'member': return 'Member';
-      case 'guest': return 'Guest';
-      default: return role;
-    }
+    return t(`roles.${role}` as any) || role;
   };
 
   return (
@@ -304,10 +296,10 @@ export const UserProfilePage: Component = () => {
       {/* Header */}
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-display font-bold text-neon-cyan">
-          User Profile
+          {t('profile.userProfile')}
         </h1>
         <Button variant="secondary" onClick={() => navigate(-1)}>
-          Back
+          {t('common.back')}
         </Button>
       </div>
 
@@ -319,7 +311,7 @@ export const UserProfilePage: Component = () => {
         <Show
           when={!profile.error}
           fallback={
-            <Alert type="error">User not found</Alert>
+            <Alert type="error">{t('profile.userNotFound')}</Alert>
           }
         >
           <Show when={profile()}>
@@ -327,18 +319,18 @@ export const UserProfilePage: Component = () => {
               <div class="card space-y-6">
                 {/* Basic Info */}
                 <div class="space-y-4">
-                  <ProfileField label="Username" value={user().username} />
-                  <ProfileField label="Nickname" value={user().nickname} />
-                  <ProfileField label="Role" value={getRoleLabel(user().role)} />
-                  <ProfileField label="Registered" value={formatDate(user().created_at)} />
-                  <ProfileField label="Last Login" value={formatDate(user().last_login_at)} />
+                  <ProfileField label={t('profile.username')} value={user().username} />
+                  <ProfileField label={t('profile.nickname')} value={user().nickname} />
+                  <ProfileField label={t('profile.role')} value={getRoleLabel(user().role)} />
+                  <ProfileField label={t('profile.registered')} value={formatDate(user().created_at)} />
+                  <ProfileField label={t('profile.lastLogin')} value={formatDate(user().last_login_at)} />
                 </div>
 
                 {/* Profile / Bio */}
                 <div class="border-t border-neon-cyan/20 pt-4">
-                  <h3 class="text-sm font-medium text-gray-400 mb-2">Bio</h3>
+                  <h3 class="text-sm font-medium text-gray-400 mb-2">{t('profile.bio')}</h3>
                   <div class="text-gray-200 whitespace-pre-wrap">
-                    {user().profile || <span class="text-gray-500 italic">No bio set</span>}
+                    {user().profile || <span class="text-gray-500 italic">{t('profile.noBio')}</span>}
                   </div>
                 </div>
 
@@ -348,7 +340,7 @@ export const UserProfilePage: Component = () => {
                     variant="primary"
                     onClick={() => navigate(`/mail?to=${encodeURIComponent(user().username)}`)}
                   >
-                    Send Mail
+                    {t('profile.sendMail')}
                   </Button>
                 </div>
               </div>

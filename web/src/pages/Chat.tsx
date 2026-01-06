@@ -2,6 +2,7 @@ import { type Component, createSignal, createEffect, onCleanup, For, Show } from
 import { Button, Input, Alert, Empty } from '../components';
 import { getChatWebSocket } from '../api/chat';
 import type { ChatRoom, ServerMessage, ChatParticipant } from '../types';
+import { useI18n } from '../stores/i18n';
 
 interface ChatMessage {
   type: 'chat' | 'action' | 'system' | 'join' | 'leave';
@@ -11,6 +12,7 @@ interface ChatMessage {
 }
 
 export const ChatPage: Component = () => {
+  const { t } = useI18n();
   const [rooms, setRooms] = createSignal<ChatRoom[]>([]);
   const [currentRoom, setCurrentRoom] = createSignal<{ id: string; name: string } | null>(null);
   const [participants, setParticipants] = createSignal<ChatParticipant[]>([]);
@@ -36,7 +38,7 @@ export const ChatPage: Component = () => {
     });
 
     ws.onError(() => {
-      setError('接続エラーが発生しました');
+      setError(t('chat.connectionError'));
     });
 
     ws.onMessage((message: ServerMessage) => {
@@ -149,7 +151,7 @@ export const ChatPage: Component = () => {
 
   return (
     <div class="space-y-6">
-      <h1 class="text-2xl font-display font-bold text-neon-cyan">チャット</h1>
+      <h1 class="text-2xl font-display font-bold text-neon-cyan">{t('chat.title')}</h1>
 
       <Show when={error()}>
         <Alert type="error" onClose={() => setError('')}>
@@ -161,11 +163,11 @@ export const ChatPage: Component = () => {
         {/* Room List */}
         <div class="lg:col-span-1">
           <div class="card">
-            <h3 class="font-medium text-neon-cyan mb-4">ルーム一覧</h3>
+            <h3 class="font-medium text-neon-cyan mb-4">{t('chat.roomList')}</h3>
             <div class="space-y-2">
               <Show
                 when={rooms().length > 0}
-                fallback={<p class="text-sm text-gray-500">ルームがありません</p>}
+                fallback={<p class="text-sm text-gray-500">{t('chat.noRooms')}</p>}
               >
                 <For each={rooms()}>
                   {(room) => (
@@ -179,7 +181,7 @@ export const ChatPage: Component = () => {
                       }`}
                     >
                       <div class="font-medium">{room.name}</div>
-                      <div class="text-xs text-gray-500">{room.participant_count} 人</div>
+                      <div class="text-xs text-gray-500">{room.participant_count} {t('chat.participants')}</div>
                     </button>
                   )}
                 </For>
@@ -195,8 +197,8 @@ export const ChatPage: Component = () => {
             fallback={
               <div class="card">
                 <Empty
-                  title="ルームに参加してください"
-                  description="左のリストからルームを選択してください"
+                  title={t('chat.selectRoom')}
+                  description={t('chat.selectRoomDesc')}
                 />
               </div>
             }
@@ -206,10 +208,10 @@ export const ChatPage: Component = () => {
               <div class="flex items-center justify-between pb-4 border-b border-neon-cyan/20">
                 <div>
                   <h3 class="font-medium text-neon-cyan">{currentRoom()!.name}</h3>
-                  <p class="text-xs text-gray-500">{participants().length} 人が参加中</p>
+                  <p class="text-xs text-gray-500">{participants().length} {t('chat.participantsOnline')}</p>
                 </div>
                 <Button variant="secondary" onClick={handleLeaveRoom}>
-                  退室
+                  {t('chat.leave')}
                 </Button>
               </div>
 
@@ -229,11 +231,11 @@ export const ChatPage: Component = () => {
                   <Input
                     value={inputMessage()}
                     onInput={(e) => setInputMessage(e.currentTarget.value)}
-                    placeholder="メッセージを入力... (/me でアクション)"
+                    placeholder={t('chat.inputPlaceholder')}
                     class="flex-1"
                   />
                   <Button type="submit" variant="primary">
-                    送信
+                    {t('common.send')}
                   </Button>
                 </div>
               </form>
@@ -245,7 +247,7 @@ export const ChatPage: Component = () => {
       {/* Connection Status */}
       <div class="text-xs text-gray-600 text-center">
         <span class={`inline-block w-2 h-2 rounded-full mr-2 ${connected() ? 'bg-neon-green' : 'bg-neon-pink'}`} />
-        {connected() ? '接続中' : '未接続'}
+        {connected() ? t('chat.connected') : t('chat.disconnected')}
       </div>
     </div>
   );

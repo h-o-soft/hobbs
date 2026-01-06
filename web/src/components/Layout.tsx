@@ -1,8 +1,10 @@
 import { type ParentComponent, Show } from 'solid-js';
 import { A, useLocation } from '@solidjs/router';
 import { useAuth } from '../stores/auth';
+import { useI18n } from '../stores/i18n';
 
 export const Layout: ParentComponent = (props) => {
+  const { t, locale, setLocale } = useI18n();
   const [auth, { logout }] = useAuth();
   const location = useLocation();
 
@@ -10,6 +12,10 @@ export const Layout: ParentComponent = (props) => {
 
   const handleLogout = async () => {
     await logout();
+  };
+
+  const toggleLocale = () => {
+    setLocale(locale() === 'ja' ? 'en' : 'ja');
   };
 
   return (
@@ -26,30 +32,39 @@ export const Layout: ParentComponent = (props) => {
             {/* Navigation */}
             <Show when={auth.isAuthenticated}>
               <nav class="hidden md:flex items-center space-x-1">
-                <NavLink href="/boards" active={isActive('/boards')}>掲示板</NavLink>
-                <NavLink href="/mail" active={isActive('/mail')}>メール</NavLink>
-                <NavLink href="/chat" active={isActive('/chat')}>チャット</NavLink>
-                <NavLink href="/files" active={isActive('/files')}>ファイル</NavLink>
+                <NavLink href="/boards" active={isActive('/boards')}>{t('nav.boards')}</NavLink>
+                <NavLink href="/mail" active={isActive('/mail')}>{t('nav.mail')}</NavLink>
+                <NavLink href="/chat" active={isActive('/chat')}>{t('nav.chat')}</NavLink>
+                <NavLink href="/files" active={isActive('/files')}>{t('nav.files')}</NavLink>
+                <NavLink href="/rss" active={isActive('/rss')}>{t('nav.rss')}</NavLink>
                 <Show when={auth.user?.role === 'sysop' || auth.user?.role === 'subop'}>
-                  <NavLink href="/admin" active={isActive('/admin')}>管理</NavLink>
+                  <NavLink href="/admin" active={isActive('/admin')}>{t('nav.admin')}</NavLink>
                 </Show>
               </nav>
             </Show>
 
             {/* User Info */}
             <div class="flex items-center space-x-4">
+              {/* Language Toggle */}
+              <button
+                onClick={toggleLocale}
+                class="text-xs text-gray-500 hover:text-neon-cyan transition-colors px-2 py-1 border border-gray-700 rounded"
+              >
+                {locale() === 'ja' ? 'EN' : 'JA'}
+              </button>
+
               <Show
                 when={auth.isAuthenticated}
                 fallback={
                   <A href="/login" class="btn-primary text-sm">
-                    ログイン
+                    {t('nav.login')}
                   </A>
                 }
               >
                 <div class="flex items-center space-x-3">
                   <Show when={auth.user && auth.user.unread_mail_count > 0}>
                     <span class="badge-pink">
-                      {auth.user!.unread_mail_count}通
+                      {auth.user!.unread_mail_count}{t('nav.unreadMails')}
                     </span>
                   </Show>
                   <A
@@ -62,7 +77,7 @@ export const Layout: ParentComponent = (props) => {
                     onClick={handleLogout}
                     class="text-sm text-gray-500 hover:text-neon-pink transition-colors"
                   >
-                    ログアウト
+                    {t('nav.logout')}
                   </button>
                 </div>
               </Show>
@@ -72,12 +87,13 @@ export const Layout: ParentComponent = (props) => {
           {/* Mobile Navigation */}
           <Show when={auth.isAuthenticated}>
             <nav class="md:hidden flex items-center space-x-1 pb-3 overflow-x-auto">
-              <NavLink href="/boards" active={isActive('/boards')}>掲示板</NavLink>
-              <NavLink href="/mail" active={isActive('/mail')}>メール</NavLink>
-              <NavLink href="/chat" active={isActive('/chat')}>チャット</NavLink>
-              <NavLink href="/files" active={isActive('/files')}>ファイル</NavLink>
+              <NavLink href="/boards" active={isActive('/boards')}>{t('nav.boards')}</NavLink>
+              <NavLink href="/mail" active={isActive('/mail')}>{t('nav.mail')}</NavLink>
+              <NavLink href="/chat" active={isActive('/chat')}>{t('nav.chat')}</NavLink>
+              <NavLink href="/files" active={isActive('/files')}>{t('nav.files')}</NavLink>
+              <NavLink href="/rss" active={isActive('/rss')}>{t('nav.rss')}</NavLink>
               <Show when={auth.user?.role === 'sysop' || auth.user?.role === 'subop'}>
-                <NavLink href="/admin" active={isActive('/admin')}>管理</NavLink>
+                <NavLink href="/admin" active={isActive('/admin')}>{t('nav.admin')}</NavLink>
               </Show>
             </nav>
           </Show>

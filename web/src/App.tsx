@@ -1,6 +1,7 @@
 import { type Component, Show, lazy, Suspense } from 'solid-js';
 import { Router, Route, Navigate } from '@solidjs/router';
 import { AuthProvider, useAuth } from './stores/auth';
+import { I18nProvider } from './stores/i18n';
 import { Layout, PageLoading } from './components';
 
 // Lazy load pages
@@ -14,6 +15,8 @@ const MailPage = lazy(() => import('./pages/Mail').then(m => ({ default: m.MailP
 const ChatPage = lazy(() => import('./pages/Chat').then(m => ({ default: m.ChatPage })));
 const FilesPage = lazy(() => import('./pages/Files').then(m => ({ default: m.FilesPage })));
 const FolderDetailPage = lazy(() => import('./pages/Files').then(m => ({ default: m.FolderDetailPage })));
+const RssPage = lazy(() => import('./pages/Rss').then(m => ({ default: m.RssPage })));
+const RssDetailPage = lazy(() => import('./pages/Rss').then(m => ({ default: m.RssDetailPage })));
 const AdminPage = lazy(() => import('./pages/Admin').then(m => ({ default: m.AdminPage })));
 const ProfilePage = lazy(() => import('./pages/Profile').then(m => ({ default: m.ProfilePage })));
 const ProfileEditPage = lazy(() => import('./pages/Profile').then(m => ({ default: m.ProfileEditPage })));
@@ -88,8 +91,9 @@ const PublicRoute: Component<{ children: any }> = (props) => {
 
 const App: Component = () => {
   return (
-    <AuthProvider>
-      <Router>
+    <I18nProvider>
+      <AuthProvider>
+        <Router>
         {/* Public Routes */}
         <Route path="/login" component={() => (
           <PublicRoute>
@@ -143,6 +147,16 @@ const App: Component = () => {
             <FolderDetailPage />
           </ProtectedRoute>
         )} />
+        <Route path="/rss" component={() => (
+          <ProtectedRoute>
+            <RssPage />
+          </ProtectedRoute>
+        )} />
+        <Route path="/rss/:id" component={() => (
+          <ProtectedRoute>
+            <RssDetailPage />
+          </ProtectedRoute>
+        )} />
 
         {/* Profile Routes */}
         <Route path="/profile" component={() => (
@@ -170,8 +184,9 @@ const App: Component = () => {
 
         {/* Fallback */}
         <Route path="*" component={() => <Navigate href="/" />} />
-      </Router>
-    </AuthProvider>
+        </Router>
+      </AuthProvider>
+    </I18nProvider>
   );
 };
 

@@ -1,11 +1,13 @@
 import { type Component, createResource, For, Show } from 'solid-js';
 import { A } from '@solidjs/router';
 import { useAuth } from '../stores/auth';
+import { useI18n } from '../stores/i18n';
 import { PageLoading } from '../components';
 import * as boardApi from '../api/board';
 import type { Board } from '../types';
 
 export const HomePage: Component = () => {
+  const { t } = useI18n();
   const [auth] = useAuth();
 
   const [boards] = createResource(async () => {
@@ -23,10 +25,10 @@ export const HomePage: Component = () => {
         <div class="absolute inset-0 bg-gradient-to-r from-neon-purple/5 to-neon-cyan/5" />
         <div class="relative">
           <h1 class="font-display text-3xl font-bold text-neon-cyan mb-2">
-            Welcome to HOBBS
+            {t('home.welcome')}
           </h1>
           <p class="text-gray-400">
-            ようこそ、<span class="text-neon-purple">{auth.user?.nickname}</span> さん
+            {t('home.welcomeUser', { name: auth.user?.nickname || '' })}
           </p>
           <Show when={auth.user && auth.user.unread_mail_count > 0}>
             <div class="mt-4">
@@ -34,7 +36,7 @@ export const HomePage: Component = () => {
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
-                <span>{auth.user!.unread_mail_count}件の未読メールがあります</span>
+                <span>{auth.user!.unread_mail_count}{t('home.unreadMails')}</span>
               </A>
             </div>
           </Show>
@@ -45,7 +47,7 @@ export const HomePage: Component = () => {
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <QuickAccessCard
           href="/boards"
-          title="掲示板"
+          title={t('nav.boards')}
           icon={
             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -55,7 +57,7 @@ export const HomePage: Component = () => {
         />
         <QuickAccessCard
           href="/mail"
-          title="メール"
+          title={t('nav.mail')}
           icon={
             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -66,7 +68,7 @@ export const HomePage: Component = () => {
         />
         <QuickAccessCard
           href="/chat"
-          title="チャット"
+          title={t('nav.chat')}
           icon={
             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -76,7 +78,7 @@ export const HomePage: Component = () => {
         />
         <QuickAccessCard
           href="/files"
-          title="ファイル"
+          title={t('nav.files')}
           icon={
             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -88,12 +90,12 @@ export const HomePage: Component = () => {
 
       {/* Boards List */}
       <div>
-        <h2 class="text-xl font-medium text-neon-cyan mb-4">掲示板一覧</h2>
+        <h2 class="text-xl font-medium text-neon-cyan mb-4">{t('home.boardList')}</h2>
         <Show when={!boards.loading} fallback={<PageLoading />}>
           <div class="space-y-2">
             <For each={boards()} fallback={
               <div class="card text-center text-gray-500">
-                掲示板がありません
+                {t('boards.noBoards')}
               </div>
             }>
               {(board) => <BoardCard board={board} />}
@@ -142,6 +144,8 @@ interface BoardCardProps {
 }
 
 const BoardCard: Component<BoardCardProps> = (props) => {
+  const { t } = useI18n();
+
   return (
     <A
       href={`/boards/${props.board.id}`}
@@ -156,9 +160,9 @@ const BoardCard: Component<BoardCardProps> = (props) => {
         </div>
         <div class="flex items-center space-x-4 text-xs text-gray-500">
           <span class="badge-cyan">
-            {props.board.board_type === 'thread' ? 'スレッド' : 'フラット'}
+            {props.board.board_type === 'thread' ? t('boards.threadType') : t('boards.flatType')}
           </span>
-          <span>{props.board.post_count ?? 0} 投稿</span>
+          <span>{props.board.post_count ?? 0} {t('home.posts')}</span>
         </div>
       </div>
     </A>

@@ -2,22 +2,24 @@ import { type Component, createResource, createSignal, For, Show } from 'solid-j
 import { A, useParams } from '@solidjs/router';
 import { PageLoading, Pagination, Button, Input, Textarea, Modal, Alert, Empty, UserLink } from '../components';
 import * as boardApi from '../api/board';
+import { useI18n } from '../stores/i18n';
 
 // Board List Page
 export const BoardsPage: Component = () => {
+  const { t } = useI18n();
   const [boards] = createResource(boardApi.getBoards);
 
   return (
     <div class="space-y-6">
-      <h1 class="text-2xl font-display font-bold text-neon-cyan">掲示板</h1>
+      <h1 class="text-2xl font-display font-bold text-neon-cyan">{t('boards.title')}</h1>
 
       <Show when={!boards.loading} fallback={<PageLoading />}>
         <Show
           when={boards() && boards()!.length > 0}
           fallback={
             <Empty
-              title="掲示板がありません"
-              description="まだ掲示板が作成されていません"
+              title={t('boards.noBoards')}
+              description={t('boards.noBoardsDesc')}
             />
           }
         >
@@ -37,9 +39,9 @@ export const BoardsPage: Component = () => {
                     </div>
                     <div class="flex items-center space-x-4 text-xs text-gray-500">
                       <span class="badge-cyan">
-                        {board.board_type === 'thread' ? 'スレッド' : 'フラット'}
+                        {board.board_type === 'thread' ? t('boards.threadType') : t('boards.flatType')}
                       </span>
-                      <span>{board.post_count ?? 0} 投稿</span>
+                      <span>{board.post_count ?? 0} {t('home.posts')}</span>
                     </div>
                   </div>
                 </A>
@@ -54,6 +56,7 @@ export const BoardsPage: Component = () => {
 
 // Board Detail Page (Thread list or Flat posts)
 export const BoardDetailPage: Component = () => {
+  const { t } = useI18n();
   const params = useParams<{ id: string }>();
   const [page, setPage] = createSignal(1);
   const [showNewThread, setShowNewThread] = createSignal(false);
@@ -98,7 +101,7 @@ export const BoardDetailPage: Component = () => {
         <div class="flex items-center justify-between">
           <div>
             <div class="flex items-center space-x-2 text-sm text-gray-500 mb-2">
-              <A href="/boards" class="hover:text-neon-cyan transition-colors">掲示板</A>
+              <A href="/boards" class="hover:text-neon-cyan transition-colors">{t('boards.title')}</A>
               <span>/</span>
             </div>
             <h1 class="text-2xl font-display font-bold text-neon-cyan">{board()!.name}</h1>
@@ -111,12 +114,12 @@ export const BoardDetailPage: Component = () => {
               when={isThreadBoard()}
               fallback={
                 <Button variant="primary" onClick={() => setShowNewPost(true)}>
-                  新規投稿
+                  {t('boards.newPost')}
                 </Button>
               }
             >
               <Button variant="primary" onClick={() => setShowNewThread(true)}>
-                新規スレッド
+                {t('boards.newThread')}
               </Button>
             </Show>
           </Show>
@@ -129,12 +132,12 @@ export const BoardDetailPage: Component = () => {
               when={threads()?.data && threads()!.data.length > 0}
               fallback={
                 <Empty
-                  title="スレッドがありません"
-                  description="最初のスレッドを作成してください"
+                  title={t('boards.noThreads')}
+                  description={t('boards.noThreadsDesc')}
                   action={
                     <Show when={board()!.can_write}>
                       <Button variant="primary" onClick={() => setShowNewThread(true)}>
-                        スレッドを作成
+                        {t('boards.createThread')}
                       </Button>
                     </Show>
                   }
@@ -158,7 +161,7 @@ export const BoardDetailPage: Component = () => {
                           </p>
                         </div>
                         <div class="text-sm text-gray-500">
-                          {thread.post_count} 件
+                          {thread.post_count} {t('boards.postCount')}
                         </div>
                       </div>
                     </A>
@@ -182,12 +185,12 @@ export const BoardDetailPage: Component = () => {
               when={flatPosts()?.data && flatPosts()!.data.length > 0}
               fallback={
                 <Empty
-                  title="投稿がありません"
-                  description="最初の投稿を作成してください"
+                  title={t('boards.noPosts')}
+                  description={t('boards.noPostsDesc')}
                   action={
                     <Show when={board()!.can_write}>
                       <Button variant="primary" onClick={() => setShowNewPost(true)}>
-                        投稿を作成
+                        {t('boards.createPost')}
                       </Button>
                     </Show>
                   }
@@ -234,7 +237,7 @@ export const BoardDetailPage: Component = () => {
         <Modal
           isOpen={showNewThread()}
           onClose={() => setShowNewThread(false)}
-          title="新規スレッド"
+          title={t('boards.newThread')}
           size="lg"
         >
           <NewThreadForm
@@ -248,7 +251,7 @@ export const BoardDetailPage: Component = () => {
         <Modal
           isOpen={showNewPost()}
           onClose={() => setShowNewPost(false)}
-          title="新規投稿"
+          title={t('boards.newPost')}
           size="lg"
         >
           <NewFlatPostForm
@@ -264,6 +267,7 @@ export const BoardDetailPage: Component = () => {
 
 // Thread Detail Page
 export const ThreadDetailPage: Component = () => {
+  const { t } = useI18n();
   const params = useParams<{ id: string }>();
   const [page, setPage] = createSignal(1);
 
@@ -290,10 +294,10 @@ export const ThreadDetailPage: Component = () => {
         {/* Header */}
         <div>
           <div class="flex items-center space-x-2 text-sm text-gray-500 mb-2">
-            <A href="/boards" class="hover:text-neon-cyan transition-colors">掲示板</A>
+            <A href="/boards" class="hover:text-neon-cyan transition-colors">{t('boards.title')}</A>
             <span>/</span>
             <A href={`/boards/${thread()!.board_id}`} class="hover:text-neon-cyan transition-colors">
-              戻る
+              {t('common.back')}
             </A>
             <span>/</span>
           </div>
@@ -343,7 +347,7 @@ export const ThreadDetailPage: Component = () => {
 
           {/* Reply Form */}
           <div class="card">
-            <h3 class="text-lg font-medium text-neon-cyan mb-4">返信</h3>
+            <h3 class="text-lg font-medium text-neon-cyan mb-4">{t('boards.reply')}</h3>
             <ReplyForm
               threadId={threadId()}
               onSuccess={handlePostCreated}
@@ -363,6 +367,7 @@ interface NewThreadFormProps {
 }
 
 const NewThreadForm: Component<NewThreadFormProps> = (props) => {
+  const { t } = useI18n();
   const [title, setTitle] = createSignal('');
   const [body, setBody] = createSignal('');
   const [error, setError] = createSignal('');
@@ -383,7 +388,7 @@ const NewThreadForm: Component<NewThreadFormProps> = (props) => {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError('スレッドの作成に失敗しました');
+        setError(t('boards.createThreadFailed'));
       }
     } finally {
       setLoading(false);
@@ -399,7 +404,7 @@ const NewThreadForm: Component<NewThreadFormProps> = (props) => {
       </Show>
 
       <Input
-        label="タイトル"
+        label={t('boards.postTitle')}
         value={title()}
         onInput={(e) => setTitle(e.currentTarget.value)}
         required
@@ -407,7 +412,7 @@ const NewThreadForm: Component<NewThreadFormProps> = (props) => {
       />
 
       <Textarea
-        label="本文"
+        label={t('boards.postBody')}
         value={body()}
         onInput={(e) => setBody(e.currentTarget.value)}
         required
@@ -416,10 +421,10 @@ const NewThreadForm: Component<NewThreadFormProps> = (props) => {
 
       <div class="flex justify-end space-x-3">
         <Button type="button" variant="secondary" onClick={props.onCancel}>
-          キャンセル
+          {t('common.cancel')}
         </Button>
         <Button type="submit" variant="primary" loading={loading()}>
-          作成
+          {t('common.create')}
         </Button>
       </div>
     </form>
@@ -433,6 +438,7 @@ interface ReplyFormProps {
 }
 
 const ReplyForm: Component<ReplyFormProps> = (props) => {
+  const { t } = useI18n();
   const [body, setBody] = createSignal('');
   const [error, setError] = createSignal('');
   const [loading, setLoading] = createSignal(false);
@@ -452,7 +458,7 @@ const ReplyForm: Component<ReplyFormProps> = (props) => {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError('投稿に失敗しました');
+        setError(t('boards.createPostFailed'));
       }
     } finally {
       setLoading(false);
@@ -470,13 +476,13 @@ const ReplyForm: Component<ReplyFormProps> = (props) => {
       <Textarea
         value={body()}
         onInput={(e) => setBody(e.currentTarget.value)}
-        placeholder="返信を入力..."
+        placeholder={t('boards.replyPlaceholder')}
         rows={4}
       />
 
       <div class="flex justify-end">
         <Button type="submit" variant="primary" loading={loading()}>
-          投稿
+          {t('common.send')}
         </Button>
       </div>
     </form>
@@ -491,6 +497,7 @@ interface NewFlatPostFormProps {
 }
 
 const NewFlatPostForm: Component<NewFlatPostFormProps> = (props) => {
+  const { t } = useI18n();
   const [title, setTitle] = createSignal('');
   const [body, setBody] = createSignal('');
   const [error, setError] = createSignal('');
@@ -511,7 +518,7 @@ const NewFlatPostForm: Component<NewFlatPostFormProps> = (props) => {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError('投稿の作成に失敗しました');
+        setError(t('boards.createPostFailed'));
       }
     } finally {
       setLoading(false);
@@ -527,7 +534,7 @@ const NewFlatPostForm: Component<NewFlatPostFormProps> = (props) => {
       </Show>
 
       <Input
-        label="タイトル"
+        label={t('boards.postTitle')}
         value={title()}
         onInput={(e) => setTitle(e.currentTarget.value)}
         required
@@ -535,7 +542,7 @@ const NewFlatPostForm: Component<NewFlatPostFormProps> = (props) => {
       />
 
       <Textarea
-        label="本文"
+        label={t('boards.postBody')}
         value={body()}
         onInput={(e) => setBody(e.currentTarget.value)}
         required
@@ -544,10 +551,10 @@ const NewFlatPostForm: Component<NewFlatPostFormProps> = (props) => {
 
       <div class="flex justify-end space-x-3">
         <Button type="button" variant="secondary" onClick={props.onCancel}>
-          キャンセル
+          {t('common.cancel')}
         </Button>
         <Button type="submit" variant="primary" loading={loading()}>
-          投稿
+          {t('common.send')}
         </Button>
       </div>
     </form>
