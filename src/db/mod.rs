@@ -363,11 +363,11 @@ mod tests {
     fn test_users_table_indexes() {
         let db = Database::open_in_memory().unwrap();
 
-        // Check indexes exist
+        // Check indexes exist (username index was renamed to idx_users_username_nocase in v21)
         let idx_username: i64 = db
             .conn()
             .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_users_username'",
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_users_username_nocase'",
                 [],
                 |row| row.get(0),
             )
