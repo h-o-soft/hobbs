@@ -1,6 +1,7 @@
 import { type Component, Show, lazy, Suspense } from 'solid-js';
 import { Router, Route, Navigate } from '@solidjs/router';
 import { AuthProvider, useAuth } from './stores/auth';
+import { SiteConfigProvider } from './stores/siteConfig';
 import { I18nProvider } from './stores/i18n';
 import { Layout, PageLoading } from './components';
 
@@ -91,9 +92,10 @@ const PublicRoute: Component<{ children: any }> = (props) => {
 
 const App: Component = () => {
   return (
-    <I18nProvider>
-      <AuthProvider>
-        <Router>
+    <SiteConfigProvider>
+      <I18nProvider>
+        <AuthProvider>
+          <Router>
         {/* Public Routes */}
         <Route path="/login" component={() => (
           <PublicRoute>
@@ -184,9 +186,10 @@ const App: Component = () => {
 
         {/* Fallback */}
         <Route path="*" component={() => <Navigate href="/" />} />
-        </Router>
-      </AuthProvider>
-    </I18nProvider>
+          </Router>
+        </AuthProvider>
+      </I18nProvider>
+    </SiteConfigProvider>
   );
 };
 
