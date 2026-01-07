@@ -752,18 +752,29 @@ No. ファイル名      サイズ DL
 接続ありがとうございます。
 お使いの端末を選択してください。
 
- [1] 標準端末 (80x24)
-     TeraTerm, PuTTY等
+ [1] Standard (80x24, ShiftJIS)
+     TeraTerm, PuTTY等（日本語）
 
- [2] Commodore 64 (40x25)
-     C64ターミナル
+ [2] Standard UTF-8 (80x24)
+     TeraTerm, PuTTY等（UTF-8）
 
- [3] C64 ANSI (40x25)
-     ANSI対応C64
+ [3] DOS/IBM PC (80x25, CP437)
+     DOS端末、IBM PC互換機
+
+ [4] C64 Plain (40x25)
+     ANSI非対応C64
+
+ [5] C64 PETSCII (40x25)
+     PETSCII制御コード使用
+
+ [6] C64 ANSI (40x25)
+     ANSI対応エミュレータ
 
 ----------------------------------------
 選択 >
 ```
+
+カスタムプロファイルが `config.toml` で定義されている場合、追加で表示されます。
 
 ## 4. 色使いの指針（ANSI対応端末向け）
 

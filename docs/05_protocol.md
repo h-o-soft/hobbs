@@ -43,12 +43,14 @@ Client -> Server: IAC DO SGA           (255 253 3)
 
 ### 2.1 対応エンコーディング
 
-HOBBSは2つの文字エンコーディングをサポートする：
+HOBBSは4つの文字エンコーディングをサポートする：
 
 | エンコーディング | 説明 | 主な用途 |
 |------------------|------|----------|
-| ShiftJIS | 日本語レガシー端末向け | レトロ端末、C64等 |
+| ShiftJIS | 日本語レガシー端末向け | レトロ端末、PC-98等 |
 | UTF-8 | モダン端末向け | TeraTerm、PuTTY等 |
+| CP437 | IBM PC Code Page 437 | DOS端末、IBM PC互換機 |
+| PETSCII | Commodore独自コード | Commodore 64/128等 |
 
 ### 2.2 エンコーディング変換フロー
 
@@ -82,10 +84,41 @@ pub enum CharacterEncoding {
     #[default]
     ShiftJIS,
     Utf8,
+    Cp437,    // IBM PC Code Page 437
+    Petscii,  // Commodore 64/128
 }
 ```
 
-### 2.4 変換エラー処理
+### 2.4.1 出力モード（OutputMode）
+
+ANSIエスケープシーケンスの処理方法を指定する：
+
+| モード | 説明 | 用途 |
+|--------|------|------|
+| Ansi | ANSIシーケンスをそのまま出力 | ANSI対応端末 |
+| Plain | ANSIシーケンスを除去 | ANSI非対応端末 |
+| PetsciiCtrl | ANSIをPETSCII制御コードに変換 | Commodore端末 |
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OutputMode {
+    #[default]
+    Ansi,        // ANSIシーケンスをそのまま出力
+    Plain,       // ANSIシーケンスを除去
+    PetsciiCtrl, // ANSIをPETSCII制御コードに変換
+}
+```
+
+**PETSCII制御コードへの変換例：**
+
+| ANSI | PETSCII | 説明 |
+|------|---------|------|
+| `\x1b[2J` | `0x93` | 画面クリア |
+| `\x1b[H` | `0x13` | カーソルホーム |
+| `\x1b[7m` | `0x12` | 反転開始 |
+| `\x1b[0m` | `0x92` | 反転解除 |
+
+### 2.5 変換エラー処理
 
 | エラー種別 | ShiftJIS→UTF-8 | UTF-8→ShiftJIS |
 |------------|----------------|----------------|
@@ -94,7 +127,7 @@ pub enum CharacterEncoding {
 
 UTF-8モードでは変換エラーが発生しにくいため、モダン端末にはUTF-8を推奨。
 
-### 2.5 制御文字
+### 2.6 制御文字
 
 | 文字 | コード | 処理 |
 |------|--------|------|
@@ -106,7 +139,7 @@ UTF-8モードでは変換エラーが発生しにくいため、モダン端末
 | Ctrl+D | 0x04 | EOF（ログアウト確認） |
 | ESC | 0x1B | ANSIシーケンス開始 |
 
-### 2.6 入力処理
+### 2.7 入力処理
 
 ```rust
 // 行バッファリングモード
@@ -257,91 +290,135 @@ pub mod colors {
 
 ## 4. 端末プロファイル
 
-HOBBSは複数の端末タイプをサポートする。特にCommodore 64のような特殊な端末にも対応。
+HOBBSは複数の端末タイプをサポートする。各プロファイルは画面サイズ、文字幅、エンコーディング、出力モードを統合的に管理する。
 
-### 4.1 対応端末タイプ
+### 4.1 対応端末タイプ（組み込みプロファイル）
 
-| プロファイル | 幅 | 高 | 全角幅 | ANSI | 想定クライアント |
-|--------------|----|----|--------|------|------------------|
-| `standard` | 80 | 24 | 2 | ○ | TeraTerm, PuTTY等 |
-| `c64` | 40 | 25 | 1 | × | C64（現状） |
-| `c64_ansi` | 40 | 25 | 1 | ○ | C64（ANSI対応後） |
+| プロファイル | 幅 | 高 | 全角幅 | エンコーディング | 出力モード | 想定クライアント |
+|--------------|----|----|--------|------------------|------------|------------------|
+| `standard` | 80 | 24 | 2 | ShiftJIS | Ansi | TeraTerm, PuTTY等（日本語） |
+| `standard_utf8` | 80 | 24 | 2 | UTF-8 | Ansi | TeraTerm, PuTTY等（UTF-8） |
+| `dos` | 80 | 25 | 1 | CP437 | Ansi | DOS端末、IBM PC互換機 |
+| `c64` | 40 | 25 | 1 | Petscii | Plain | C64（ANSI非対応） |
+| `c64_petscii` | 40 | 25 | 1 | Petscii | PetsciiCtrl | C64（PETSCII制御コード使用） |
+| `c64_ansi` | 40 | 25 | 1 | Petscii | Ansi | C64（ANSI対応エミュレータ） |
 
 ### 4.2 端末プロファイル構造
 
 ```rust
 #[derive(Debug, Clone)]
 pub struct TerminalProfile {
-    pub name: String,         // プロファイル名
-    pub width: u16,           // 画面幅（カラム数）
-    pub height: u16,          // 画面高（行数）
-    pub cjk_width: u8,        // 全角文字の幅（1 or 2）
-    pub ansi_enabled: bool,   // ANSIエスケープシーケンス対応
+    pub name: String,                    // プロファイル名
+    pub width: u16,                      // 画面幅（カラム数）
+    pub height: u16,                     // 画面高（行数）
+    pub cjk_width: u8,                   // 全角文字の幅（1 or 2）
+    pub ansi_enabled: bool,              // ANSIエスケープシーケンス対応
+    pub encoding: CharacterEncoding,     // 文字エンコーディング
+    pub output_mode: OutputMode,         // 出力モード
+    pub template_dir: String,            // テンプレートディレクトリ（"80" or "40"）
 }
 
 impl TerminalProfile {
-    /// 標準端末（80x24、全角2幅、ANSI対応）
+    /// 標準端末（80x24、ShiftJIS、ANSI対応）
     pub fn standard() -> Self {
         Self {
             name: "standard".to_string(),
-            width: 80,
-            height: 24,
-            cjk_width: 2,
-            ansi_enabled: true,
+            width: 80, height: 24,
+            cjk_width: 2, ansi_enabled: true,
+            encoding: CharacterEncoding::ShiftJIS,
+            output_mode: OutputMode::Ansi,
+            template_dir: "80".to_string(),
         }
     }
 
-    /// Commodore 64（40x25、全角1幅、ANSIなし）
+    /// 標準端末UTF-8（80x24、UTF-8、ANSI対応）
+    pub fn standard_utf8() -> Self {
+        Self {
+            name: "standard_utf8".to_string(),
+            width: 80, height: 24,
+            cjk_width: 2, ansi_enabled: true,
+            encoding: CharacterEncoding::Utf8,
+            output_mode: OutputMode::Ansi,
+            template_dir: "80".to_string(),
+        }
+    }
+
+    /// DOS端末（80x25、CP437、ANSI対応）
+    pub fn dos() -> Self {
+        Self {
+            name: "dos".to_string(),
+            width: 80, height: 25,
+            cjk_width: 1, ansi_enabled: true,
+            encoding: CharacterEncoding::Cp437,
+            output_mode: OutputMode::Ansi,
+            template_dir: "80".to_string(),
+        }
+    }
+
+    /// Commodore 64（40x25、PETSCII、ANSIなし）
     pub fn c64() -> Self {
         Self {
             name: "c64".to_string(),
-            width: 40,
-            height: 25,
-            cjk_width: 1,
-            ansi_enabled: false,
+            width: 40, height: 25,
+            cjk_width: 1, ansi_enabled: false,
+            encoding: CharacterEncoding::Petscii,
+            output_mode: OutputMode::Plain,
+            template_dir: "40".to_string(),
         }
     }
 
-    /// Commodore 64 ANSI対応版（将来用）
+    /// Commodore 64 PETSCII制御コード使用
+    pub fn c64_petscii() -> Self {
+        Self {
+            name: "c64_petscii".to_string(),
+            width: 40, height: 25,
+            cjk_width: 1, ansi_enabled: false,
+            encoding: CharacterEncoding::Petscii,
+            output_mode: OutputMode::PetsciiCtrl,
+            template_dir: "40".to_string(),
+        }
+    }
+
+    /// Commodore 64 ANSI対応エミュレータ用
     pub fn c64_ansi() -> Self {
         Self {
             name: "c64_ansi".to_string(),
-            width: 40,
-            height: 25,
-            cjk_width: 1,
-            ansi_enabled: true,
+            width: 40, height: 25,
+            cjk_width: 1, ansi_enabled: true,
+            encoding: CharacterEncoding::Petscii,
+            output_mode: OutputMode::Ansi,
+            template_dir: "40".to_string(),
         }
     }
 
     /// 文字列の表示幅を計算
     pub fn display_width(&self, s: &str) -> usize {
         if self.cjk_width == 1 {
-            // C64モード: 全ての文字が1幅
             s.chars().count()
         } else {
-            // 標準モード: 全角2幅、半角1幅
-            s.chars().map(|c| {
-                if c.is_ascii() { 1 } else { 2 }
-            }).sum()
+            s.chars().map(|c| if c.is_ascii() { 1 } else { 2 }).sum()
         }
-    }
-
-    /// 指定幅に収まるように文字列を切り詰め
-    pub fn truncate_to_width(&self, s: &str, max_width: usize) -> String {
-        let mut width = 0;
-        let mut result = String::new();
-        for c in s.chars() {
-            let char_width = if self.cjk_width == 1 || c.is_ascii() { 1 } else { 2 };
-            if width + char_width > max_width {
-                break;
-            }
-            width += char_width;
-            result.push(c);
-        }
-        result
     }
 }
 ```
+
+### 4.2.1 カスタムプロファイル
+
+`config.toml` で独自のプロファイルを定義可能：
+
+```toml
+[[terminal.profiles]]
+name = "pc98"
+width = 80
+height = 25
+cjk_width = 2
+ansi_enabled = true
+encoding = "shiftjis"
+output_mode = "ansi"
+template_dir = "80"
+```
+
+カスタムプロファイルは組み込みプロファイルと同様に選択画面に表示される。
 
 ### 4.3 端末タイプ選択
 
@@ -360,14 +437,19 @@ impl TerminalProfile {
 ```
 端末タイプを選択してください:
 
-[1] 標準端末 (80x24)
-[2] Commodore 64 (40x25)
-[3] Commodore 64 ANSI (40x25)
+[1] Standard (80x24, ShiftJIS)
+[2] Standard UTF-8 (80x24)
+[3] DOS/IBM PC (80x25, CP437)
+[4] C64 Plain (40x25, no escape)
+[5] C64 PETSCII (40x25, PETSCII ctrl)
+[6] C64 ANSI (40x25)
 
 選択 >
 ```
 
-選択された端末タイプはセッションに保存され、以降の画面描画に使用される。
+プロファイルを選択すると、そのプロファイルのエンコーディングがセッションに適用される。選択された端末タイプはセッションに保存され、以降の画面描画に使用される。
+
+カスタムプロファイルが `config.toml` で定義されている場合、組み込みプロファイルの後に表示される。
 
 ### 4.4 NAWSネゴシエーション
 
