@@ -1,9 +1,14 @@
 //! Terminal profile definitions.
 //!
 //! This module defines terminal profiles that describe the characteristics
-//! of different terminal types (screen size, CJK width, ANSI support, etc.).
+//! of different terminal types (screen size, CJK width, ANSI support, encoding, etc.).
+
+use crate::server::encoding::{CharacterEncoding, OutputMode};
 
 /// A terminal profile that describes the characteristics of a terminal.
+///
+/// This structure unifies display settings with encoding and output mode,
+/// allowing each terminal type to have sensible defaults.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalProfile {
     /// Profile name.
@@ -18,16 +23,27 @@ pub struct TerminalProfile {
     pub cjk_width: u8,
     /// Whether ANSI escape sequences are supported.
     pub ansi_enabled: bool,
+    /// Default character encoding for wire communication.
+    pub encoding: CharacterEncoding,
+    /// Default output mode for escape sequence handling.
+    pub output_mode: OutputMode,
+    /// Template directory name (relative to templates/).
+    /// Typically "80" for 80-column or "40" for 40-column terminals.
+    pub template_dir: String,
 }
 
 impl TerminalProfile {
     /// Create a new terminal profile with the given parameters.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         name: impl Into<String>,
         width: u16,
         height: u16,
         cjk_width: u8,
         ansi_enabled: bool,
+        encoding: CharacterEncoding,
+        output_mode: OutputMode,
+        template_dir: impl Into<String>,
     ) -> Self {
         Self {
             name: name.into(),
@@ -35,12 +51,15 @@ impl TerminalProfile {
             height,
             cjk_width,
             ansi_enabled,
+            encoding,
+            output_mode,
+            template_dir: template_dir.into(),
         }
     }
 
-    /// Create a standard terminal profile (80x24, CJK double-width, ANSI enabled).
+    /// Create a standard terminal profile (80x24, CJK double-width, ANSI enabled, ShiftJIS).
     ///
-    /// This is the default profile for modern terminals like xterm, TeraTerm, etc.
+    /// This is the default profile for Japanese terminals like TeraTerm, etc.
     pub fn standard() -> Self {
         Self {
             name: "standard".to_string(),
@@ -48,13 +67,47 @@ impl TerminalProfile {
             height: 24,
             cjk_width: 2,
             ansi_enabled: true,
+            encoding: CharacterEncoding::ShiftJIS,
+            output_mode: OutputMode::Ansi,
+            template_dir: "80".to_string(),
         }
     }
 
-    /// Create a Commodore 64 terminal profile (40x25, CJK single-width, no ANSI).
+    /// Create a standard UTF-8 terminal profile (80x24, CJK double-width, ANSI enabled, UTF-8).
     ///
-    /// This profile is for Commodore 64 terminals that display all characters
-    /// as single-width and do not support ANSI escape sequences.
+    /// This is the default profile for modern UTF-8 terminals like xterm, etc.
+    pub fn standard_utf8() -> Self {
+        Self {
+            name: "standard_utf8".to_string(),
+            width: 80,
+            height: 24,
+            cjk_width: 2,
+            ansi_enabled: true,
+            encoding: CharacterEncoding::Utf8,
+            output_mode: OutputMode::Ansi,
+            template_dir: "80".to_string(),
+        }
+    }
+
+    /// Create a DOS terminal profile (80x25, CJK single-width, ANSI enabled, CP437).
+    ///
+    /// This profile is for IBM PC compatible DOS terminals.
+    pub fn dos() -> Self {
+        Self {
+            name: "dos".to_string(),
+            width: 80,
+            height: 25,
+            cjk_width: 1,
+            ansi_enabled: true,
+            encoding: CharacterEncoding::Cp437,
+            output_mode: OutputMode::Ansi,
+            template_dir: "80".to_string(),
+        }
+    }
+
+    /// Create a Commodore 64 terminal profile (40x25, CJK single-width, no ANSI, PETSCII).
+    ///
+    /// This profile is for Commodore 64 terminals in plain mode (no escape sequences).
     pub fn c64() -> Self {
         Self {
             name: "c64".to_string(),
@@ -62,13 +115,33 @@ impl TerminalProfile {
             height: 25,
             cjk_width: 1,
             ansi_enabled: false,
+            encoding: CharacterEncoding::Petscii,
+            output_mode: OutputMode::Plain,
+            template_dir: "40".to_string(),
+        }
+    }
+
+    /// Create a Commodore 64 terminal profile with PETSCII control codes.
+    ///
+    /// This profile is for Commodore 64 terminals that use PETSCII control codes
+    /// for colors and cursor movement (not ANSI escape sequences).
+    pub fn c64_petscii() -> Self {
+        Self {
+            name: "c64_petscii".to_string(),
+            width: 40,
+            height: 25,
+            cjk_width: 1,
+            ansi_enabled: false,
+            encoding: CharacterEncoding::Petscii,
+            output_mode: OutputMode::PetsciiCtrl,
+            template_dir: "40".to_string(),
         }
     }
 
     /// Create a Commodore 64 ANSI terminal profile (40x25, CJK single-width, ANSI enabled).
     ///
     /// This profile is for Commodore 64 terminals with ANSI support added
-    /// (e.g., through software terminal emulation).
+    /// (e.g., through software terminal emulation like CCGMS).
     pub fn c64_ansi() -> Self {
         Self {
             name: "c64_ansi".to_string(),
@@ -76,6 +149,9 @@ impl TerminalProfile {
             height: 25,
             cjk_width: 1,
             ansi_enabled: true,
+            encoding: CharacterEncoding::Petscii,
+            output_mode: OutputMode::Ansi,
+            template_dir: "40".to_string(),
         }
     }
 
@@ -232,7 +308,7 @@ impl TerminalProfile {
     ///
     /// # Arguments
     ///
-    /// * `name` - Profile name ("standard", "c64", "c64_ansi")
+    /// * `name` - Profile name ("standard", "standard_utf8", "dos", "c64", "c64_petscii", "c64_ansi")
     ///
     /// # Example
     ///
@@ -244,15 +320,109 @@ impl TerminalProfile {
     /// ```
     pub fn from_name(name: &str) -> Self {
         match name.to_lowercase().as_str() {
+            "standard_utf8" | "utf8" => Self::standard_utf8(),
+            "dos" | "ibmpc" | "cp437" => Self::dos(),
             "c64" => Self::c64(),
+            "c64_petscii" | "petscii" => Self::c64_petscii(),
             "c64_ansi" => Self::c64_ansi(),
             _ => Self::standard(),
         }
     }
 
+    /// Create a terminal profile from a config definition.
+    ///
+    /// This method creates a profile from a ProfileConfig struct,
+    /// parsing string values for encoding and output_mode.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The profile configuration
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use hobbs::terminal::TerminalProfile;
+    /// use hobbs::config::ProfileConfig;
+    ///
+    /// // Custom PC-98 profile
+    /// let config = ProfileConfig {
+    ///     name: "pc98".to_string(),
+    ///     width: 80,
+    ///     height: 25,
+    ///     cjk_width: 2,
+    ///     ansi_enabled: true,
+    ///     encoding: "shiftjis".to_string(),
+    ///     output_mode: "ansi".to_string(),
+    ///     template_dir: "80".to_string(),
+    /// };
+    /// let profile = TerminalProfile::from_config(&config);
+    /// assert_eq!(profile.name, "pc98");
+    /// ```
+    pub fn from_config(config: &crate::config::ProfileConfig) -> Self {
+        let encoding = config
+            .encoding
+            .parse()
+            .unwrap_or(CharacterEncoding::ShiftJIS);
+        let output_mode = config.output_mode.parse().unwrap_or(OutputMode::Ansi);
+
+        Self {
+            name: config.name.clone(),
+            width: config.width,
+            height: config.height,
+            cjk_width: config.cjk_width,
+            ansi_enabled: config.ansi_enabled,
+            encoding,
+            output_mode,
+            template_dir: config.template_dir.clone(),
+        }
+    }
+
+    /// Create a terminal profile from a name, checking custom profiles first.
+    ///
+    /// This method first looks for a matching custom profile in the provided list,
+    /// then falls back to built-in profiles.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Profile name
+    /// * `custom_profiles` - List of custom profile configurations
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use hobbs::terminal::TerminalProfile;
+    ///
+    /// // Without custom profiles, uses built-in
+    /// let profile = TerminalProfile::from_name_with_custom("c64", &[]);
+    /// assert_eq!(profile.width, 40);
+    /// ```
+    pub fn from_name_with_custom(
+        name: &str,
+        custom_profiles: &[crate::config::ProfileConfig],
+    ) -> Self {
+        // First check custom profiles
+        let name_lower = name.to_lowercase();
+        if let Some(config) = custom_profiles
+            .iter()
+            .find(|p| p.name.to_lowercase() == name_lower)
+        {
+            return Self::from_config(config);
+        }
+
+        // Fall back to built-in profiles
+        Self::from_name(name)
+    }
+
     /// Get all available profile names.
     pub fn available_profiles() -> &'static [&'static str] {
-        &["standard", "c64", "c64_ansi"]
+        &[
+            "standard",
+            "standard_utf8",
+            "dos",
+            "c64",
+            "c64_petscii",
+            "c64_ansi",
+        ]
     }
 }
 
@@ -268,6 +438,35 @@ mod tests {
         assert_eq!(profile.height, 24);
         assert_eq!(profile.cjk_width, 2);
         assert!(profile.ansi_enabled);
+        assert_eq!(profile.encoding, CharacterEncoding::ShiftJIS);
+        assert_eq!(profile.output_mode, OutputMode::Ansi);
+        assert_eq!(profile.template_dir, "80");
+    }
+
+    #[test]
+    fn test_standard_utf8_profile() {
+        let profile = TerminalProfile::standard_utf8();
+        assert_eq!(profile.name, "standard_utf8");
+        assert_eq!(profile.width, 80);
+        assert_eq!(profile.height, 24);
+        assert_eq!(profile.cjk_width, 2);
+        assert!(profile.ansi_enabled);
+        assert_eq!(profile.encoding, CharacterEncoding::Utf8);
+        assert_eq!(profile.output_mode, OutputMode::Ansi);
+        assert_eq!(profile.template_dir, "80");
+    }
+
+    #[test]
+    fn test_dos_profile() {
+        let profile = TerminalProfile::dos();
+        assert_eq!(profile.name, "dos");
+        assert_eq!(profile.width, 80);
+        assert_eq!(profile.height, 25);
+        assert_eq!(profile.cjk_width, 1);
+        assert!(profile.ansi_enabled);
+        assert_eq!(profile.encoding, CharacterEncoding::Cp437);
+        assert_eq!(profile.output_mode, OutputMode::Ansi);
+        assert_eq!(profile.template_dir, "80");
     }
 
     #[test]
@@ -278,6 +477,22 @@ mod tests {
         assert_eq!(profile.height, 25);
         assert_eq!(profile.cjk_width, 1);
         assert!(!profile.ansi_enabled);
+        assert_eq!(profile.encoding, CharacterEncoding::Petscii);
+        assert_eq!(profile.output_mode, OutputMode::Plain);
+        assert_eq!(profile.template_dir, "40");
+    }
+
+    #[test]
+    fn test_c64_petscii_profile() {
+        let profile = TerminalProfile::c64_petscii();
+        assert_eq!(profile.name, "c64_petscii");
+        assert_eq!(profile.width, 40);
+        assert_eq!(profile.height, 25);
+        assert_eq!(profile.cjk_width, 1);
+        assert!(!profile.ansi_enabled);
+        assert_eq!(profile.encoding, CharacterEncoding::Petscii);
+        assert_eq!(profile.output_mode, OutputMode::PetsciiCtrl);
+        assert_eq!(profile.template_dir, "40");
     }
 
     #[test]
@@ -288,16 +503,31 @@ mod tests {
         assert_eq!(profile.height, 25);
         assert_eq!(profile.cjk_width, 1);
         assert!(profile.ansi_enabled);
+        assert_eq!(profile.encoding, CharacterEncoding::Petscii);
+        assert_eq!(profile.output_mode, OutputMode::Ansi);
+        assert_eq!(profile.template_dir, "40");
     }
 
     #[test]
     fn test_custom_profile() {
-        let profile = TerminalProfile::new("custom", 132, 43, 2, true);
+        let profile = TerminalProfile::new(
+            "custom",
+            132,
+            43,
+            2,
+            true,
+            CharacterEncoding::Utf8,
+            OutputMode::Ansi,
+            "80",
+        );
         assert_eq!(profile.name, "custom");
         assert_eq!(profile.width, 132);
         assert_eq!(profile.height, 43);
         assert_eq!(profile.cjk_width, 2);
         assert!(profile.ansi_enabled);
+        assert_eq!(profile.encoding, CharacterEncoding::Utf8);
+        assert_eq!(profile.output_mode, OutputMode::Ansi);
+        assert_eq!(profile.template_dir, "80");
     }
 
     #[test]
@@ -433,9 +663,40 @@ mod tests {
     }
 
     #[test]
+    fn test_from_name_standard_utf8() {
+        let profile = TerminalProfile::from_name("standard_utf8");
+        assert_eq!(profile, TerminalProfile::standard_utf8());
+        // Also test alias
+        assert_eq!(
+            TerminalProfile::from_name("utf8"),
+            TerminalProfile::standard_utf8()
+        );
+    }
+
+    #[test]
+    fn test_from_name_dos() {
+        let profile = TerminalProfile::from_name("dos");
+        assert_eq!(profile, TerminalProfile::dos());
+        // Also test aliases
+        assert_eq!(TerminalProfile::from_name("ibmpc"), TerminalProfile::dos());
+        assert_eq!(TerminalProfile::from_name("cp437"), TerminalProfile::dos());
+    }
+
+    #[test]
     fn test_from_name_c64() {
         let profile = TerminalProfile::from_name("c64");
         assert_eq!(profile, TerminalProfile::c64());
+    }
+
+    #[test]
+    fn test_from_name_c64_petscii() {
+        let profile = TerminalProfile::from_name("c64_petscii");
+        assert_eq!(profile, TerminalProfile::c64_petscii());
+        // Also test alias
+        assert_eq!(
+            TerminalProfile::from_name("petscii"),
+            TerminalProfile::c64_petscii()
+        );
     }
 
     #[test]
@@ -455,6 +716,10 @@ mod tests {
             TerminalProfile::from_name("STANDARD"),
             TerminalProfile::standard()
         );
+        assert_eq!(
+            TerminalProfile::from_name("DOS"),
+            TerminalProfile::dos()
+        );
     }
 
     #[test]
@@ -466,8 +731,12 @@ mod tests {
     #[test]
     fn test_available_profiles() {
         let profiles = TerminalProfile::available_profiles();
+        assert_eq!(profiles.len(), 6);
         assert!(profiles.contains(&"standard"));
+        assert!(profiles.contains(&"standard_utf8"));
+        assert!(profiles.contains(&"dos"));
         assert!(profiles.contains(&"c64"));
+        assert!(profiles.contains(&"c64_petscii"));
         assert!(profiles.contains(&"c64_ansi"));
     }
 
@@ -480,5 +749,132 @@ mod tests {
         // On C64, all chars are width 1
         let c64 = TerminalProfile::c64();
         assert_eq!(c64.display_width("ｱｲｳ"), 3); // 3 chars × 1
+    }
+
+    #[test]
+    fn test_from_config() {
+        use crate::config::ProfileConfig;
+
+        let config = ProfileConfig {
+            name: "pc98".to_string(),
+            width: 80,
+            height: 25,
+            cjk_width: 2,
+            ansi_enabled: true,
+            encoding: "shiftjis".to_string(),
+            output_mode: "ansi".to_string(),
+            template_dir: "80".to_string(),
+        };
+
+        let profile = TerminalProfile::from_config(&config);
+        assert_eq!(profile.name, "pc98");
+        assert_eq!(profile.width, 80);
+        assert_eq!(profile.height, 25);
+        assert_eq!(profile.cjk_width, 2);
+        assert!(profile.ansi_enabled);
+        assert_eq!(profile.encoding, CharacterEncoding::ShiftJIS);
+        assert_eq!(profile.output_mode, OutputMode::Ansi);
+        assert_eq!(profile.template_dir, "80");
+    }
+
+    #[test]
+    fn test_from_config_with_petscii() {
+        use crate::config::ProfileConfig;
+
+        let config = ProfileConfig {
+            name: "vic20".to_string(),
+            width: 22,
+            height: 23,
+            cjk_width: 1,
+            ansi_enabled: false,
+            encoding: "petscii".to_string(),
+            output_mode: "petscii_ctrl".to_string(),
+            template_dir: "40".to_string(),
+        };
+
+        let profile = TerminalProfile::from_config(&config);
+        assert_eq!(profile.name, "vic20");
+        assert_eq!(profile.width, 22);
+        assert_eq!(profile.height, 23);
+        assert_eq!(profile.cjk_width, 1);
+        assert!(!profile.ansi_enabled);
+        assert_eq!(profile.encoding, CharacterEncoding::Petscii);
+        assert_eq!(profile.output_mode, OutputMode::PetsciiCtrl);
+        assert_eq!(profile.template_dir, "40");
+    }
+
+    #[test]
+    fn test_from_config_invalid_encoding() {
+        use crate::config::ProfileConfig;
+
+        let config = ProfileConfig {
+            name: "test".to_string(),
+            width: 80,
+            height: 24,
+            cjk_width: 2,
+            ansi_enabled: true,
+            encoding: "invalid".to_string(),
+            output_mode: "ansi".to_string(),
+            template_dir: "80".to_string(),
+        };
+
+        let profile = TerminalProfile::from_config(&config);
+        // Should fall back to ShiftJIS
+        assert_eq!(profile.encoding, CharacterEncoding::ShiftJIS);
+    }
+
+    #[test]
+    fn test_from_name_with_custom() {
+        use crate::config::ProfileConfig;
+
+        let custom_profiles = vec![ProfileConfig {
+            name: "custom1".to_string(),
+            width: 132,
+            height: 44,
+            cjk_width: 1,
+            ansi_enabled: true,
+            encoding: "utf8".to_string(),
+            output_mode: "ansi".to_string(),
+            template_dir: "80".to_string(),
+        }];
+
+        // Custom profile should be found
+        let profile = TerminalProfile::from_name_with_custom("custom1", &custom_profiles);
+        assert_eq!(profile.name, "custom1");
+        assert_eq!(profile.width, 132);
+        assert_eq!(profile.height, 44);
+
+        // Built-in profile should still work
+        let c64 = TerminalProfile::from_name_with_custom("c64", &custom_profiles);
+        assert_eq!(c64.name, "c64");
+        assert_eq!(c64.width, 40);
+
+        // Unknown should fall back to standard
+        let unknown = TerminalProfile::from_name_with_custom("unknown", &custom_profiles);
+        assert_eq!(unknown.name, "standard");
+    }
+
+    #[test]
+    fn test_from_name_with_custom_case_insensitive() {
+        use crate::config::ProfileConfig;
+
+        let custom_profiles = vec![ProfileConfig {
+            name: "MyProfile".to_string(),
+            width: 100,
+            height: 50,
+            cjk_width: 2,
+            ansi_enabled: true,
+            encoding: "utf8".to_string(),
+            output_mode: "ansi".to_string(),
+            template_dir: "80".to_string(),
+        }];
+
+        // Should match case-insensitively
+        let profile = TerminalProfile::from_name_with_custom("myprofile", &custom_profiles);
+        assert_eq!(profile.name, "MyProfile");
+        assert_eq!(profile.width, 100);
+
+        let profile2 = TerminalProfile::from_name_with_custom("MYPROFILE", &custom_profiles);
+        assert_eq!(profile2.name, "MyProfile");
     }
 }

@@ -161,6 +161,10 @@ impl LineBuffer {
 
                 1
             }
+            CharacterEncoding::Cp437 | CharacterEncoding::Petscii => {
+                // CP437 and PETSCII are single-byte encodings
+                1
+            }
         }
     }
 
@@ -210,6 +214,11 @@ impl LineBuffer {
                     // Single-byte character (ASCII or half-width katakana)
                     true
                 }
+            }
+            CharacterEncoding::Cp437 | CharacterEncoding::Petscii => {
+                // CP437 and PETSCII are single-byte encodings
+                // Any byte is a complete character
+                true
             }
         }
     }
