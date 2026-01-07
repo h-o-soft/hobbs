@@ -106,7 +106,8 @@ pub enum HobbsError {
 ### 文字列処理
 
 - 内部処理: UTF-8
-- Telnet送受信: ShiftJIS（`encoding_rs` で変換）
+- Telnet送受信: 端末プロファイルのエンコーディング設定に従う（ShiftJIS/UTF-8/CP437/PETSCII）
+- 変換ライブラリ: `encoding_rs`
 - 文字幅計算: `TerminalProfile` の `display_width()` を使用
 
 ## プロジェクトルール
@@ -131,11 +132,16 @@ pub enum Role {
 
 ### 端末プロファイル
 
-| プロファイル | 幅 | 高 | 全角幅 | ANSI |
-|--------------|----|----|--------|------|
-| standard | 80 | 24 | 2 | 有効 |
-| c64 | 40 | 25 | 1 | 無効 |
-| c64_ansi | 40 | 25 | 1 | 有効 |
+| プロファイル | 幅 | 高 | 全角幅 | エンコーディング | 出力モード |
+|--------------|----|----|--------|------------------|------------|
+| standard | 80 | 24 | 2 | ShiftJIS | Ansi |
+| standard_utf8 | 80 | 24 | 2 | UTF-8 | Ansi |
+| dos | 80 | 25 | 1 | CP437 | Ansi |
+| c64 | 40 | 25 | 1 | PETSCII | Plain |
+| c64_petscii | 40 | 25 | 1 | PETSCII | PetsciiCtrl |
+| c64_ansi | 40 | 25 | 1 | PETSCII | Ansi |
+
+カスタムプロファイルは `config.toml` の `[[terminal.profiles]]` で定義可能。
 
 ### 国際化 (i18n)
 

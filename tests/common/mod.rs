@@ -196,6 +196,10 @@ impl TestClient {
                 let (decoded, _, _) = encoding_rs::SHIFT_JIS.decode(&filtered);
                 decoded.to_string()
             }
+            CharacterEncoding::Cp437 | CharacterEncoding::Petscii => {
+                // For tests, just treat as ASCII-compatible for now
+                String::from_utf8_lossy(&filtered).to_string()
+            }
         }
     }
 

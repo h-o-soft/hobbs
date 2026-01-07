@@ -7,8 +7,9 @@ use super::ScreenResult;
 use crate::auth::{change_password, update_profile, ProfileUpdateRequest};
 use crate::db::{Role, UserRepository, UserUpdate};
 use crate::error::Result;
-use crate::server::{CharacterEncoding, EchoMode, TelnetSession};
+use crate::server::{EchoMode, TelnetSession};
 use crate::template::Value;
+use crate::terminal::TerminalProfile;
 
 /// Profile screen handler.
 pub struct ProfileScreen;
@@ -363,63 +364,49 @@ impl ProfileScreen {
             _ => current_language.clone(),
         };
 
-        // Encoding selection
-        ctx.send_line(session, "").await?;
-        ctx.send_line(session, &format!("{}:", ctx.i18n.t("settings.encoding")))
-            .await?;
-        ctx.send_line(session, "  [1] UTF-8").await?;
-        ctx.send_line(session, "  [2] ShiftJIS").await?;
-        ctx.send(
-            session,
-            &format!(
-                "{} [{}]: ",
-                ctx.i18n.t("common.number"),
-                if current_encoding == CharacterEncoding::ShiftJIS {
-                    "2"
-                } else {
-                    "1"
-                }
-            ),
-        )
-        .await?;
+        // Terminal profile selection (now includes encoding in profile)
+        // Build list of available profiles: built-in + custom from config
+        let builtin_profiles = TerminalProfile::available_profiles();
+        let custom_profiles = ctx.config.terminal.profiles.clone();
 
-        let enc_input = ctx.read_line(session).await?;
-        let enc_input = enc_input.trim();
+        // Create list of (name, display_name) tuples
+        let mut profile_list: Vec<(String, String)> = builtin_profiles
+            .iter()
+            .map(|name| (name.to_string(), Self::profile_display_name(ctx, name)))
+            .collect();
 
-        let new_encoding = match enc_input {
-            "1" => CharacterEncoding::Utf8,
-            "2" => CharacterEncoding::ShiftJIS,
-            "" => current_encoding,
-            _ => current_encoding,
-        };
+        // Add custom profiles
+        for custom in &custom_profiles {
+            let display = format!(
+                "{} ({}x{}, {})",
+                custom.name,
+                custom.width,
+                custom.height,
+                custom.encoding.to_uppercase()
+            );
+            profile_list.push((custom.name.clone(), display));
+        }
 
-        // Terminal profile selection
         ctx.send_line(session, "").await?;
         ctx.send_line(
             session,
             &format!("{}:", ctx.i18n.t("settings.terminal_profile")),
         )
         .await?;
-        ctx.send_line(
-            session,
-            &format!("  [1] {}", ctx.i18n.t("terminal.profile_standard")),
-        )
-        .await?;
-        ctx.send_line(
-            session,
-            &format!("  [2] {}", ctx.i18n.t("terminal.profile_c64")),
-        )
-        .await?;
-        ctx.send_line(
-            session,
-            &format!("  [3] {}", ctx.i18n.t("terminal.profile_c64_ansi")),
-        )
-        .await?;
-        let current_profile_num = match current_terminal.as_str() {
-            "c64" => "2",
-            "c64_ansi" => "3",
-            _ => "1",
-        };
+
+        // Display profile options
+        for (i, (_, display_name)) in profile_list.iter().enumerate() {
+            ctx.send_line(session, &format!("  [{}] {}", i + 1, display_name))
+                .await?;
+        }
+
+        // Find current profile index
+        let current_profile_num = profile_list
+            .iter()
+            .position(|(name, _)| name == &current_terminal)
+            .map(|i| (i + 1).to_string())
+            .unwrap_or_else(|| "1".to_string());
+
         ctx.send(
             session,
             &format!(
@@ -433,12 +420,20 @@ impl ProfileScreen {
         let term_input = ctx.read_line(session).await?;
         let term_input = term_input.trim();
 
-        let new_terminal = match term_input {
-            "1" => Some("standard".to_string()),
-            "2" => Some("c64".to_string()),
-            "3" => Some("c64_ansi".to_string()),
-            "" => None, // No change
-            _ => None,
+        // Get profile name and encoding from selection
+        let (new_terminal, new_encoding) = if term_input.is_empty() {
+            (None, current_encoding)
+        } else if let Ok(idx) = term_input.parse::<usize>() {
+            if idx >= 1 && idx <= profile_list.len() {
+                let profile_name = &profile_list[idx - 1].0;
+                let profile =
+                    TerminalProfile::from_name_with_custom(profile_name, &custom_profiles);
+                (Some(profile_name.clone()), profile.encoding)
+            } else {
+                (None, current_encoding)
+            }
+        } else {
+            (None, current_encoding)
         };
 
         // Determine actual new terminal value
@@ -535,7 +530,10 @@ impl ProfileScreen {
     /// Get display name for a terminal profile.
     fn profile_display_name(ctx: &ScreenContext, profile: &str) -> String {
         match profile {
+            "standard_utf8" => ctx.i18n.t("terminal.profile_standard_utf8").to_string(),
+            "dos" => ctx.i18n.t("terminal.profile_dos").to_string(),
             "c64" => ctx.i18n.t("terminal.profile_c64").to_string(),
+            "c64_petscii" => ctx.i18n.t("terminal.profile_c64_petscii").to_string(),
             "c64_ansi" => ctx.i18n.t("terminal.profile_c64_ansi").to_string(),
             _ => ctx.i18n.t("terminal.profile_standard").to_string(),
         }

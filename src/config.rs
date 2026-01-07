@@ -228,7 +228,7 @@ impl Default for LoggingConfig {
 /// Terminal configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct TerminalConfig {
-    /// Default terminal profile (standard, c64, c64_ansi).
+    /// Default terminal profile (standard, standard_utf8, dos, c64, c64_petscii, c64_ansi, or custom).
     #[serde(default = "default_terminal_profile")]
     pub default_profile: String,
     /// Enable auto-paging for terminals without scroll capability.
@@ -237,6 +237,51 @@ pub struct TerminalConfig {
     /// Lines before auto-pause (0 = auto-calculate from terminal height - 4).
     #[serde(default)]
     pub paging_lines: usize,
+    /// Custom terminal profile definitions.
+    #[serde(default)]
+    pub profiles: Vec<ProfileConfig>,
+}
+
+/// Custom terminal profile configuration.
+///
+/// This allows defining custom terminal profiles in config.toml:
+///
+/// ```toml
+/// [[terminal.profiles]]
+/// name = "pc98"
+/// width = 80
+/// height = 25
+/// cjk_width = 2
+/// ansi_enabled = true
+/// encoding = "shiftjis"
+/// output_mode = "ansi"
+/// template_dir = "80"
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProfileConfig {
+    /// Unique profile name.
+    pub name: String,
+    /// Screen width in columns.
+    #[serde(default = "default_profile_width")]
+    pub width: u16,
+    /// Screen height in rows.
+    #[serde(default = "default_profile_height")]
+    pub height: u16,
+    /// Display width of CJK (full-width) characters (1 or 2).
+    #[serde(default = "default_profile_cjk_width")]
+    pub cjk_width: u8,
+    /// Whether ANSI escape sequences are supported.
+    #[serde(default = "default_profile_ansi_enabled")]
+    pub ansi_enabled: bool,
+    /// Character encoding (shiftjis, utf8, cp437, petscii).
+    #[serde(default = "default_profile_encoding")]
+    pub encoding: String,
+    /// Output mode (ansi, plain, petscii_ctrl).
+    #[serde(default = "default_profile_output_mode")]
+    pub output_mode: String,
+    /// Template directory name (relative to templates/).
+    #[serde(default = "default_profile_template_dir")]
+    pub template_dir: String,
 }
 
 fn default_terminal_profile() -> String {
@@ -247,12 +292,41 @@ fn default_auto_paging() -> bool {
     true
 }
 
+fn default_profile_width() -> u16 {
+    80
+}
+
+fn default_profile_height() -> u16 {
+    24
+}
+
+fn default_profile_cjk_width() -> u8 {
+    2
+}
+
+fn default_profile_ansi_enabled() -> bool {
+    true
+}
+
+fn default_profile_encoding() -> String {
+    "shiftjis".to_string()
+}
+
+fn default_profile_output_mode() -> String {
+    "ansi".to_string()
+}
+
+fn default_profile_template_dir() -> String {
+    "80".to_string()
+}
+
 impl Default for TerminalConfig {
     fn default() -> Self {
         Self {
             default_profile: default_terminal_profile(),
             auto_paging: default_auto_paging(),
             paging_lines: 0,
+            profiles: Vec::new(),
         }
     }
 }
@@ -862,5 +936,81 @@ name = "Partial BBS"
         let config = Config::default();
         // web.enabled is false by default, no secret needed
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_parse_custom_profiles() {
+        let toml = r#"
+[terminal]
+default_profile = "pc98"
+
+[[terminal.profiles]]
+name = "pc98"
+width = 80
+height = 25
+cjk_width = 2
+ansi_enabled = true
+encoding = "shiftjis"
+output_mode = "ansi"
+template_dir = "80"
+
+[[terminal.profiles]]
+name = "vic20"
+width = 22
+height = 23
+cjk_width = 1
+ansi_enabled = false
+encoding = "petscii"
+output_mode = "petscii_ctrl"
+template_dir = "40"
+"#;
+
+        let config = Config::parse(toml).unwrap();
+
+        assert_eq!(config.terminal.default_profile, "pc98");
+        assert_eq!(config.terminal.profiles.len(), 2);
+
+        // Check first profile
+        let pc98 = &config.terminal.profiles[0];
+        assert_eq!(pc98.name, "pc98");
+        assert_eq!(pc98.width, 80);
+        assert_eq!(pc98.height, 25);
+        assert_eq!(pc98.cjk_width, 2);
+        assert!(pc98.ansi_enabled);
+        assert_eq!(pc98.encoding, "shiftjis");
+        assert_eq!(pc98.output_mode, "ansi");
+        assert_eq!(pc98.template_dir, "80");
+
+        // Check second profile
+        let vic20 = &config.terminal.profiles[1];
+        assert_eq!(vic20.name, "vic20");
+        assert_eq!(vic20.width, 22);
+        assert_eq!(vic20.height, 23);
+        assert_eq!(vic20.cjk_width, 1);
+        assert!(!vic20.ansi_enabled);
+        assert_eq!(vic20.encoding, "petscii");
+        assert_eq!(vic20.output_mode, "petscii_ctrl");
+        assert_eq!(vic20.template_dir, "40");
+    }
+
+    #[test]
+    fn test_parse_custom_profile_defaults() {
+        let toml = r#"
+[[terminal.profiles]]
+name = "minimal"
+"#;
+
+        let config = Config::parse(toml).unwrap();
+
+        assert_eq!(config.terminal.profiles.len(), 1);
+        let profile = &config.terminal.profiles[0];
+        assert_eq!(profile.name, "minimal");
+        assert_eq!(profile.width, 80);
+        assert_eq!(profile.height, 24);
+        assert_eq!(profile.cjk_width, 2);
+        assert!(profile.ansi_enabled);
+        assert_eq!(profile.encoding, "shiftjis");
+        assert_eq!(profile.output_mode, "ansi");
+        assert_eq!(profile.template_dir, "80");
     }
 }
