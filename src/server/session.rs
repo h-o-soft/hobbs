@@ -10,7 +10,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use super::encoding::CharacterEncoding;
+use super::encoding::{CharacterEncoding, OutputMode};
 
 /// Session state representing the current phase of the connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,6 +65,8 @@ pub struct TelnetSession {
     username: Option<String>,
     /// Character encoding for this session.
     encoding: CharacterEncoding,
+    /// Output mode for this session (ANSI, Plain, PetsciiCtrl).
+    output_mode: OutputMode,
     /// Whether this is a guest session (not logged in but accessing menu).
     is_guest: bool,
 }
@@ -84,6 +86,7 @@ impl TelnetSession {
             user_id: None,
             username: None,
             encoding: CharacterEncoding::default(),
+            output_mode: OutputMode::default(),
             is_guest: false,
         }
     }
@@ -109,6 +112,34 @@ impl TelnetSession {
             user_id: None,
             username: None,
             encoding,
+            output_mode: OutputMode::default(),
+            is_guest: false,
+        }
+    }
+
+    /// Create a new session with a specific encoding and output mode.
+    pub fn with_encoding_and_output_mode(
+        stream: TcpStream,
+        peer_addr: SocketAddr,
+        encoding: CharacterEncoding,
+        output_mode: OutputMode,
+    ) -> Self {
+        let id = Uuid::new_v4();
+        debug!(
+            "Created new session {} for {} with encoding {:?}, output_mode {:?}",
+            id, peer_addr, encoding, output_mode
+        );
+
+        Self {
+            id,
+            stream,
+            peer_addr,
+            state: SessionState::Welcome,
+            last_activity: Instant::now(),
+            user_id: None,
+            username: None,
+            encoding,
+            output_mode,
             is_guest: false,
         }
     }
@@ -225,6 +256,21 @@ impl TelnetSession {
             self.id, self.encoding, encoding
         );
         self.encoding = encoding;
+        self.touch();
+    }
+
+    /// Get the output mode for this session.
+    pub fn output_mode(&self) -> OutputMode {
+        self.output_mode
+    }
+
+    /// Set the output mode for this session.
+    pub fn set_output_mode(&mut self, output_mode: OutputMode) {
+        debug!(
+            "Session {} output_mode changed: {:?} -> {:?}",
+            self.id, self.output_mode, output_mode
+        );
+        self.output_mode = output_mode;
         self.touch();
     }
 
