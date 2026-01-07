@@ -45,6 +45,9 @@ pub struct LineBuffer {
     /// Pending bytes for multi-byte character echo.
     /// Used to buffer incomplete multi-byte characters before echoing.
     pending_echo: Vec<u8>,
+    /// Whether the last byte processed was CR.
+    /// Used to handle CR+LF as a single newline.
+    last_was_cr: bool,
 }
 
 impl LineBuffer {
@@ -56,6 +59,7 @@ impl LineBuffer {
             echo_mode: EchoMode::Normal,
             encoding: CharacterEncoding::default(),
             pending_echo: Vec::with_capacity(4),
+            last_was_cr: false,
         }
     }
 
@@ -67,6 +71,7 @@ impl LineBuffer {
             echo_mode: EchoMode::Normal,
             encoding,
             pending_echo: Vec::with_capacity(4),
+            last_was_cr: false,
         }
     }
 
@@ -114,6 +119,7 @@ impl LineBuffer {
     pub fn clear(&mut self) {
         self.buffer.clear();
         self.pending_echo.clear();
+        self.last_was_cr = false;
     }
 
     /// Calculate the number of bytes to delete for a backspace operation.
@@ -228,15 +234,33 @@ impl LineBuffer {
     /// Returns the input result and any bytes that should be echoed back.
     pub fn process_byte(&mut self, byte: u8) -> (InputResult, Vec<u8>) {
         match byte {
-            control::CR | control::LF => {
-                // End of line - flush any pending echo bytes first
+            control::CR => {
+                // CR - end of line
+                self.last_was_cr = true;
                 let mut echo = std::mem::take(&mut self.pending_echo);
                 echo.push(control::CR);
                 echo.push(control::LF);
                 let line = self.take_line();
                 (InputResult::Line(line), echo)
             }
+            control::LF => {
+                // LF - check if it follows CR
+                if self.last_was_cr {
+                    // Part of CR+LF, ignore this LF
+                    self.last_was_cr = false;
+                    (InputResult::Buffering, vec![])
+                } else {
+                    // Standalone LF - treat as end of line
+                    let mut echo = std::mem::take(&mut self.pending_echo);
+                    echo.push(control::CR);
+                    echo.push(control::LF);
+                    let line = self.take_line();
+                    (InputResult::Line(line), echo)
+                }
+            }
             control::BS | control::DEL => {
+                // Reset CR tracking
+                self.last_was_cr = false;
                 // Clear any pending echo bytes (incomplete multi-byte char)
                 self.pending_echo.clear();
 
@@ -278,23 +302,28 @@ impl LineBuffer {
             }
             control::EOT => {
                 // Ctrl+D - EOF
+                self.last_was_cr = false;
                 (InputResult::Eof, vec![])
             }
             control::ESC => {
                 // Start of escape sequence - ignore for now
                 // TODO: Handle ANSI escape sequences
+                self.last_was_cr = false;
                 (InputResult::Buffering, vec![])
             }
             control::NUL => {
                 // Ignore null bytes (often sent after CR)
+                // Don't reset last_was_cr here - NUL can appear in CR+NUL sequence
                 (InputResult::Buffering, vec![])
             }
             _ if byte < 32 => {
                 // Other control characters - ignore
+                self.last_was_cr = false;
                 (InputResult::Buffering, vec![])
             }
             _ => {
                 // Regular character
+                self.last_was_cr = false;
                 if self.buffer.len() < self.max_size {
                     self.buffer.push(byte);
 
@@ -471,6 +500,103 @@ mod tests {
 
         let (result, _) = buffer.process_byte(control::LF);
         assert_eq!(result, InputResult::Line("Hi".to_string()));
+    }
+
+    #[test]
+    fn test_line_buffer_process_crlf() {
+        // CR+LF should be treated as a single newline
+        let mut buffer = LineBuffer::new(100);
+
+        buffer.process_byte(b'H');
+        buffer.process_byte(b'i');
+
+        // CR should complete the line
+        let (result, echo) = buffer.process_byte(control::CR);
+        assert_eq!(result, InputResult::Line("Hi".to_string()));
+        assert_eq!(echo, vec![control::CR, control::LF]);
+
+        // LF immediately after CR should be ignored
+        let (result, echo) = buffer.process_byte(control::LF);
+        assert_eq!(result, InputResult::Buffering);
+        assert!(echo.is_empty());
+
+        // Buffer should still be empty
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn test_line_buffer_process_lf_cr() {
+        // LF followed by CR should be treated as two separate newlines
+        let mut buffer = LineBuffer::new(100);
+
+        buffer.process_byte(b'H');
+        buffer.process_byte(b'i');
+
+        // LF should complete the line "Hi"
+        let (result, _) = buffer.process_byte(control::LF);
+        assert_eq!(result, InputResult::Line("Hi".to_string()));
+
+        // CR should complete an empty line
+        let (result, _) = buffer.process_byte(control::CR);
+        assert_eq!(result, InputResult::Line("".to_string()));
+    }
+
+    #[test]
+    fn test_line_buffer_process_crlf_crlf() {
+        // Two CR+LF pairs should result in two lines
+        let mut buffer = LineBuffer::new(100);
+
+        // First line
+        buffer.process_byte(b'A');
+        let (result, _) = buffer.process_byte(control::CR);
+        assert_eq!(result, InputResult::Line("A".to_string()));
+        let (result, _) = buffer.process_byte(control::LF);
+        assert_eq!(result, InputResult::Buffering); // LF ignored
+
+        // Second line
+        buffer.process_byte(b'B');
+        let (result, _) = buffer.process_byte(control::CR);
+        assert_eq!(result, InputResult::Line("B".to_string()));
+        let (result, _) = buffer.process_byte(control::LF);
+        assert_eq!(result, InputResult::Buffering); // LF ignored
+    }
+
+    #[test]
+    fn test_line_buffer_lf_after_text_not_ignored() {
+        // LF should only be ignored immediately after CR, not after regular text
+        let mut buffer = LineBuffer::new(100);
+
+        // CR completes first line
+        buffer.process_byte(b'A');
+        let (result, _) = buffer.process_byte(control::CR);
+        assert_eq!(result, InputResult::Line("A".to_string()));
+
+        // LF ignored (part of CR+LF)
+        let (result, _) = buffer.process_byte(control::LF);
+        assert_eq!(result, InputResult::Buffering);
+
+        // Now type more text and use standalone LF
+        buffer.process_byte(b'B');
+        let (result, _) = buffer.process_byte(control::LF);
+        assert_eq!(result, InputResult::Line("B".to_string())); // This LF should work
+    }
+
+    #[test]
+    fn test_line_buffer_cr_reset_by_regular_char() {
+        // If a regular character comes between CR and LF, the LF should not be ignored
+        let mut buffer = LineBuffer::new(100);
+
+        // CR completes the line
+        buffer.process_byte(b'A');
+        let (result, _) = buffer.process_byte(control::CR);
+        assert_eq!(result, InputResult::Line("A".to_string()));
+
+        // Regular character resets the CR flag
+        buffer.process_byte(b'B');
+
+        // This LF should complete a new line "B", not be ignored
+        let (result, _) = buffer.process_byte(control::LF);
+        assert_eq!(result, InputResult::Line("B".to_string()));
     }
 
     #[test]
