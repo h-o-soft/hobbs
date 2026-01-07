@@ -200,8 +200,19 @@ pub struct TelnetSession {
 #[derive(Debug, Clone, Copy, Default)]
 pub enum CharacterEncoding {
     #[default]
-    ShiftJIS,  // レガシー端末向け
+    ShiftJIS,  // 日本語レガシー端末向け
     Utf8,      // モダン端末向け
+    Cp437,     // IBM PC Code Page 437
+    Petscii,   // Commodore 64/128
+}
+
+/// 出力モード（ANSIエスケープシーケンスの処理）
+#[derive(Debug, Clone, Copy, Default)]
+pub enum OutputMode {
+    #[default]
+    Ansi,        // ANSIシーケンスをそのまま出力
+    Plain,       // ANSIシーケンスを除去
+    PetsciiCtrl, // ANSIをPETSCII制御コードに変換
 }
 ```
 
@@ -212,51 +223,58 @@ pub enum CharacterEncoding {
 
 #[derive(Debug, Clone)]
 pub struct TerminalProfile {
-    pub name: String,         // プロファイル名
-    pub width: u16,           // 画面幅（カラム数）
-    pub height: u16,          // 画面高（行数）
-    pub cjk_width: u8,        // 全角文字の幅（1 or 2）
-    pub ansi_enabled: bool,   // ANSIエスケープシーケンス対応
+    pub name: String,                    // プロファイル名
+    pub width: u16,                      // 画面幅（カラム数）
+    pub height: u16,                     // 画面高（行数）
+    pub cjk_width: u8,                   // 全角文字の幅（1 or 2）
+    pub ansi_enabled: bool,              // ANSIエスケープシーケンス対応
+    pub encoding: CharacterEncoding,     // 文字エンコーディング
+    pub output_mode: OutputMode,         // 出力モード
+    pub template_dir: String,            // テンプレートディレクトリ（"80" or "40"）
 }
 
 impl TerminalProfile {
-    /// 標準端末（80x24、全角2幅、ANSI対応）
-    pub fn standard() -> Self {
-        Self {
-            name: "standard".to_string(),
-            width: 80, height: 24,
-            cjk_width: 2, ansi_enabled: true,
-        }
-    }
+    /// 標準端末（80x24、ShiftJIS、ANSI対応）
+    pub fn standard() -> Self { /* ... */ }
 
-    /// Commodore 64（40x25、全角1幅、ANSIなし）
-    pub fn c64() -> Self {
-        Self {
-            name: "c64".to_string(),
-            width: 40, height: 25,
-            cjk_width: 1, ansi_enabled: false,
-        }
-    }
+    /// 標準UTF-8端末（80x24、UTF-8、ANSI対応）
+    pub fn standard_utf8() -> Self { /* ... */ }
+
+    /// DOS端末（80x25、CP437、ANSI対応）
+    pub fn dos() -> Self { /* ... */ }
+
+    /// Commodore 64（40x25、PETSCII、ANSIなし）
+    pub fn c64() -> Self { /* ... */ }
+
+    /// Commodore 64 PETSCII制御コード使用
+    pub fn c64_petscii() -> Self { /* ... */ }
 
     /// Commodore 64 ANSI対応版
-    pub fn c64_ansi() -> Self {
-        Self {
-            name: "c64_ansi".to_string(),
-            width: 40, height: 25,
-            cjk_width: 1, ansi_enabled: true,
-        }
+    pub fn c64_ansi() -> Self { /* ... */ }
+
+    /// 利用可能なプロファイル名一覧
+    pub fn available_profiles() -> Vec<&'static str> {
+        vec!["standard", "standard_utf8", "dos", "c64", "c64_petscii", "c64_ansi"]
     }
 
+    /// 名前からプロファイルを取得
+    pub fn from_name(name: &str) -> Self { /* ... */ }
+
+    /// カスタムプロファイルを含めてプロファイルを取得
+    pub fn from_name_with_custom(
+        name: &str,
+        custom_profiles: &[ProfileConfig],
+    ) -> Self { /* ... */ }
+
+    /// 設定からプロファイルを生成
+    pub fn from_config(config: &ProfileConfig) -> Self { /* ... */ }
+
     /// 文字列の表示幅を計算
-    pub fn display_width(&self, s: &str) -> usize {
-        if self.cjk_width == 1 {
-            s.chars().count()  // C64: 全て1幅
-        } else {
-            s.chars().map(|c| if c.is_ascii() { 1 } else { 2 }).sum()
-        }
-    }
+    pub fn display_width(&self, s: &str) -> usize { /* ... */ }
 }
 ```
+
+カスタムプロファイルは `config.toml` で `[[terminal.profiles]]` として定義可能。
 
 ### 4.3 Screen層（画面表示）
 

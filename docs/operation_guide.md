@@ -5,10 +5,11 @@
 ## 目次
 
 1. [サーバー運用手順](#サーバー運用手順)
-2. [Web UI設定](#web-ui設定)
-3. [バックアップ・リストア](#バックアップリストア)
-4. [トラブルシューティング](#トラブルシューティング)
-5. [セキュリティ](#セキュリティ)
+2. [端末プロファイル設定](#端末プロファイル設定)
+3. [Web UI設定](#web-ui設定)
+4. [バックアップ・リストア](#バックアップリストア)
+5. [トラブルシューティング](#トラブルシューティング)
+6. [セキュリティ](#セキュリティ)
 
 ---
 
@@ -84,6 +85,99 @@ sudo systemctl daemon-reload
 sudo systemctl enable hobbs
 sudo systemctl start hobbs
 ```
+
+---
+
+## 端末プロファイル設定
+
+HOBBSは様々な端末タイプをサポートしています。
+
+### 組み込みプロファイル
+
+| プロファイル | 幅 | 高 | エンコーディング | 出力モード | 想定クライアント |
+|--------------|----|----|------------------|------------|------------------|
+| `standard` | 80 | 24 | ShiftJIS | ANSI | TeraTerm, PuTTY等（日本語） |
+| `standard_utf8` | 80 | 24 | UTF-8 | ANSI | TeraTerm, PuTTY等（UTF-8） |
+| `dos` | 80 | 25 | CP437 | ANSI | DOS端末、IBM PC互換機 |
+| `c64` | 40 | 25 | PETSCII | Plain | C64（ANSI非対応） |
+| `c64_petscii` | 40 | 25 | PETSCII | PetsciiCtrl | C64（PETSCII制御コード使用） |
+| `c64_ansi` | 40 | 25 | PETSCII | ANSI | C64（ANSI対応エミュレータ） |
+
+### 設定項目
+
+`config.toml` の `[terminal]` セクション:
+
+```toml
+[terminal]
+# デフォルトの端末プロファイル
+default_profile = "standard"
+
+# 自動ページングを有効にする（スクロール機能のない端末向け）
+auto_paging = true
+
+# ページング前に表示する行数（0 = 端末高さ - 4）
+paging_lines = 0
+```
+
+### カスタムプロファイル
+
+独自の端末プロファイルを定義できます：
+
+```toml
+# PC-98用プロファイルの例
+[[terminal.profiles]]
+name = "pc98"
+width = 80
+height = 25
+cjk_width = 2
+ansi_enabled = true
+encoding = "shiftjis"
+output_mode = "ansi"
+template_dir = "80"
+
+# MSX用プロファイルの例
+[[terminal.profiles]]
+name = "msx"
+width = 40
+height = 24
+cjk_width = 1
+ansi_enabled = true
+encoding = "shiftjis"
+output_mode = "ansi"
+template_dir = "40"
+```
+
+#### カスタムプロファイルの設定項目
+
+| 項目 | 必須 | デフォルト | 説明 |
+|------|------|------------|------|
+| `name` | ○ | - | プロファイル名 |
+| `width` | - | 80 | 画面幅（カラム数） |
+| `height` | - | 24 | 画面高（行数） |
+| `cjk_width` | - | 2 | 全角文字の幅（1 or 2） |
+| `ansi_enabled` | - | true | ANSIエスケープシーケンス対応 |
+| `encoding` | - | "shiftjis" | 文字エンコーディング |
+| `output_mode` | - | "ansi" | 出力モード |
+| `template_dir` | - | "80" | テンプレートディレクトリ |
+
+#### エンコーディング値
+
+| 値 | 説明 |
+|----|------|
+| `shiftjis` | 日本語Shift_JIS |
+| `utf8` | UTF-8 |
+| `cp437` | IBM PC Code Page 437 |
+| `petscii` | Commodore PETSCII |
+
+#### 出力モード値
+
+| 値 | 説明 |
+|----|------|
+| `ansi` | ANSIエスケープシーケンスをそのまま出力 |
+| `plain` | ANSIエスケープシーケンスを除去 |
+| `petscii_ctrl` | ANSIをPETSCII制御コードに変換 |
+
+カスタムプロファイルは、Telnetログイン時の端末選択画面に組み込みプロファイルと共に表示されます。
 
 ---
 
