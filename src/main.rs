@@ -99,8 +99,9 @@ async fn run_server(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     if config.web.enabled {
         let web_db = Database::open(&config.database.path)?;
         let web_chat_manager = Arc::clone(&chat_manager);
-        let web_server = WebServer::from_database_with_files(&config.web, web_db, &config.files)
-            .with_chat_manager(web_chat_manager);
+        let web_server =
+            WebServer::from_database_with_configs(&config.web, web_db, &config.files, &config.bbs)
+                .with_chat_manager(web_chat_manager);
         let web_addr = web_server.addr();
 
         tokio::spawn(async move {

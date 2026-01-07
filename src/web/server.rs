@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use tower_http::compression::CompressionLayer;
 
 use crate::chat::ChatRoomManager;
-use crate::config::{FilesConfig, WebConfig};
+use crate::config::{BbsConfig, FilesConfig, WebConfig};
 use crate::file::FileStorage;
 use crate::Database;
 
@@ -34,7 +34,12 @@ pub struct WebServer {
 
 impl WebServer {
     /// Create a new web server.
-    pub fn new(config: &WebConfig, db: SharedDatabase, files_config: Option<&FilesConfig>) -> Self {
+    pub fn new(
+        config: &WebConfig,
+        db: SharedDatabase,
+        files_config: Option<&FilesConfig>,
+        bbs_config: Option<&BbsConfig>,
+    ) -> Self {
         let addr = format!("{}:{}", config.host, config.port)
             .parse()
             .expect("Invalid web server address");
@@ -45,6 +50,12 @@ impl WebServer {
             config.jwt_access_token_expiry_secs,
             config.jwt_refresh_token_expiry_days,
         );
+
+        // Apply BBS config if provided
+        if let Some(bbs) = bbs_config {
+            app_state =
+                app_state.with_bbs_config(&bbs.name, &bbs.description, &bbs.sysop_name);
+        }
 
         // Initialize file storage if files config is provided
         if let Some(files) = files_config {
@@ -81,7 +92,7 @@ impl WebServer {
 
     /// Create a new web server from a raw Database.
     pub fn from_database(config: &WebConfig, db: Database) -> Self {
-        Self::new(config, Arc::new(Mutex::new(db)), None)
+        Self::new(config, Arc::new(Mutex::new(db)), None, None)
     }
 
     /// Create a new web server from a raw Database with files config.
@@ -90,7 +101,22 @@ impl WebServer {
         db: Database,
         files_config: &FilesConfig,
     ) -> Self {
-        Self::new(config, Arc::new(Mutex::new(db)), Some(files_config))
+        Self::new(config, Arc::new(Mutex::new(db)), Some(files_config), None)
+    }
+
+    /// Create a new web server from a raw Database with files and BBS config.
+    pub fn from_database_with_configs(
+        config: &WebConfig,
+        db: Database,
+        files_config: &FilesConfig,
+        bbs_config: &BbsConfig,
+    ) -> Self {
+        Self::new(
+            config,
+            Arc::new(Mutex::new(db)),
+            Some(files_config),
+            Some(bbs_config),
+        )
     }
 
     /// Get the server address.

@@ -65,7 +65,8 @@ export const dict = {
 
   // Home
   home: {
-    welcome: 'Welcome to HOBBS',
+    welcome: 'ようこそ',
+    welcomeTo: 'ようこそ ',
     welcomePrefix: 'ようこそ、',
     welcomeSuffix: ' さん',
     boardList: '掲示板一覧',

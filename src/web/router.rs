@@ -40,6 +40,8 @@ use super::handlers::{
     create_flat_post,
     create_thread,
     create_thread_post,
+    // Config handlers
+    get_public_config,
     // File handlers
     delete_file,
     // Mail handlers
@@ -231,6 +233,9 @@ pub fn create_router(
         Router::new()
     };
 
+    // Config routes (public, no auth required)
+    let config_routes = Router::new().route("/public", get(get_public_config));
+
     // API routes
     let api_routes = Router::new()
         .nest("/auth", auth_routes)
@@ -243,7 +248,8 @@ pub fn create_router(
         .nest("/folders", folder_routes)
         .nest("/files", file_routes)
         .nest("/admin", admin_routes)
-        .nest("/chat", chat_routes);
+        .nest("/chat", chat_routes)
+        .nest("/config", config_routes);
 
     // Clone for middleware closures
     let jwt_state_for_middleware = jwt_state.clone();
