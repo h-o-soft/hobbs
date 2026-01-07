@@ -108,7 +108,10 @@ export const Layout: ParentComponent = (props) => {
       {/* Footer */}
       <footer class="border-t border-neon-cyan/10 py-4">
         <div class="container mx-auto px-4 text-center text-xs text-gray-600">
-          <span class="text-neon-purple/60">{siteConfig.config.name}</span>
+          <span class="text-neon-purple/60">
+            {siteConfig.config.name}
+            {siteConfig.config.description && ` - ${siteConfig.config.description}`}
+          </span>
         </div>
       </footer>
     </div>
