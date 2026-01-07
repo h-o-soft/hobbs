@@ -289,8 +289,11 @@ auto_paging_off = "Disabled"
 
 [terminal]
 select_profile = "Select terminal profile"
-profile_standard = "Standard (80x24)"
-profile_c64 = "C64 (40x25, no ANSI)"
+profile_standard = "Standard (80x24, ShiftJIS)"
+profile_standard_utf8 = "Standard UTF-8 (80x24)"
+profile_dos = "DOS/IBM PC (80x25, CP437)"
+profile_c64 = "C64 Plain (40x25, no escape)"
+profile_c64_petscii = "C64 PETSCII (40x25, PETSCII ctrl)"
 profile_c64_ansi = "C64 ANSI (40x25)"
 profile_changed = "Terminal profile changed to {{profile}}"
 current_profile = "Current: {{profile}}"

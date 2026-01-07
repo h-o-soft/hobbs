@@ -363,37 +363,7 @@ impl ProfileScreen {
             _ => current_language.clone(),
         };
 
-        // Encoding selection
-        ctx.send_line(session, "").await?;
-        ctx.send_line(session, &format!("{}:", ctx.i18n.t("settings.encoding")))
-            .await?;
-        ctx.send_line(session, "  [1] UTF-8").await?;
-        ctx.send_line(session, "  [2] ShiftJIS").await?;
-        ctx.send(
-            session,
-            &format!(
-                "{} [{}]: ",
-                ctx.i18n.t("common.number"),
-                if current_encoding == CharacterEncoding::ShiftJIS {
-                    "2"
-                } else {
-                    "1"
-                }
-            ),
-        )
-        .await?;
-
-        let enc_input = ctx.read_line(session).await?;
-        let enc_input = enc_input.trim();
-
-        let new_encoding = match enc_input {
-            "1" => CharacterEncoding::Utf8,
-            "2" => CharacterEncoding::ShiftJIS,
-            "" => current_encoding,
-            _ => current_encoding,
-        };
-
-        // Terminal profile selection
+        // Terminal profile selection (now includes encoding in profile)
         ctx.send_line(session, "").await?;
         ctx.send_line(
             session,
@@ -407,18 +377,36 @@ impl ProfileScreen {
         .await?;
         ctx.send_line(
             session,
-            &format!("  [2] {}", ctx.i18n.t("terminal.profile_c64")),
+            &format!("  [2] {}", ctx.i18n.t("terminal.profile_standard_utf8")),
         )
         .await?;
         ctx.send_line(
             session,
-            &format!("  [3] {}", ctx.i18n.t("terminal.profile_c64_ansi")),
+            &format!("  [3] {}", ctx.i18n.t("terminal.profile_dos")),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!("  [4] {}", ctx.i18n.t("terminal.profile_c64")),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!("  [5] {}", ctx.i18n.t("terminal.profile_c64_petscii")),
+        )
+        .await?;
+        ctx.send_line(
+            session,
+            &format!("  [6] {}", ctx.i18n.t("terminal.profile_c64_ansi")),
         )
         .await?;
         let current_profile_num = match current_terminal.as_str() {
-            "c64" => "2",
-            "c64_ansi" => "3",
-            _ => "1",
+            "standard_utf8" => "2",
+            "dos" => "3",
+            "c64" => "4",
+            "c64_petscii" => "5",
+            "c64_ansi" => "6",
+            _ => "1", // standard
         };
         ctx.send(
             session,
@@ -433,13 +421,20 @@ impl ProfileScreen {
         let term_input = ctx.read_line(session).await?;
         let term_input = term_input.trim();
 
-        let new_terminal = match term_input {
-            "1" => Some("standard".to_string()),
-            "2" => Some("c64".to_string()),
-            "3" => Some("c64_ansi".to_string()),
-            "" => None, // No change
-            _ => None,
+        // Get profile name and default encoding from selection
+        let (new_terminal, profile_encoding) = match term_input {
+            "1" => (Some("standard".to_string()), Some(CharacterEncoding::ShiftJIS)),
+            "2" => (Some("standard_utf8".to_string()), Some(CharacterEncoding::Utf8)),
+            "3" => (Some("dos".to_string()), Some(CharacterEncoding::Cp437)),
+            "4" => (Some("c64".to_string()), Some(CharacterEncoding::Petscii)),
+            "5" => (Some("c64_petscii".to_string()), Some(CharacterEncoding::Petscii)),
+            "6" => (Some("c64_ansi".to_string()), Some(CharacterEncoding::Petscii)),
+            "" => (None, None), // No change
+            _ => (None, None),
         };
+
+        // Use profile's default encoding if profile changed, otherwise keep current
+        let new_encoding = profile_encoding.unwrap_or(current_encoding);
 
         // Determine actual new terminal value
         let actual_new_terminal = new_terminal
@@ -535,7 +530,10 @@ impl ProfileScreen {
     /// Get display name for a terminal profile.
     fn profile_display_name(ctx: &ScreenContext, profile: &str) -> String {
         match profile {
+            "standard_utf8" => ctx.i18n.t("terminal.profile_standard_utf8").to_string(),
+            "dos" => ctx.i18n.t("terminal.profile_dos").to_string(),
             "c64" => ctx.i18n.t("terminal.profile_c64").to_string(),
+            "c64_petscii" => ctx.i18n.t("terminal.profile_c64_petscii").to_string(),
             "c64_ansi" => ctx.i18n.t("terminal.profile_c64_ansi").to_string(),
             _ => ctx.i18n.t("terminal.profile_standard").to_string(),
         }
