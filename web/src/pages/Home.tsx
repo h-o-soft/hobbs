@@ -1,6 +1,7 @@
 import { type Component, createResource, For, Show } from 'solid-js';
 import { A } from '@solidjs/router';
 import { useAuth } from '../stores/auth';
+import { useSiteConfig } from '../stores/siteConfig';
 import { useI18n } from '../stores/i18n';
 import { PageLoading } from '../components';
 import * as boardApi from '../api/board';
@@ -9,6 +10,7 @@ import type { Board } from '../types';
 export const HomePage: Component = () => {
   const { t } = useI18n();
   const [auth] = useAuth();
+  const [siteConfig] = useSiteConfig();
 
   const [boards] = createResource(async () => {
     try {
@@ -25,7 +27,7 @@ export const HomePage: Component = () => {
         <div class="absolute inset-0 bg-gradient-to-r from-neon-purple/5 to-neon-cyan/5" />
         <div class="relative">
           <h1 class="font-display text-3xl font-bold text-neon-cyan mb-2">
-            {t('home.welcome')}
+            {t('home.welcomeTo')}{siteConfig.config.name}
           </h1>
           <p class="text-gray-400">
             {t('home.welcomePrefix')}{auth.user?.nickname || ''}{t('home.welcomeSuffix')}

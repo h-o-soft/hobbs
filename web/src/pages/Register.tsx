@@ -1,6 +1,7 @@
 import { type Component, createSignal } from 'solid-js';
 import { A, useNavigate } from '@solidjs/router';
 import { useAuth } from '../stores/auth';
+import { useSiteConfig } from '../stores/siteConfig';
 import { useI18n } from '../stores/i18n';
 import { Input, Button, Alert } from '../components';
 import { ApiError } from '../api/client';
@@ -8,6 +9,7 @@ import { ApiError } from '../api/client';
 export const RegisterPage: Component = () => {
   const { t, translateError } = useI18n();
   const [, { register }] = useAuth();
+  const [siteConfig] = useSiteConfig();
   const navigate = useNavigate();
 
   const [username, setUsername] = createSignal('');
@@ -54,7 +56,7 @@ export const RegisterPage: Component = () => {
         {/* Logo */}
         <div class="text-center mb-8">
           <h1 class="font-display text-4xl font-bold text-neon-cyan text-neon-glow-intense animate-pulse-neon">
-            Beryl BBS
+            {siteConfig.config.name.split(' - ')[0] || siteConfig.config.name}
           </h1>
           <p class="text-gray-500 mt-2">{t('auth.register')}</p>
         </div>

@@ -1,11 +1,13 @@
 import { type ParentComponent, Show } from 'solid-js';
 import { A, useLocation } from '@solidjs/router';
 import { useAuth } from '../stores/auth';
+import { useSiteConfig } from '../stores/siteConfig';
 import { useI18n } from '../stores/i18n';
 
 export const Layout: ParentComponent = (props) => {
   const { t, locale, setLocale } = useI18n();
   const [auth, { logout }] = useAuth();
+  const [siteConfig] = useSiteConfig();
   const location = useLocation();
 
   const isActive = (path: string) => location.pathname === path;
@@ -26,7 +28,7 @@ export const Layout: ParentComponent = (props) => {
           <div class="flex items-center justify-between h-16">
             {/* Logo */}
             <A href="/" class="font-display text-2xl font-bold text-neon-cyan text-neon-glow">
-              Beryl BBS
+              {siteConfig.config.name.split(' - ')[0] || siteConfig.config.name}
             </A>
 
             {/* Navigation */}
@@ -106,8 +108,7 @@ export const Layout: ParentComponent = (props) => {
       {/* Footer */}
       <footer class="border-t border-neon-cyan/10 py-4">
         <div class="container mx-auto px-4 text-center text-xs text-gray-600">
-          <span class="text-neon-purple/60">Beryl BBS</span>
-          {' '}- Powered by HOBBS
+          <span class="text-neon-purple/60">{siteConfig.config.name}</span>
         </div>
       </footer>
     </div>

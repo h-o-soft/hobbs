@@ -38,6 +38,12 @@ pub struct AppState {
     pub max_upload_size: u64,
     /// Chat room manager.
     pub chat_manager: Option<Arc<ChatRoomManager>>,
+    /// BBS name (from config).
+    pub bbs_name: String,
+    /// BBS description (from config).
+    pub bbs_description: String,
+    /// SysOp name (from config).
+    pub sysop_name: String,
 }
 
 impl AppState {
@@ -56,7 +62,23 @@ impl AppState {
             file_storage: None,
             max_upload_size: 10 * 1024 * 1024, // 10MB default
             chat_manager: None,
+            bbs_name: "HOBBS".to_string(),
+            bbs_description: "A retro BBS system".to_string(),
+            sysop_name: "SysOp".to_string(),
         }
+    }
+
+    /// Set BBS configuration.
+    pub fn with_bbs_config(
+        mut self,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        sysop_name: impl Into<String>,
+    ) -> Self {
+        self.bbs_name = name.into();
+        self.bbs_description = description.into();
+        self.sysop_name = sysop_name.into();
+        self
     }
 
     /// Set file storage.
