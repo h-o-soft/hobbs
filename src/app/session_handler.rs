@@ -21,8 +21,8 @@ use crate::i18n::{I18n, I18nManager};
 use crate::mail::MailRepository;
 use crate::screen::{create_screen_from_profile, Screen};
 use crate::server::{
-    encode_for_client, initial_negotiation, CharacterEncoding, EchoMode, InputResult, LineBuffer,
-    SessionManager, SessionState, TelnetParser, TelnetSession,
+    encode_for_client, initial_negotiation, process_output_mode, CharacterEncoding, EchoMode,
+    InputResult, LineBuffer, SessionManager, SessionState, TelnetParser, TelnetSession,
 };
 use crate::template::{create_system_context, TemplateContext, TemplateLoader, Value};
 use crate::terminal::TerminalProfile;
@@ -141,6 +141,9 @@ impl SessionHandler {
 
     /// Run the session loop.
     pub async fn run(&mut self, session: &mut TelnetSession) -> Result<()> {
+        // Set output mode from profile (encoding is set later via language selection or login)
+        session.set_output_mode(self.profile.output_mode);
+
         // Register session
         self.session_manager.register(session).await;
 
@@ -947,9 +950,12 @@ Select language / Gengo sentaku:
 
     /// Send data to the client.
     /// Converts LF to CRLF for Telnet compatibility.
+    /// Processes output according to the session's output mode (strips ANSI for Plain mode).
     async fn send(&self, session: &mut TelnetSession, data: &str) -> Result<()> {
         // Convert LF to CRLF for Telnet (but avoid converting already-CRLF sequences)
         let data = data.replace("\r\n", "\n").replace('\n', "\r\n");
+        // Process output according to session's output mode
+        let data = process_output_mode(&data, session.output_mode());
         let encoded = encode_for_client(&data, session.encoding());
         session.stream_mut().write_all(&encoded).await?;
         session.stream_mut().flush().await?;
