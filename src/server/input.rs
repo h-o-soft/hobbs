@@ -115,8 +115,21 @@ impl LineBuffer {
         self.buffer.is_empty()
     }
 
-    /// Clear the buffer.
+    /// Clear the buffer contents.
+    ///
+    /// Note: This preserves `last_was_cr` state to correctly handle CR+LF
+    /// sequences that span across multiple `read_line` calls.
     pub fn clear(&mut self) {
+        self.buffer.clear();
+        self.pending_echo.clear();
+        // Don't reset last_was_cr here - it needs to persist across read_line calls
+        // to handle CR+LF when they arrive in separate TCP packets.
+    }
+
+    /// Fully reset the buffer, including CR tracking state.
+    ///
+    /// Use this when starting a completely new session or after an error.
+    pub fn reset(&mut self) {
         self.buffer.clear();
         self.pending_echo.clear();
         self.last_was_cr = false;
@@ -789,6 +802,39 @@ mod tests {
 
         buffer.clear();
         assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn test_line_buffer_clear_preserves_last_was_cr() {
+        // Simulates CR+LF arriving in separate TCP packets
+        let mut buffer = LineBuffer::new(100);
+
+        buffer.process_byte(b'A');
+        let (result, _) = buffer.process_byte(control::CR);
+        assert_eq!(result, InputResult::Line("A".to_string()));
+
+        // Simulate read_line being called again (which calls clear())
+        buffer.clear();
+
+        // LF should still be ignored because last_was_cr persists
+        let (result, _) = buffer.process_byte(control::LF);
+        assert_eq!(result, InputResult::Buffering); // Should be ignored, not a new line
+    }
+
+    #[test]
+    fn test_line_buffer_reset() {
+        let mut buffer = LineBuffer::new(100);
+
+        buffer.process_byte(b'A');
+        let (result, _) = buffer.process_byte(control::CR);
+        assert_eq!(result, InputResult::Line("A".to_string()));
+
+        // Full reset clears last_was_cr
+        buffer.reset();
+
+        // LF should now be treated as a standalone line terminator
+        let (result, _) = buffer.process_byte(control::LF);
+        assert_eq!(result, InputResult::Line("".to_string()));
     }
 
     #[test]
