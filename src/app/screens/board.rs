@@ -11,7 +11,7 @@ use crate::board::{
 use crate::db::{Role, UserRepository};
 use crate::error::Result;
 use crate::rate_limit::RateLimitResult;
-use crate::server::TelnetSession;
+use crate::server::{convert_caret_escape, TelnetSession};
 
 /// Board screen handler.
 pub struct BoardScreen;
@@ -565,7 +565,7 @@ impl BoardScreen {
                         &format!("--- {} ({}) ---", author, post.created_at),
                     )
                     .await?;
-                    ctx.send_line(session, &post.body).await?;
+                    ctx.send_line(session, &convert_caret_escape(&post.body)).await?;
                     ctx.send_line(session, "").await?;
                 }
 
@@ -657,7 +657,7 @@ impl BoardScreen {
         )
         .await?;
         ctx.send_line(session, &"-".repeat(40)).await?;
-        ctx.send_line(session, &post.body).await?;
+        ctx.send_line(session, &convert_caret_escape(&post.body)).await?;
         ctx.send_line(session, &"-".repeat(40)).await?;
 
         // Mark this post as read for logged-in users
@@ -942,7 +942,7 @@ impl BoardScreen {
             )
             .await?;
             ctx.send_line(session, &"-".repeat(40)).await?;
-            ctx.send_line(session, &post.body).await?;
+            ctx.send_line(session, &convert_caret_escape(&post.body)).await?;
             ctx.send_line(session, &"-".repeat(40)).await?;
 
             // Mark this post as read (create repo in block to release borrow)
@@ -1107,7 +1107,7 @@ impl BoardScreen {
             )
             .await?;
             ctx.send_line(session, &"-".repeat(40)).await?;
-            ctx.send_line(session, &post.body).await?;
+            ctx.send_line(session, &convert_caret_escape(&post.body)).await?;
             ctx.send_line(session, &"-".repeat(40)).await?;
 
             // Mark this post as read (create repo in block to release borrow)
