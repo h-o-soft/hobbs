@@ -769,6 +769,36 @@ fn unicode_to_petscii_byte(c: char) -> Option<u8> {
 }
 
 // ============================================================================
+// Caret Escape Conversion
+// ============================================================================
+
+/// Convert caret escape notation (`^[`) to actual ESC character (0x1B).
+///
+/// This is a common notation used in BBS systems to input ANSI escape sequences.
+/// Users can type `^[` followed by ANSI codes to add colors and formatting.
+///
+/// # Arguments
+///
+/// * `text` - The text that may contain `^[` notation.
+///
+/// # Returns
+///
+/// The text with all `^[` converted to ESC (0x1B).
+///
+/// # Example
+///
+/// ```
+/// use hobbs::server::encoding::convert_caret_escape;
+///
+/// let input = "^[[31mRed Text^[[0m";
+/// let output = convert_caret_escape(input);
+/// assert_eq!(output, "\x1b[31mRed Text\x1b[0m");
+/// ```
+pub fn convert_caret_escape(text: &str) -> String {
+    text.replace("^[", "\x1b")
+}
+
+// ============================================================================
 // Output Mode Processing
 // ============================================================================
 
@@ -1663,6 +1693,46 @@ mod tests {
     fn test_strip_ansi_preserves_newlines() {
         let text = "\x1b[31mLine 1\x1b[0m\nLine 2";
         assert_eq!(strip_ansi_sequences(text), "Line 1\nLine 2");
+    }
+
+    // ============================================================================
+    // Caret Escape Conversion Tests
+    // ============================================================================
+
+    #[test]
+    fn test_convert_caret_escape_basic() {
+        let input = "^[[31mRed Text^[[0m";
+        let output = convert_caret_escape(input);
+        assert_eq!(output, "\x1b[31mRed Text\x1b[0m");
+    }
+
+    #[test]
+    fn test_convert_caret_escape_no_escape() {
+        let input = "Plain text without escapes";
+        let output = convert_caret_escape(input);
+        assert_eq!(output, "Plain text without escapes");
+    }
+
+    #[test]
+    fn test_convert_caret_escape_multiple() {
+        let input = "^[[1;33mYellow^[[0m and ^[[1;32mGreen^[[0m";
+        let output = convert_caret_escape(input);
+        assert_eq!(output, "\x1b[1;33mYellow\x1b[0m and \x1b[1;32mGreen\x1b[0m");
+    }
+
+    #[test]
+    fn test_convert_caret_escape_preserves_literal_caret() {
+        // ^X where X is not [ should be preserved
+        let input = "Test ^A ^B ^[ escaped";
+        let output = convert_caret_escape(input);
+        assert_eq!(output, "Test ^A ^B \x1b escaped");
+    }
+
+    #[test]
+    fn test_convert_caret_escape_empty_string() {
+        let input = "";
+        let output = convert_caret_escape(input);
+        assert_eq!(output, "");
     }
 
     // ============================================================================

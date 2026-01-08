@@ -8,7 +8,7 @@ use crate::db::UserRepository;
 use crate::error::Result;
 use crate::mail::{MailRepository, NewMail};
 use crate::rate_limit::RateLimitResult;
-use crate::server::TelnetSession;
+use crate::server::{convert_caret_escape, TelnetSession};
 
 /// Mail screen handler.
 pub struct MailScreen;
@@ -179,7 +179,7 @@ impl MailScreen {
         )
         .await?;
         ctx.send_line(session, &"-".repeat(40)).await?;
-        ctx.send_line(session, &mail.body).await?;
+        ctx.send_line(session, &convert_caret_escape(&mail.body)).await?;
         ctx.send_line(session, &"-".repeat(40)).await?;
 
         // Options

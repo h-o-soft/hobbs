@@ -1,6 +1,6 @@
 import { type Component, createResource, createSignal, For, Show } from 'solid-js';
 import { A, useParams } from '@solidjs/router';
-import { PageLoading, Pagination, Button, Input, Textarea, Modal, Alert, Empty, UserLink } from '../components';
+import { PageLoading, Pagination, Button, Input, Textarea, Modal, Alert, Empty, UserLink, AnsiText } from '../components';
 import * as boardApi from '../api/board';
 import { useI18n } from '../stores/i18n';
 import { useAuth } from '../stores/auth';
@@ -252,7 +252,7 @@ export const BoardDetailPage: Component = () => {
                       <Show when={post.title}>
                         <h3 class="font-bold text-neon-cyan mb-2">{post.title}</h3>
                       </Show>
-                      <div class="text-gray-300 whitespace-pre-wrap">{post.body}</div>
+                      <AnsiText text={post.body} class="text-gray-300" />
                     </div>
                   )}
                 </For>
@@ -415,7 +415,7 @@ export const ThreadDetailPage: Component = () => {
                       </Show>
                     </div>
                   </div>
-                  <div class="text-gray-300 whitespace-pre-wrap">{post.body}</div>
+                  <AnsiText text={post.body} class="text-gray-300" />
                 </div>
               )}
             </For>

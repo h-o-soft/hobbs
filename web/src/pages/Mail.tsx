@@ -1,6 +1,6 @@
 import { type Component, createResource, createSignal, For, Show, onMount } from 'solid-js';
 import { useSearchParams } from '@solidjs/router';
-import { PageLoading, Pagination, Button, Input, Textarea, Modal, Alert, Empty, UserLink } from '../components';
+import { PageLoading, Pagination, Button, Input, Textarea, Modal, Alert, Empty, UserLink, AnsiText } from '../components';
 import * as mailApi from '../api/mail';
 import type { MailListItem, Mail } from '../types';
 import { useI18n } from '../stores/i18n';
@@ -190,9 +190,7 @@ export const MailPage: Component = () => {
                   <p>{t('mail.date')}: {formatDate(mail().created_at)}</p>
                 </div>
               </div>
-              <div class="text-gray-300 whitespace-pre-wrap">
-                {mail().body}
-              </div>
+              <AnsiText text={mail().body} class="text-gray-300" />
               <div class="flex justify-end space-x-3 pt-4">
                 <Button variant="danger" onClick={() => handleDelete(mail().id)}>
                   {t('mail.delete')}
