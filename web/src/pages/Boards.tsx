@@ -324,6 +324,7 @@ export const ThreadDetailPage: Component = () => {
   const params = useParams<{ id: string }>();
   const [page, setPage] = createSignal(1);
   const [editingPost, setEditingPost] = createSignal<Post | null>(null);
+  const [editingThread, setEditingThread] = createSignal(false);
 
   const threadId = () => parseInt(params.id);
 
@@ -334,7 +335,14 @@ export const ThreadDetailPage: Component = () => {
     return isAuthor || isAdmin;
   };
 
-  const [thread] = createResource(threadId, boardApi.getThread);
+  const canEditThread = () => {
+    if (!auth.user || !thread()) return false;
+    const isAuthor = thread()!.author.id === auth.user.id;
+    const isAdmin = auth.user.role === 'sysop' || auth.user.role === 'subop';
+    return isAuthor || isAdmin;
+  };
+
+  const [thread, { refetch: refetchThread }] = createResource(threadId, boardApi.getThread);
 
   const [posts, { refetch }] = createResource(
     () => ({ threadId: threadId(), page: page() }),
@@ -364,6 +372,11 @@ export const ThreadDetailPage: Component = () => {
     refetch();
   };
 
+  const handleEditThreadSuccess = () => {
+    setEditingThread(false);
+    refetchThread();
+  };
+
   return (
     <div class="space-y-6">
       <Show when={!thread.loading && thread()} fallback={<PageLoading />}>
@@ -377,7 +390,20 @@ export const ThreadDetailPage: Component = () => {
             </A>
             <span>/</span>
           </div>
-          <h1 class="text-2xl font-display font-bold text-neon-cyan">{thread()!.title}</h1>
+          <div class="flex items-center space-x-3">
+            <h1 class="text-2xl font-display font-bold text-neon-cyan">{thread()!.title}</h1>
+            <Show when={canEditThread()}>
+              <button
+                onClick={() => setEditingThread(true)}
+                class="text-gray-500 hover:text-neon-cyan transition-colors p-1"
+                title={t('boards.editThread')}
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            </Show>
+          </div>
           <p class="text-sm text-gray-500 mt-1">
             <UserLink
               username={thread()!.author.username}
@@ -452,6 +478,24 @@ export const ThreadDetailPage: Component = () => {
                 post={post()}
                 onSuccess={handleEditSuccess}
                 onCancel={() => setEditingPost(null)}
+              />
+            )}
+          </Show>
+        </Modal>
+
+        {/* Edit Thread Modal */}
+        <Modal
+          isOpen={editingThread()}
+          onClose={() => setEditingThread(false)}
+          title={t('boards.editThread')}
+          size="md"
+        >
+          <Show when={thread()}>
+            {(currentThread) => (
+              <EditThreadForm
+                thread={currentThread()}
+                onSuccess={handleEditThreadSuccess}
+                onCancel={() => setEditingThread(false)}
               />
             )}
           </Show>
@@ -774,6 +818,68 @@ const EditPostForm: Component<EditPostFormProps> = (props) => {
         onInput={(e) => setBody(e.currentTarget.value)}
         required
         rows={8}
+      />
+
+      <div class="flex justify-end space-x-3">
+        <Button type="button" variant="secondary" onClick={props.onCancel}>
+          {t('common.cancel')}
+        </Button>
+        <Button type="submit" variant="primary" loading={loading()}>
+          {t('common.save')}
+        </Button>
+      </div>
+    </form>
+  );
+};
+
+// Edit Thread Form Component
+interface EditThreadFormProps {
+  thread: { id: number; title: string };
+  onSuccess: () => void;
+  onCancel: () => void;
+}
+
+const EditThreadForm: Component<EditThreadFormProps> = (props) => {
+  const { t } = useI18n();
+  const [title, setTitle] = createSignal(props.thread.title);
+  const [error, setError] = createSignal('');
+  const [loading, setLoading] = createSignal(false);
+
+  const handleSubmit = async (e: Event) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      await boardApi.updateThread(props.thread.id, {
+        title: title(),
+      });
+      props.onSuccess();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError(t('boards.editThreadFailed'));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} class="space-y-4">
+      <Show when={error()}>
+        <Alert type="error" onClose={() => setError('')}>
+          {error()}
+        </Alert>
+      </Show>
+
+      <Input
+        label={t('boards.threadTitle')}
+        value={title()}
+        onInput={(e) => setTitle(e.currentTarget.value)}
+        maxLength={50}
+        required
       />
 
       <div class="flex justify-end space-x-3">

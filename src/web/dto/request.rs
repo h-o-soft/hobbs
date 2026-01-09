@@ -149,6 +149,16 @@ pub struct UpdatePostRequest {
     pub body: String,
 }
 
+/// Update thread request.
+#[derive(Debug, Deserialize, ToSchema, Validate)]
+pub struct UpdateThreadRequest {
+    /// Thread title.
+    #[validate(length(min = 1, max = 50, message = "Title must be 1-50 characters"))]
+    #[validate(custom(function = "no_control_chars"))]
+    #[validate(custom(function = "not_empty_trimmed"))]
+    pub title: String,
+}
+
 // ============================================================================
 // Mail DTOs
 // ============================================================================
