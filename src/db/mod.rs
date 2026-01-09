@@ -119,16 +119,91 @@ impl Database {
     }
 
     /// Apply pending migrations using sqlx embedded migrations.
+    ///
+    /// For legacy databases (created with rusqlite before the sqlx migration),
+    /// all migrations are marked as already applied since the schema is already in place.
     pub async fn migrate(&self) -> Result<()> {
         info!("Running database migrations...");
 
-        sqlx::migrate!("./migrations")
-            .run(&self.pool)
-            .await
-            .map_err(|e| crate::HobbsError::Database(format!("Migration failed: {}", e)))?;
+        // Check if this is a legacy database (has tables but no _sqlx_migrations)
+        let migrations_table_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations')",
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+
+        let users_table_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='users')",
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+
+        if !migrations_table_exists && users_table_exists {
+            // Legacy database detected - mark all migrations as applied
+            info!("Legacy database detected, marking migrations as applied...");
+            self.mark_legacy_migrations_applied().await?;
+        } else {
+            // Run migrations normally
+            sqlx::migrate!("./migrations")
+                .run(&self.pool)
+                .await
+                .map_err(|e| crate::HobbsError::Database(format!("Migration failed: {}", e)))?;
+        }
 
         let version = self.schema_version().await?;
         info!("Database migration complete (version {})", version);
+
+        Ok(())
+    }
+
+    /// Mark all migrations as applied for legacy databases.
+    ///
+    /// This is used when migrating from rusqlite to sqlx. The legacy database
+    /// already has all tables, so we just need to create the _sqlx_migrations
+    /// table and mark all migrations as completed.
+    async fn mark_legacy_migrations_applied(&self) -> Result<()> {
+        // Create _sqlx_migrations table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS _sqlx_migrations (
+                version BIGINT PRIMARY KEY,
+                description TEXT NOT NULL,
+                installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                success BOOLEAN NOT NULL,
+                checksum BLOB NOT NULL,
+                execution_time BIGINT NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+
+        // Get all migrations from the embedded migrator
+        let migrator = sqlx::migrate!("./migrations");
+
+        for migration in migrator.iter() {
+            // Insert each migration as already applied
+            sqlx::query(
+                r#"
+                INSERT OR IGNORE INTO _sqlx_migrations (version, description, installed_on, success, checksum, execution_time)
+                VALUES (?, ?, CURRENT_TIMESTAMP, 1, ?, 0)
+                "#,
+            )
+            .bind(migration.version)
+            .bind(&*migration.description)
+            .bind(&*migration.checksum)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+        }
+
+        info!(
+            "Marked {} migrations as applied for legacy database",
+            migrator.iter().count()
+        );
 
         Ok(())
     }
