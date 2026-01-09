@@ -2,10 +2,45 @@
 
 ## 1. 概要
 
-- **DBMS**: SQLite 3
-- **ファイル**: `data/hobbs.db`
+- **DBMS**: SQLite 3.35以上 または PostgreSQL 12以上（コンパイル時に選択）
+- **ファイル（SQLite）**: `data/hobbs.db`
+- **接続URL（PostgreSQL）**: `postgres://user:password@localhost/hobbs`
 - **文字コード**: UTF-8（内部保存）
-- **ライブラリ**: rusqlite
+- **ライブラリ**: sqlx（非同期対応）
+
+### 1.1 DBMS間の差異
+
+| 項目 | SQLite | PostgreSQL |
+|------|--------|------------|
+| 自動採番 | `INTEGER PRIMARY KEY` | `BIGSERIAL PRIMARY KEY` |
+| 現在日時 | `datetime('now')` | `TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')` |
+| Boolean | INTEGER (0/1) | BOOLEAN |
+| 大文字小文字無視 | `COLLATE NOCASE` | `LOWER()` + インデックス |
+
+### 1.2 マイグレーション
+
+マイグレーションファイルはDBMS別に管理：
+
+```
+migrations/
+├── sqlite/
+│   ├── 0001_initial_users.sql
+│   ├── 0002_add_encoding.sql
+│   └── ...
+└── postgres/
+    ├── 0001_initial_users.sql
+    ├── 0002_add_encoding.sql
+    └── ...
+```
+
+sqlx-cliで管理：
+```bash
+# SQLite
+sqlx migrate run --source migrations/sqlite
+
+# PostgreSQL
+sqlx migrate run --source migrations/postgres
+```
 
 ## 2. ER図
 
@@ -391,23 +426,19 @@ VALUES
 
 ## 5. マイグレーション
 
-バージョン管理用のテーブル：
+sqlxのマイグレーション機能を使用。起動時に自動適用される。
 
-```sql
-CREATE TABLE schema_version (
-    version     INTEGER PRIMARY KEY,
-    applied_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
+```
+migrations/
+├── sqlite/          # SQLite用マイグレーション
+│   ├── 0001_initial_users.sql
+│   ├── 0002_add_encoding.sql
+│   └── ...（22ファイル）
+└── postgres/        # PostgreSQL用マイグレーション
+    ├── 0001_initial_users.sql
+    ├── 0002_add_encoding.sql
+    └── ...（22ファイル）
 ```
 
-マイグレーションはRustコード内で管理し、起動時に自動適用：
-
-```rust
-const MIGRATIONS: &[&str] = &[
-    // v1: 初期スキーマ
-    include_str!("migrations/001_initial.sql"),
-    // v2: チャットログ追加
-    include_str!("migrations/002_chat_logs.sql"),
-    // ...
-];
-```
+アプリケーション起動時に、選択されたDBMS用のマイグレーションが自動実行される。
+バージョン管理は `_sqlx_migrations` テーブルで行われる。

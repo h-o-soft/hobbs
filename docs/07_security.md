@@ -313,6 +313,8 @@ Telnetは平文通信のため、以下の点に注意：
 
 ### 7.2 データベースセキュリティ
 
+#### SQLite版
+
 ```rust
 // データベースファイルのパーミッション
 #[cfg(unix)]
@@ -324,9 +326,22 @@ fn secure_db_permissions(path: &Path) -> Result<()> {
 }
 ```
 
+#### PostgreSQL版
+
+- 接続にはパスワード認証またはSSL証明書を使用
+- `pg_hba.conf` で接続元IPアドレスを制限
+- SSL接続の使用を推奨（`sslmode=require`）
+- データベースユーザーには最小限の権限のみ付与
+- 接続文字列のパスワードは環境変数で管理を推奨
+
+```bash
+# 環境変数で接続文字列を設定
+export DATABASE_URL="postgres://hobbs:password@localhost/hobbs?sslmode=require"
+```
+
 ### 7.3 バックアップ
 
-- データベースファイルの定期バックアップを推奨
+- データベースの定期バックアップを推奨
 - バックアップファイルは暗号化して保管
 
 ## 8. ログ記録

@@ -355,8 +355,14 @@ DATE=$(date +%Y%m%d_%H%M%S)
 # バックアップディレクトリ作成
 mkdir -p "$BACKUP_DIR"
 
+# === SQLite版の場合 ===
 # データベースをSQLiteのバックアップ機能でコピー
 sqlite3 "$HOBBS_DIR/data/hobbs.db" ".backup '$BACKUP_DIR/hobbs_$DATE.db'"
+
+# === PostgreSQL版の場合 ===
+# pg_dump -U hobbs -h localhost hobbs > "$BACKUP_DIR/hobbs_$DATE.sql"
+# または圧縮形式で:
+# pg_dump -U hobbs -h localhost -Fc hobbs > "$BACKUP_DIR/hobbs_$DATE.dump"
 
 # ファイルストレージをコピー
 tar -czf "$BACKUP_DIR/files_$DATE.tar.gz" -C "$HOBBS_DIR/data" files/
@@ -379,15 +385,17 @@ echo "Backup completed: $DATE"
 
 ### リストア手順
 
+#### SQLite版
+
 ```bash
 #!/bin/bash
-# restore.sh
+# restore_sqlite.sh
 
 BACKUP_FILE="$1"
 HOBBS_DIR="/opt/hobbs"
 
 if [ -z "$BACKUP_FILE" ]; then
-    echo "Usage: restore.sh <backup_db_file>"
+    echo "Usage: restore_sqlite.sh <backup_db_file>"
     exit 1
 fi
 
@@ -406,12 +414,56 @@ sudo systemctl start hobbs
 echo "Restore completed"
 ```
 
+#### PostgreSQL版
+
+```bash
+#!/bin/bash
+# restore_postgres.sh
+
+BACKUP_FILE="$1"
+DB_NAME="hobbs"
+DB_USER="hobbs"
+
+if [ -z "$BACKUP_FILE" ]; then
+    echo "Usage: restore_postgres.sh <backup_file.sql or .dump>"
+    exit 1
+fi
+
+# サーバー停止
+sudo systemctl stop hobbs
+
+# データベースを再作成
+dropdb -U "$DB_USER" "$DB_NAME"
+createdb -U "$DB_USER" "$DB_NAME"
+
+# リストア（.sql形式）
+# psql -U "$DB_USER" "$DB_NAME" < "$BACKUP_FILE"
+
+# リストア（.dump形式）
+pg_restore -U "$DB_USER" -d "$DB_NAME" "$BACKUP_FILE"
+
+# サーバー起動
+sudo systemctl start hobbs
+
+echo "Restore completed"
+```
+
 ### オンラインバックアップ
+
+#### SQLite版
 
 SQLiteのWALモードを使用しているため、サーバー稼働中でもバックアップ可能です：
 
 ```bash
 sqlite3 data/hobbs.db ".backup data/hobbs_backup.db"
+```
+
+#### PostgreSQL版
+
+PostgreSQLは標準でオンラインバックアップに対応しています：
+
+```bash
+pg_dump -U hobbs -h localhost hobbs > hobbs_backup.sql
 ```
 
 ---
@@ -451,6 +503,8 @@ sqlite3 data/hobbs.db ".backup data/hobbs_backup.db"
 
 ### データベースエラー
 
+#### SQLite版
+
 1. **データベースのロック**
    - 複数プロセスが同時にアクセスしている可能性
    - `lsof data/hobbs.db` で確認
@@ -468,6 +522,27 @@ sqlite3 data/hobbs.db ".backup data/hobbs_backup.db"
    ```bash
    # WALチェックポイント
    sqlite3 data/hobbs.db "PRAGMA wal_checkpoint(TRUNCATE);"
+   ```
+
+#### PostgreSQL版
+
+1. **接続エラー**
+   ```bash
+   # PostgreSQLサービスが起動しているか確認
+   sudo systemctl status postgresql
+
+   # 接続テスト
+   psql -U hobbs -h localhost -d hobbs -c "SELECT 1;"
+   ```
+
+2. **認証エラー**
+   - `pg_hba.conf` の設定を確認
+   - パスワード認証が許可されているか確認
+
+3. **接続数超過**
+   ```bash
+   # 現在の接続数を確認
+   psql -U hobbs -c "SELECT count(*) FROM pg_stat_activity WHERE datname='hobbs';"
    ```
 
 ### メモリ使用量が高い

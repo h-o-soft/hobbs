@@ -2,7 +2,7 @@
 
 ## プロジェクト概要
 
-HOBBS (Hobbyist Bulletin Board System) は、Telnetプロトコルで接続するレトロなパソコン通信BBSホストプログラム。Rustで実装し、SQLiteをデータベースとして使用する。
+HOBBS (Hobbyist Bulletin Board System) は、Telnetプロトコルで接続するレトロなパソコン通信BBSホストプログラム。Rustで実装し、SQLiteまたはPostgreSQLをデータベースとして使用する（コンパイル時のfeature flagで選択）。
 
 ## 開発方針
 
@@ -48,7 +48,7 @@ cargo test --test e2e_connection --test e2e_auth --test e2e_board --test e2e_mai
 ├─────────────────────────────────────┤
 │         Application Layer           │  ← 各機能モジュール
 ├─────────────────────────────────────┤
-│            Data Layer               │  ← SQLite、ファイルストレージ
+│            Data Layer               │  ← SQLite/PostgreSQL、ファイルストレージ
 └─────────────────────────────────────┘
 ```
 
@@ -62,7 +62,7 @@ cargo test --test e2e_connection --test e2e_auth --test e2e_board --test e2e_mai
 ### 非同期処理
 
 - ランタイム: tokio
-- rusqlite は同期ライブラリのため、`spawn_blocking` でラップする
+- データベース: sqlx（非同期ネイティブ）
 - チャットのブロードキャスト: `tokio::sync::broadcast`
 
 ## コーディング規約
@@ -96,7 +96,7 @@ cargo clippy
 #[derive(Debug, thiserror::Error)]
 pub enum HobbsError {
     #[error("データベースエラー: {0}")]
-    Database(#[from] rusqlite::Error),
+    Database(String),
     #[error("認証エラー: {0}")]
     Auth(String),
     // ...
@@ -208,10 +208,15 @@ hobbs/
 ## 依存クレート
 
 ```toml
+[features]
+default = ["sqlite"]
+sqlite = ["sqlx/sqlite"]
+postgres = ["sqlx/postgres"]
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 encoding_rs = "0.8"
-rusqlite = { version = "0.31", features = ["bundled"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "chrono", "migrate"] }
 argon2 = "0.5"
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
@@ -224,6 +229,8 @@ thiserror = "1"
 mlua = { version = "0.10", features = ["lua54", "async", "serialize"] }
 rand = "0.8"
 ```
+
+ビルド時に `--features sqlite`（デフォルト）または `--no-default-features --features postgres` で選択。
 
 ## 開発ワークフロー
 
