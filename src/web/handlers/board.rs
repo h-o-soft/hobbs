@@ -11,6 +11,7 @@ use crate::board::{
     BoardRepository, BoardService, BoardType, NewFlatPost, NewThread, NewThreadPost,
     PostRepository, ThreadRepository,
 };
+use crate::datetime::to_rfc3339;
 use crate::db::{Role, UserRepository};
 use crate::web::dto::{
     ApiResponse, AuthorInfo, BoardResponse, CreateFlatPostRequest, CreatePostRequest,
@@ -38,40 +39,35 @@ pub async fn list_boards(
         .map(|c| Role::from_str(&c.role).unwrap_or(Role::Guest))
         .unwrap_or(Role::Guest);
 
-    let boards = {
-        let db = state.db.lock().await;
-        let repo = BoardRepository::new(&*db);
-        repo.list_accessible(user_role).map_err(|e| {
-            tracing::error!("Failed to list boards: {}", e);
-            ApiError::internal("Failed to list boards")
-        })?
-    };
+    let repo = BoardRepository::new(state.db.pool());
+    let boards = repo.list_accessible(user_role).await.map_err(|e| {
+        tracing::error!("Failed to list boards: {}", e);
+        ApiError::internal("Failed to list boards")
+    })?;
 
     let responses: Vec<BoardResponse> = {
-        let db = state.db.lock().await;
-        let thread_repo = ThreadRepository::new(&*db);
-        let post_repo = PostRepository::new(&*db);
+        let thread_repo = ThreadRepository::new(state.db.pool());
+        let post_repo = PostRepository::new(state.db.pool());
 
-        boards
-            .into_iter()
-            .map(|b| {
-                let can_read = b.can_read(user_role);
-                let can_write = b.can_write(user_role);
-                let thread_count = thread_repo.count_by_board(b.id).unwrap_or(0);
-                let post_count = post_repo.count_by_board(b.id).unwrap_or(0);
-                BoardResponse {
-                    id: b.id,
-                    name: b.name,
-                    description: b.description,
-                    board_type: b.board_type.as_str().to_string(),
-                    thread_count,
-                    post_count,
-                    can_read,
-                    can_write,
-                    created_at: b.created_at,
-                }
-            })
-            .collect()
+        let mut responses = Vec::new();
+        for b in boards {
+            let can_read = b.can_read(user_role);
+            let can_write = b.can_write(user_role);
+            let thread_count = thread_repo.count_by_board(b.id).await.unwrap_or(0);
+            let post_count = post_repo.count_by_board(b.id).await.unwrap_or(0);
+            responses.push(BoardResponse {
+                id: b.id,
+                name: b.name,
+                description: b.description,
+                board_type: b.board_type.as_str().to_string(),
+                thread_count,
+                post_count,
+                can_read,
+                can_write,
+                created_at: to_rfc3339(&b.created_at),
+            });
+        }
+        responses
     };
 
     Ok(Json(ApiResponse::new(responses)))
@@ -99,16 +95,15 @@ pub async fn get_board(
         .map(|c| Role::from_str(&c.role).unwrap_or(Role::Guest))
         .unwrap_or(Role::Guest);
 
-    let board = {
-        let db = state.db.lock().await;
-        let repo = BoardRepository::new(&*db);
-        repo.get_by_id(board_id)
-            .map_err(|e| {
-                tracing::error!("Failed to get board: {}", e);
-                ApiError::internal("Failed to get board")
-            })?
-            .ok_or_else(|| ApiError::not_found("Board not found"))?
-    };
+    let repo = BoardRepository::new(state.db.pool());
+    let board = repo
+        .get_by_id(board_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get board: {}", e);
+            ApiError::internal("Failed to get board")
+        })?
+        .ok_or_else(|| ApiError::not_found("Board not found"))?;
 
     if !board.can_read(user_role) {
         return Err(ApiError::forbidden("Access denied"));
@@ -117,15 +112,12 @@ pub async fn get_board(
     let can_read = board.can_read(user_role);
     let can_write = board.can_write(user_role);
 
-    let (thread_count, post_count) = {
-        let db = state.db.lock().await;
-        let thread_repo = ThreadRepository::new(&*db);
-        let post_repo = PostRepository::new(&*db);
-        (
-            thread_repo.count_by_board(board.id).unwrap_or(0),
-            post_repo.count_by_board(board.id).unwrap_or(0),
-        )
-    };
+    let thread_repo = ThreadRepository::new(state.db.pool());
+    let post_repo = PostRepository::new(state.db.pool());
+    let (thread_count, post_count) = (
+        thread_repo.count_by_board(board.id).await.unwrap_or(0),
+        post_repo.count_by_board(board.id).await.unwrap_or(0),
+    );
 
     let response = BoardResponse {
         id: board.id,
@@ -136,7 +128,7 @@ pub async fn get_board(
         post_count,
         can_read,
         can_write,
-        created_at: board.created_at,
+        created_at: to_rfc3339(&board.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -171,12 +163,12 @@ pub async fn list_threads(
     let (offset, limit) = pagination.to_offset_limit();
 
     let (_board, threads, total) = {
-        let db = state.db.lock().await;
-        let board_repo = BoardRepository::new(&*db);
-        let thread_repo = ThreadRepository::new(&*db);
+        let board_repo = BoardRepository::new(state.db.pool());
+        let thread_repo = ThreadRepository::new(state.db.pool());
 
         let board = board_repo
             .get_by_id(board_id)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get board: {}", e);
                 ApiError::internal("Database error")
@@ -193,12 +185,13 @@ pub async fn list_threads(
 
         let threads = thread_repo
             .list_by_board_paginated(board_id, offset, limit)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to list threads: {}", e);
                 ApiError::internal("Database error")
             })?;
 
-        let total = thread_repo.count_by_board(board_id).map_err(|e| {
+        let total = thread_repo.count_by_board(board_id).await.map_err(|e| {
             tracing::error!("Failed to count threads: {}", e);
             ApiError::internal("Database error")
         })?;
@@ -208,38 +201,37 @@ pub async fn list_threads(
 
     // Get author info for each thread
     let responses = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
+        let user_repo = UserRepository::new(state.db.pool());
 
-        threads
-            .into_iter()
-            .map(|t| {
-                let author = user_repo
-                    .get_by_id(t.author_id)
-                    .ok()
-                    .flatten()
-                    .map(|u| AuthorInfo {
-                        id: u.id,
-                        username: u.username,
-                        nickname: u.nickname,
-                    })
-                    .unwrap_or_else(|| AuthorInfo {
-                        id: t.author_id,
-                        username: "unknown".to_string(),
-                        nickname: "Unknown".to_string(),
-                    });
+        let mut responses = Vec::new();
+        for t in threads {
+            let author = user_repo
+                .get_by_id(t.author_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|u| AuthorInfo {
+                    id: u.id,
+                    username: u.username,
+                    nickname: u.nickname,
+                })
+                .unwrap_or_else(|| AuthorInfo {
+                    id: t.author_id,
+                    username: "unknown".to_string(),
+                    nickname: "Unknown".to_string(),
+                });
 
-                ThreadResponse {
-                    id: t.id,
-                    board_id: t.board_id,
-                    title: t.title,
-                    author,
-                    post_count: t.post_count,
-                    created_at: t.created_at,
-                    updated_at: t.updated_at,
-                }
-            })
-            .collect()
+            responses.push(ThreadResponse {
+                id: t.id,
+                board_id: t.board_id,
+                title: t.title,
+                author,
+                post_count: t.post_count,
+                created_at: to_rfc3339(&t.created_at),
+                updated_at: to_rfc3339(&t.updated_at),
+            });
+        }
+        responses
     };
 
     Ok(Json(PaginatedResponse::new(
@@ -286,15 +278,15 @@ pub async fn create_thread(
     }
 
     let (thread, author) = {
-        let db = state.db.lock().await;
-        let board_repo = BoardRepository::new(&*db);
-        let thread_repo = ThreadRepository::new(&*db);
-        let post_repo = PostRepository::new(&*db);
-        let user_repo = UserRepository::new(&*db);
+        let board_repo = BoardRepository::new(state.db.pool());
+        let thread_repo = ThreadRepository::new(state.db.pool());
+        let post_repo = PostRepository::new(state.db.pool());
+        let user_repo = UserRepository::new(state.db.pool());
 
         // Check board access
         let board = board_repo
             .get_by_id(board_id)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get board: {}", e);
                 ApiError::internal("Database error")
@@ -311,14 +303,14 @@ pub async fn create_thread(
 
         // Create thread
         let new_thread = NewThread::new(board_id, &req.title, claims.sub);
-        let thread = thread_repo.create(&new_thread).map_err(|e| {
+        let thread = thread_repo.create(&new_thread).await.map_err(|e| {
             tracing::error!("Failed to create thread: {}", e);
             ApiError::internal("Failed to create thread")
         })?;
 
         // Create first post
         let new_post = NewThreadPost::new(board_id, thread.id, claims.sub, &req.body);
-        post_repo.create_thread_post(&new_post).map_err(|e| {
+        post_repo.create_thread_post(&new_post).await.map_err(|e| {
             tracing::error!("Failed to create post: {}", e);
             ApiError::internal("Failed to create post")
         })?;
@@ -326,6 +318,7 @@ pub async fn create_thread(
         // Update thread post count
         let thread = thread_repo
             .touch_and_increment(thread.id)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to update thread: {}", e);
                 ApiError::internal("Database error")
@@ -335,6 +328,7 @@ pub async fn create_thread(
         // Get author info
         let author = user_repo
             .get_by_id(claims.sub)
+            .await
             .ok()
             .flatten()
             .map(|u| AuthorInfo {
@@ -357,8 +351,8 @@ pub async fn create_thread(
         title: thread.title,
         author,
         post_count: thread.post_count,
-        created_at: thread.created_at,
-        updated_at: thread.updated_at,
+        created_at: to_rfc3339(&thread.created_at),
+        updated_at: to_rfc3339(&thread.updated_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -394,12 +388,12 @@ pub async fn list_flat_posts(
     let (offset, limit) = pagination.to_offset_limit();
 
     let (posts, total) = {
-        let db = state.db.lock().await;
-        let board_repo = BoardRepository::new(&*db);
-        let post_repo = PostRepository::new(&*db);
+        let board_repo = BoardRepository::new(state.db.pool());
+        let post_repo = PostRepository::new(state.db.pool());
 
         let board = board_repo
             .get_by_id(board_id)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get board: {}", e);
                 ApiError::internal("Database error")
@@ -418,12 +412,13 @@ pub async fn list_flat_posts(
 
         let posts = post_repo
             .list_by_flat_board_paginated(board_id, offset, limit)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to list posts: {}", e);
                 ApiError::internal("Database error")
             })?;
 
-        let total = post_repo.count_by_flat_board(board_id).map_err(|e| {
+        let total = post_repo.count_by_flat_board(board_id).await.map_err(|e| {
             tracing::error!("Failed to count posts: {}", e);
             ApiError::internal("Database error")
         })?;
@@ -433,38 +428,37 @@ pub async fn list_flat_posts(
 
     // Get author info for each post
     let responses = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
+        let user_repo = UserRepository::new(state.db.pool());
 
-        posts
-            .into_iter()
-            .map(|p| {
-                let author = user_repo
-                    .get_by_id(p.author_id)
-                    .ok()
-                    .flatten()
-                    .map(|u| AuthorInfo {
-                        id: u.id,
-                        username: u.username,
-                        nickname: u.nickname,
-                    })
-                    .unwrap_or_else(|| AuthorInfo {
-                        id: p.author_id,
-                        username: "unknown".to_string(),
-                        nickname: "Unknown".to_string(),
-                    });
+        let mut responses = Vec::new();
+        for p in posts {
+            let author = user_repo
+                .get_by_id(p.author_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|u| AuthorInfo {
+                    id: u.id,
+                    username: u.username,
+                    nickname: u.nickname,
+                })
+                .unwrap_or_else(|| AuthorInfo {
+                    id: p.author_id,
+                    username: "unknown".to_string(),
+                    nickname: "Unknown".to_string(),
+                });
 
-                PostResponse {
-                    id: p.id,
-                    board_id: p.board_id,
-                    thread_id: p.thread_id,
-                    author,
-                    title: p.title,
-                    body: p.body,
-                    created_at: p.created_at,
-                }
-            })
-            .collect()
+            responses.push(PostResponse {
+                id: p.id,
+                board_id: p.board_id,
+                thread_id: p.thread_id,
+                author,
+                title: p.title,
+                body: p.body,
+                created_at: to_rfc3339(&p.created_at),
+            });
+        }
+        responses
     };
 
     Ok(Json(PaginatedResponse::new(
@@ -511,14 +505,14 @@ pub async fn create_flat_post(
     }
 
     let (post, author) = {
-        let db = state.db.lock().await;
-        let board_repo = BoardRepository::new(&*db);
-        let post_repo = PostRepository::new(&*db);
-        let user_repo = UserRepository::new(&*db);
+        let board_repo = BoardRepository::new(state.db.pool());
+        let post_repo = PostRepository::new(state.db.pool());
+        let user_repo = UserRepository::new(state.db.pool());
 
         // Check board access
         let board = board_repo
             .get_by_id(board_id)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get board: {}", e);
                 ApiError::internal("Database error")
@@ -537,7 +531,7 @@ pub async fn create_flat_post(
 
         // Create post
         let new_post = NewFlatPost::new(board_id, claims.sub, &req.title, &req.body);
-        let post = post_repo.create_flat_post(&new_post).map_err(|e| {
+        let post = post_repo.create_flat_post(&new_post).await.map_err(|e| {
             tracing::error!("Failed to create post: {}", e);
             ApiError::internal("Failed to create post")
         })?;
@@ -545,6 +539,7 @@ pub async fn create_flat_post(
         // Get author info
         let author = user_repo
             .get_by_id(claims.sub)
+            .await
             .ok()
             .flatten()
             .map(|u| AuthorInfo {
@@ -568,7 +563,7 @@ pub async fn create_flat_post(
         author,
         title: post.title,
         body: post.body,
-        created_at: post.created_at,
+        created_at: to_rfc3339(&post.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -598,13 +593,13 @@ pub async fn get_thread(
         .unwrap_or(Role::Guest);
 
     let (thread, author) = {
-        let db = state.db.lock().await;
-        let thread_repo = ThreadRepository::new(&*db);
-        let board_repo = BoardRepository::new(&*db);
-        let user_repo = UserRepository::new(&*db);
+        let thread_repo = ThreadRepository::new(state.db.pool());
+        let board_repo = BoardRepository::new(state.db.pool());
+        let user_repo = UserRepository::new(state.db.pool());
 
         let thread = thread_repo
             .get_by_id(thread_id)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get thread: {}", e);
                 ApiError::internal("Database error")
@@ -614,6 +609,7 @@ pub async fn get_thread(
         // Check board access
         let board = board_repo
             .get_by_id(thread.board_id)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get board: {}", e);
                 ApiError::internal("Database error")
@@ -626,6 +622,7 @@ pub async fn get_thread(
 
         let author = user_repo
             .get_by_id(thread.author_id)
+            .await
             .ok()
             .flatten()
             .map(|u| AuthorInfo {
@@ -648,8 +645,8 @@ pub async fn get_thread(
         title: thread.title,
         author,
         post_count: thread.post_count,
-        created_at: thread.created_at,
-        updated_at: thread.updated_at,
+        created_at: to_rfc3339(&thread.created_at),
+        updated_at: to_rfc3339(&thread.updated_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -684,13 +681,13 @@ pub async fn list_thread_posts(
     let (offset, limit) = pagination.to_offset_limit();
 
     let (posts, total) = {
-        let db = state.db.lock().await;
-        let thread_repo = ThreadRepository::new(&*db);
-        let board_repo = BoardRepository::new(&*db);
-        let post_repo = PostRepository::new(&*db);
+        let thread_repo = ThreadRepository::new(state.db.pool());
+        let board_repo = BoardRepository::new(state.db.pool());
+        let post_repo = PostRepository::new(state.db.pool());
 
         let thread = thread_repo
             .get_by_id(thread_id)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get thread: {}", e);
                 ApiError::internal("Database error")
@@ -700,6 +697,7 @@ pub async fn list_thread_posts(
         // Check board access
         let board = board_repo
             .get_by_id(thread.board_id)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get board: {}", e);
                 ApiError::internal("Database error")
@@ -712,12 +710,13 @@ pub async fn list_thread_posts(
 
         let posts = post_repo
             .list_by_thread_paginated(thread_id, offset, limit)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to list posts: {}", e);
                 ApiError::internal("Database error")
             })?;
 
-        let total = post_repo.count_by_thread(thread_id).map_err(|e| {
+        let total = post_repo.count_by_thread(thread_id).await.map_err(|e| {
             tracing::error!("Failed to count posts: {}", e);
             ApiError::internal("Database error")
         })?;
@@ -727,38 +726,37 @@ pub async fn list_thread_posts(
 
     // Get author info for each post
     let responses = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
+        let user_repo = UserRepository::new(state.db.pool());
 
-        posts
-            .into_iter()
-            .map(|p| {
-                let author = user_repo
-                    .get_by_id(p.author_id)
-                    .ok()
-                    .flatten()
-                    .map(|u| AuthorInfo {
-                        id: u.id,
-                        username: u.username,
-                        nickname: u.nickname,
-                    })
-                    .unwrap_or_else(|| AuthorInfo {
-                        id: p.author_id,
-                        username: "unknown".to_string(),
-                        nickname: "Unknown".to_string(),
-                    });
+        let mut responses = Vec::new();
+        for p in posts {
+            let author = user_repo
+                .get_by_id(p.author_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|u| AuthorInfo {
+                    id: u.id,
+                    username: u.username,
+                    nickname: u.nickname,
+                })
+                .unwrap_or_else(|| AuthorInfo {
+                    id: p.author_id,
+                    username: "unknown".to_string(),
+                    nickname: "Unknown".to_string(),
+                });
 
-                PostResponse {
-                    id: p.id,
-                    board_id: p.board_id,
-                    thread_id: p.thread_id,
-                    author,
-                    title: p.title,
-                    body: p.body,
-                    created_at: p.created_at,
-                }
-            })
-            .collect()
+            responses.push(PostResponse {
+                id: p.id,
+                board_id: p.board_id,
+                thread_id: p.thread_id,
+                author,
+                title: p.title,
+                body: p.body,
+                created_at: to_rfc3339(&p.created_at),
+            });
+        }
+        responses
     };
 
     Ok(Json(PaginatedResponse::new(
@@ -803,14 +801,14 @@ pub async fn create_thread_post(
     }
 
     let (post, author) = {
-        let db = state.db.lock().await;
-        let thread_repo = ThreadRepository::new(&*db);
-        let board_repo = BoardRepository::new(&*db);
-        let post_repo = PostRepository::new(&*db);
-        let user_repo = UserRepository::new(&*db);
+        let thread_repo = ThreadRepository::new(state.db.pool());
+        let board_repo = BoardRepository::new(state.db.pool());
+        let post_repo = PostRepository::new(state.db.pool());
+        let user_repo = UserRepository::new(state.db.pool());
 
         let thread = thread_repo
             .get_by_id(thread_id)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get thread: {}", e);
                 ApiError::internal("Database error")
@@ -820,6 +818,7 @@ pub async fn create_thread_post(
         // Check board access
         let board = board_repo
             .get_by_id(thread.board_id)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get board: {}", e);
                 ApiError::internal("Database error")
@@ -832,13 +831,13 @@ pub async fn create_thread_post(
 
         // Create post
         let new_post = NewThreadPost::new(thread.board_id, thread_id, claims.sub, &req.body);
-        let post = post_repo.create_thread_post(&new_post).map_err(|e| {
+        let post = post_repo.create_thread_post(&new_post).await.map_err(|e| {
             tracing::error!("Failed to create post: {}", e);
             ApiError::internal("Failed to create post")
         })?;
 
         // Update thread
-        thread_repo.touch_and_increment(thread_id).map_err(|e| {
+        thread_repo.touch_and_increment(thread_id).await.map_err(|e| {
             tracing::error!("Failed to update thread: {}", e);
             ApiError::internal("Database error")
         })?;
@@ -846,6 +845,7 @@ pub async fn create_thread_post(
         // Get author info
         let author = user_repo
             .get_by_id(claims.sub)
+            .await
             .ok()
             .flatten()
             .map(|u| AuthorInfo {
@@ -869,7 +869,7 @@ pub async fn create_thread_post(
         author,
         title: post.title,
         body: post.body,
-        created_at: post.created_at,
+        created_at: to_rfc3339(&post.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -901,12 +901,12 @@ pub async fn delete_post(
     let user_role = Role::from_str(&claims.role).unwrap_or(Role::Guest);
 
     {
-        let db = state.db.lock().await;
-        let post_repo = PostRepository::new(&*db);
-        let thread_repo = ThreadRepository::new(&*db);
+        let post_repo = PostRepository::new(state.db.pool());
+        let thread_repo = ThreadRepository::new(state.db.pool());
 
         let post = post_repo
             .get_by_id(post_id)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get post: {}", e);
                 ApiError::internal("Database error")
@@ -919,14 +919,14 @@ pub async fn delete_post(
         }
 
         // Delete the post
-        post_repo.delete(post_id).map_err(|e| {
+        post_repo.delete(post_id).await.map_err(|e| {
             tracing::error!("Failed to delete post: {}", e);
             ApiError::internal("Failed to delete post")
         })?;
 
         // Update thread post count if it's a thread post
         if let Some(thread_id) = post.thread_id {
-            thread_repo.decrement_post_count(thread_id).map_err(|e| {
+            thread_repo.decrement_post_count(thread_id).await.map_err(|e| {
                 tracing::error!("Failed to update thread: {}", e);
                 ApiError::internal("Database error")
             })?;
@@ -964,8 +964,7 @@ pub async fn update_post(
     let user_role = Role::from_str(&claims.role).unwrap_or(Role::Guest);
 
     let post = {
-        let db = state.db.lock().await;
-        let service = BoardService::new(&*db);
+        let service = BoardService::new(&state.db);
 
         service
             .update_post(
@@ -975,6 +974,7 @@ pub async fn update_post(
                 request.title,
                 request.body,
             )
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to update post: {}", e);
                 match e {
@@ -990,9 +990,8 @@ pub async fn update_post(
 
     // Fetch author info
     let author = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
-        user_repo.get_by_id(post.author_id).ok().flatten()
+        let user_repo = UserRepository::new(state.db.pool());
+        user_repo.get_by_id(post.author_id).await.ok().flatten()
     };
 
     let response = PostResponse {
@@ -1012,7 +1011,7 @@ pub async fn update_post(
                 username: "unknown".to_string(),
                 nickname: "Unknown".to_string(),
             }),
-        created_at: post.created_at,
+        created_at: to_rfc3339(&post.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -1046,11 +1045,11 @@ pub async fn update_thread(
     let user_role = Role::from_str(&claims.role).unwrap_or(Role::Guest);
 
     let thread = {
-        let db = state.db.lock().await;
-        let service = BoardService::new(&*db);
+        let service = BoardService::new(&state.db);
 
         service
             .update_thread(thread_id, Some(claims.sub), user_role, request.title)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to update thread: {}", e);
                 match e {
@@ -1066,9 +1065,8 @@ pub async fn update_thread(
 
     // Fetch author info
     let author = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
-        user_repo.get_by_id(thread.author_id).ok().flatten()
+        let user_repo = UserRepository::new(state.db.pool());
+        user_repo.get_by_id(thread.author_id).await.ok().flatten()
     };
 
     let response = ThreadResponse {
@@ -1087,8 +1085,8 @@ pub async fn update_thread(
                 nickname: "Unknown".to_string(),
             }),
         post_count: thread.post_count,
-        created_at: thread.created_at,
-        updated_at: thread.updated_at,
+        created_at: to_rfc3339(&thread.created_at),
+        updated_at: to_rfc3339(&thread.updated_at),
     };
 
     Ok(Json(ApiResponse::new(response)))

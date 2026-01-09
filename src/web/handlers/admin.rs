@@ -9,6 +9,7 @@ use utoipa;
 
 use crate::auth::hash_password;
 use crate::board::{BoardRepository, BoardType, BoardUpdate, NewBoard};
+use crate::datetime::to_rfc3339;
 use crate::db::{Role, UserRepository, UserUpdate};
 use crate::file::{FileRepository, FolderRepository, FolderUpdate, NewFolder};
 use crate::web::dto::{
@@ -69,26 +70,21 @@ pub async fn admin_list_users(
     require_subop(&claims)?;
     let (offset, limit) = pagination.to_offset_limit();
 
-    let (users, total) = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
+    let user_repo = UserRepository::new(state.db.pool());
 
-        let all_users = user_repo.list_all().map_err(|e| {
-            tracing::error!("Failed to list users: {}", e);
-            ApiError::internal("Failed to list users")
-        })?;
+    let all_users = user_repo.list_all().await.map_err(|e| {
+        tracing::error!("Failed to list users: {}", e);
+        ApiError::internal("Failed to list users")
+    })?;
 
-        let total = all_users.len() as i64;
+    let total = all_users.len() as i64;
 
-        // Manual pagination
-        let users: Vec<_> = all_users
-            .into_iter()
-            .skip(offset as usize)
-            .take(limit as usize)
-            .collect();
-
-        (users, total)
-    };
+    // Manual pagination
+    let users: Vec<_> = all_users
+        .into_iter()
+        .skip(offset as usize)
+        .take(limit as usize)
+        .collect();
 
     let responses: Vec<_> = users
         .into_iter()
@@ -99,7 +95,7 @@ pub async fn admin_list_users(
             role: u.role.as_str().to_string(),
             email: u.email,
             is_active: u.is_active,
-            created_at: u.created_at,
+            created_at: to_rfc3339(&u.created_at),
             last_login_at: u.last_login,
         })
         .collect();
@@ -168,18 +164,15 @@ pub async fn admin_update_user(
         update = update.profile(profile_opt);
     }
 
-    let user = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
-
-        user_repo
-            .update(user_id, &update)
-            .map_err(|e| {
-                tracing::error!("Failed to update user: {}", e);
-                ApiError::internal("Failed to update user")
-            })?
-            .ok_or_else(|| ApiError::not_found("User not found"))?
-    };
+    let user_repo = UserRepository::new(state.db.pool());
+    let user = user_repo
+        .update(user_id, &update)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update user: {}", e);
+            ApiError::internal("Failed to update user")
+        })?
+        .ok_or_else(|| ApiError::not_found("User not found"))?;
 
     let response = AdminUserResponse {
         id: user.id,
@@ -188,7 +181,7 @@ pub async fn admin_update_user(
         role: user.role.as_str().to_string(),
         email: user.email,
         is_active: user.is_active,
-        created_at: user.created_at,
+        created_at: to_rfc3339(&user.created_at),
         last_login_at: user.last_login,
     };
 
@@ -235,18 +228,15 @@ pub async fn admin_update_role(
 
     let update = UserUpdate::new().role(new_role);
 
-    let user = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
-
-        user_repo
-            .update(user_id, &update)
-            .map_err(|e| {
-                tracing::error!("Failed to update user role: {}", e);
-                ApiError::internal("Failed to update user role")
-            })?
-            .ok_or_else(|| ApiError::not_found("User not found"))?
-    };
+    let user_repo = UserRepository::new(state.db.pool());
+    let user = user_repo
+        .update(user_id, &update)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update user role: {}", e);
+            ApiError::internal("Failed to update user role")
+        })?
+        .ok_or_else(|| ApiError::not_found("User not found"))?;
 
     let response = AdminUserResponse {
         id: user.id,
@@ -255,7 +245,7 @@ pub async fn admin_update_role(
         role: user.role.as_str().to_string(),
         email: user.email,
         is_active: user.is_active,
-        created_at: user.created_at,
+        created_at: to_rfc3339(&user.created_at),
         last_login_at: user.last_login,
     };
 
@@ -297,18 +287,15 @@ pub async fn admin_update_status(
 
     let update = UserUpdate::new().is_active(req.is_active);
 
-    let user = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
-
-        user_repo
-            .update(user_id, &update)
-            .map_err(|e| {
-                tracing::error!("Failed to update user status: {}", e);
-                ApiError::internal("Failed to update user status")
-            })?
-            .ok_or_else(|| ApiError::not_found("User not found"))?
-    };
+    let user_repo = UserRepository::new(state.db.pool());
+    let user = user_repo
+        .update(user_id, &update)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update user status: {}", e);
+            ApiError::internal("Failed to update user status")
+        })?
+        .ok_or_else(|| ApiError::not_found("User not found"))?;
 
     let response = AdminUserResponse {
         id: user.id,
@@ -317,7 +304,7 @@ pub async fn admin_update_status(
         role: user.role.as_str().to_string(),
         email: user.email,
         is_active: user.is_active,
-        created_at: user.created_at,
+        created_at: to_rfc3339(&user.created_at),
         last_login_at: user.last_login,
     };
 
@@ -366,18 +353,15 @@ pub async fn admin_reset_password(
 
     let update = UserUpdate::new().password(password_hash);
 
-    {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
-
-        user_repo
-            .update(user_id, &update)
-            .map_err(|e| {
-                tracing::error!("Failed to reset password: {}", e);
-                ApiError::internal("Failed to reset password")
-            })?
-            .ok_or_else(|| ApiError::not_found("User not found"))?;
-    }
+    let user_repo = UserRepository::new(state.db.pool());
+    user_repo
+        .update(user_id, &update)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to reset password: {}", e);
+            ApiError::internal("Failed to reset password")
+        })?
+        .ok_or_else(|| ApiError::not_found("User not found"))?;
 
     Ok(Json(ApiResponse::new(())))
 }
@@ -406,15 +390,11 @@ pub async fn admin_list_boards(
 ) -> Result<Json<ApiResponse<Vec<AdminBoardResponse>>>, ApiError> {
     require_subop(&claims)?;
 
-    let boards = {
-        let db = state.db.lock().await;
-        let board_repo = BoardRepository::new(&*db);
-
-        board_repo.list_all().map_err(|e| {
-            tracing::error!("Failed to list boards: {}", e);
-            ApiError::internal("Failed to list boards")
-        })?
-    };
+    let board_repo = BoardRepository::new(state.db.pool());
+    let boards = board_repo.list_all().await.map_err(|e| {
+        tracing::error!("Failed to list boards: {}", e);
+        ApiError::internal("Failed to list boards")
+    })?;
 
     let responses: Vec<_> = boards
         .into_iter()
@@ -427,7 +407,7 @@ pub async fn admin_list_boards(
             min_write_role: b.min_write_role.as_str().to_string(),
             sort_order: b.sort_order,
             is_active: b.is_active,
-            created_at: b.created_at,
+            created_at: to_rfc3339(&b.created_at),
         })
         .collect();
 
@@ -487,15 +467,11 @@ pub async fn admin_create_board(
         new_board = new_board.with_description(desc);
     }
 
-    let board = {
-        let db = state.db.lock().await;
-        let board_repo = BoardRepository::new(&*db);
-
-        board_repo.create(&new_board).map_err(|e| {
-            tracing::error!("Failed to create board: {}", e);
-            ApiError::internal("Failed to create board")
-        })?
-    };
+    let board_repo = BoardRepository::new(state.db.pool());
+    let board = board_repo.create(&new_board).await.map_err(|e| {
+        tracing::error!("Failed to create board: {}", e);
+        ApiError::internal("Failed to create board")
+    })?;
 
     let response = AdminBoardResponse {
         id: board.id,
@@ -506,7 +482,7 @@ pub async fn admin_create_board(
         min_write_role: board.min_write_role.as_str().to_string(),
         sort_order: board.sort_order,
         is_active: board.is_active,
-        created_at: board.created_at,
+        created_at: to_rfc3339(&board.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -582,18 +558,15 @@ pub async fn admin_update_board(
         update = update.is_active(is_active);
     }
 
-    let board = {
-        let db = state.db.lock().await;
-        let board_repo = BoardRepository::new(&*db);
-
-        board_repo
-            .update(board_id, &update)
-            .map_err(|e| {
-                tracing::error!("Failed to update board: {}", e);
-                ApiError::internal("Failed to update board")
-            })?
-            .ok_or_else(|| ApiError::not_found("Board not found"))?
-    };
+    let board_repo = BoardRepository::new(state.db.pool());
+    let board = board_repo
+        .update(board_id, &update)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update board: {}", e);
+            ApiError::internal("Failed to update board")
+        })?
+        .ok_or_else(|| ApiError::not_found("Board not found"))?;
 
     let response = AdminBoardResponse {
         id: board.id,
@@ -604,7 +577,7 @@ pub async fn admin_update_board(
         min_write_role: board.min_write_role.as_str().to_string(),
         sort_order: board.sort_order,
         is_active: board.is_active,
-        created_at: board.created_at,
+        created_at: to_rfc3339(&board.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -635,18 +608,14 @@ pub async fn admin_delete_board(
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     require_subop(&claims)?;
 
-    {
-        let db = state.db.lock().await;
-        let board_repo = BoardRepository::new(&*db);
+    let board_repo = BoardRepository::new(state.db.pool());
+    let deleted = board_repo.delete(board_id).await.map_err(|e| {
+        tracing::error!("Failed to delete board: {}", e);
+        ApiError::internal("Failed to delete board")
+    })?;
 
-        let deleted = board_repo.delete(board_id).map_err(|e| {
-            tracing::error!("Failed to delete board: {}", e);
-            ApiError::internal("Failed to delete board")
-        })?;
-
-        if !deleted {
-            return Err(ApiError::not_found("Board not found"));
-        }
+    if !deleted {
+        return Err(ApiError::not_found("Board not found"));
     }
 
     Ok(Json(ApiResponse::new(())))
@@ -676,38 +645,31 @@ pub async fn admin_list_folders(
 ) -> Result<Json<ApiResponse<Vec<AdminFolderResponse>>>, ApiError> {
     require_subop(&claims)?;
 
-    let folders = {
-        let db = state.db.lock().await;
+    let folder_repo = FolderRepository::new(state.db.pool());
+    let file_repo = FileRepository::new(state.db.pool());
 
-        // Use SysOp role to get all folders (highest permission)
-        FolderRepository::list_accessible(db.conn(), Role::SysOp).map_err(|e| {
-            tracing::error!("Failed to list folders: {}", e);
-            ApiError::internal("Failed to list folders")
-        })?
-    };
+    // Use SysOp role to get all folders (highest permission)
+    let folders = folder_repo.list_accessible(Role::SysOp).await.map_err(|e| {
+        tracing::error!("Failed to list folders: {}", e);
+        ApiError::internal("Failed to list folders")
+    })?;
 
-    let responses = {
-        let db = state.db.lock().await;
+    let mut responses = Vec::new();
+    for f in folders {
+        let file_count = file_repo.count_by_folder(f.id).await.unwrap_or(0);
 
-        folders
-            .into_iter()
-            .map(|f| {
-                let file_count = FileRepository::count_by_folder(db.conn(), f.id).unwrap_or(0);
-
-                AdminFolderResponse {
-                    id: f.id,
-                    name: f.name,
-                    description: f.description,
-                    parent_id: f.parent_id,
-                    permission: f.permission.as_str().to_string(),
-                    upload_perm: f.upload_perm.as_str().to_string(),
-                    order_num: f.order_num,
-                    file_count,
-                    created_at: f.created_at.to_rfc3339(),
-                }
-            })
-            .collect()
-    };
+        responses.push(AdminFolderResponse {
+            id: f.id,
+            name: f.name,
+            description: f.description,
+            parent_id: f.parent_id,
+            permission: f.permission.as_str().to_string(),
+            upload_perm: f.upload_perm.as_str().to_string(),
+            order_num: f.order_num,
+            file_count,
+            created_at: to_rfc3339(&f.created_at),
+        });
+    }
 
     Ok(Json(ApiResponse::new(responses)))
 }
@@ -763,14 +725,11 @@ pub async fn admin_create_folder(
         new_folder = new_folder.with_parent(parent_id);
     }
 
-    let folder = {
-        let db = state.db.lock().await;
-
-        FolderRepository::create(db.conn(), &new_folder).map_err(|e| {
-            tracing::error!("Failed to create folder: {}", e);
-            ApiError::internal("Failed to create folder")
-        })?
-    };
+    let folder_repo = FolderRepository::new(state.db.pool());
+    let folder = folder_repo.create(&new_folder).await.map_err(|e| {
+        tracing::error!("Failed to create folder: {}", e);
+        ApiError::internal("Failed to create folder")
+    })?;
 
     let response = AdminFolderResponse {
         id: folder.id,
@@ -781,7 +740,7 @@ pub async fn admin_create_folder(
         upload_perm: folder.upload_perm.as_str().to_string(),
         order_num: folder.order_num,
         file_count: 0,
-        created_at: folder.created_at.to_rfc3339(),
+        created_at: to_rfc3339(&folder.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -850,21 +809,19 @@ pub async fn admin_update_folder(
         update = update.order_num(order_num);
     }
 
-    let folder = {
-        let db = state.db.lock().await;
+    let folder_repo = FolderRepository::new(state.db.pool());
+    let file_repo = FileRepository::new(state.db.pool());
 
-        FolderRepository::update(db.conn(), folder_id, &update)
-            .map_err(|e| {
-                tracing::error!("Failed to update folder: {}", e);
-                ApiError::internal("Failed to update folder")
-            })?
-            .ok_or_else(|| ApiError::not_found("Folder not found"))?
-    };
+    let folder = folder_repo
+        .update(folder_id, &update)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update folder: {}", e);
+            ApiError::internal("Failed to update folder")
+        })?
+        .ok_or_else(|| ApiError::not_found("Folder not found"))?;
 
-    let file_count = {
-        let db = state.db.lock().await;
-        FileRepository::count_by_folder(db.conn(), folder_id).unwrap_or(0)
-    };
+    let file_count = file_repo.count_by_folder(folder_id).await.unwrap_or(0);
 
     let response = AdminFolderResponse {
         id: folder.id,
@@ -875,7 +832,7 @@ pub async fn admin_update_folder(
         upload_perm: folder.upload_perm.as_str().to_string(),
         order_num: folder.order_num,
         file_count,
-        created_at: folder.created_at.to_rfc3339(),
+        created_at: to_rfc3339(&folder.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -908,24 +865,24 @@ pub async fn admin_delete_folder(
     require_subop(&claims)?;
 
     // Check if folder has files
-    {
-        let db = state.db.lock().await;
-        let file_count = FileRepository::count_by_folder(db.conn(), folder_id).unwrap_or(0);
+    let folder_repo = FolderRepository::new(state.db.pool());
+    let file_repo = FileRepository::new(state.db.pool());
 
-        if file_count > 0 {
-            return Err(ApiError::bad_request(
-                "Cannot delete folder with files. Delete files first.",
-            ));
-        }
+    let file_count = file_repo.count_by_folder(folder_id).await.unwrap_or(0);
 
-        let deleted = FolderRepository::delete(db.conn(), folder_id).map_err(|e| {
-            tracing::error!("Failed to delete folder: {}", e);
-            ApiError::internal("Failed to delete folder")
-        })?;
+    if file_count > 0 {
+        return Err(ApiError::bad_request(
+            "Cannot delete folder with files. Delete files first.",
+        ));
+    }
 
-        if !deleted {
-            return Err(ApiError::not_found("Folder not found"));
-        }
+    let deleted = folder_repo.delete(folder_id).await.map_err(|e| {
+        tracing::error!("Failed to delete folder: {}", e);
+        ApiError::internal("Failed to delete folder")
+    })?;
+
+    if !deleted {
+        return Err(ApiError::not_found("Folder not found"));
     }
 
     Ok(Json(ApiResponse::new(())))

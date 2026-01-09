@@ -5,11 +5,12 @@
 ## 目次
 
 1. [サーバー運用手順](#サーバー運用手順)
-2. [端末プロファイル設定](#端末プロファイル設定)
-3. [Web UI設定](#web-ui設定)
-4. [バックアップ・リストア](#バックアップリストア)
-5. [トラブルシューティング](#トラブルシューティング)
-6. [セキュリティ](#セキュリティ)
+2. [PostgreSQL環境構築](#postgresql環境構築)
+3. [端末プロファイル設定](#端末プロファイル設定)
+4. [Web UI設定](#web-ui設定)
+5. [バックアップ・リストア](#バックアップリストア)
+6. [トラブルシューティング](#トラブルシューティング)
+7. [セキュリティ](#セキュリティ)
 
 ---
 
@@ -84,6 +85,198 @@ WantedBy=multi-user.target
 sudo systemctl daemon-reload
 sudo systemctl enable hobbs
 sudo systemctl start hobbs
+```
+
+---
+
+## PostgreSQL環境構築
+
+HOBBSはSQLiteとPostgreSQLの両方をサポートしています。PostgreSQLを使用する場合の環境構築手順を説明します。
+
+### Docker Compose を使用した開発環境
+
+プロジェクトには `docker-compose.yml` が含まれており、開発用のPostgreSQL環境を簡単に構築できます。
+
+#### サービス構成
+
+| サービス | 用途 | ポート | データベース名 |
+|----------|------|--------|---------------|
+| `postgres` | 開発・動作確認用 | 5433 | hobbs |
+| `postgres-test` | テスト実行用 | 5434 | hobbs_test |
+
+#### 開発環境の起動
+
+```bash
+# PostgreSQLサーバーを起動（開発用）
+docker compose up -d postgres
+
+# 起動確認
+docker compose ps
+
+# ログ確認
+docker compose logs postgres
+```
+
+#### テスト環境の起動
+
+```bash
+# テスト用PostgreSQLを起動
+docker compose up -d postgres-test
+
+# テスト実行
+DATABASE_URL="postgres://hobbs:hobbs@localhost:5434/hobbs_test" \
+    cargo test --no-default-features --features postgres
+```
+
+#### 両環境を同時に起動
+
+```bash
+# 開発用とテスト用を同時に起動
+docker compose up -d
+
+# 状態確認
+docker compose ps
+```
+
+#### 環境の停止
+
+```bash
+# サービスを停止（データは保持）
+docker compose stop
+
+# サービスを停止してコンテナを削除（データは保持）
+docker compose down
+
+# サービスを停止してデータも削除
+docker compose down -v
+```
+
+### 接続設定
+
+#### config.toml の設定
+
+```toml
+[database]
+# PostgreSQL版（--features postgres でビルドした場合）
+url = "postgres://hobbs:hobbs_password@localhost:5433/hobbs"
+```
+
+#### 環境変数での設定
+
+環境変数 `DATABASE_URL` で接続先を指定することもできます（config.toml より優先）：
+
+```bash
+export DATABASE_URL="postgres://hobbs:hobbs_password@localhost:5433/hobbs"
+./target/release/hobbs
+```
+
+### 開発環境と本番環境の違い
+
+| 項目 | 開発環境（Docker） | 本番環境 |
+|------|-------------------|----------|
+| PostgreSQLの起動 | `docker compose up` | systemd等で管理 |
+| データ永続化 | Dockerボリューム | 物理ディスク |
+| バックアップ | 不要（使い捨て） | 定期バックアップ必須 |
+| パスワード | 簡易（hobbs_password） | 強力なパスワード |
+| ネットワーク | localhost限定 | ファイアウォール設定 |
+| SSL | 無効 | 有効推奨 |
+
+### 本番環境向けPostgreSQL設定
+
+#### 1. PostgreSQLのインストール
+
+```bash
+# Ubuntu/Debian
+sudo apt install postgresql postgresql-contrib
+
+# macOS (Homebrew)
+brew install postgresql@16
+brew services start postgresql@16
+
+# CentOS/RHEL
+sudo dnf install postgresql-server postgresql-contrib
+sudo postgresql-setup --initdb
+sudo systemctl start postgresql
+```
+
+#### 2. データベースとユーザーの作成
+
+```bash
+sudo -u postgres psql
+
+# PostgreSQLプロンプトで:
+CREATE USER hobbs WITH PASSWORD 'your_secure_password';
+CREATE DATABASE hobbs OWNER hobbs;
+GRANT ALL PRIVILEGES ON DATABASE hobbs TO hobbs;
+\q
+```
+
+#### 3. 認証設定（pg_hba.conf）
+
+```conf
+# ローカル接続のみ許可（推奨）
+local   hobbs       hobbs                               scram-sha-256
+host    hobbs       hobbs       127.0.0.1/32            scram-sha-256
+
+# 特定のサブネットから許可（必要に応じて）
+host    hobbs       hobbs       192.168.1.0/24          scram-sha-256
+```
+
+設定後、PostgreSQLを再起動：
+
+```bash
+sudo systemctl restart postgresql
+```
+
+#### 4. SSL接続（推奨）
+
+本番環境ではSSL接続を推奨します：
+
+```bash
+# config.tomlまたは環境変数でsslmode=requireを指定
+export DATABASE_URL="postgres://hobbs:password@localhost/hobbs?sslmode=require"
+```
+
+### マイグレーションの実行
+
+HOBBSは初回起動時に自動的にマイグレーションを実行します。手動で実行する場合：
+
+```bash
+# PostgreSQL版のバイナリでサーバーを起動
+# 初回起動時にmigrationsディレクトリ内のSQLが自動実行される
+./target/release/hobbs
+```
+
+### よくある問題
+
+#### 接続できない
+
+```bash
+# PostgreSQLが起動しているか確認
+docker compose ps
+
+# 接続テスト
+psql -h localhost -p 5433 -U hobbs -d hobbs
+```
+
+#### ポートが使用中
+
+```bash
+# ポートを使用しているプロセスを確認
+lsof -i :5433
+
+# docker-composeのポートを変更する場合はdocker-compose.ymlを編集
+```
+
+#### マイグレーションエラー
+
+```bash
+# データベースを再作成
+docker compose down -v
+docker compose up -d postgres
+
+# アプリケーションを再起動
+./target/release/hobbs
 ```
 
 ---
@@ -355,8 +548,14 @@ DATE=$(date +%Y%m%d_%H%M%S)
 # バックアップディレクトリ作成
 mkdir -p "$BACKUP_DIR"
 
+# === SQLite版の場合 ===
 # データベースをSQLiteのバックアップ機能でコピー
 sqlite3 "$HOBBS_DIR/data/hobbs.db" ".backup '$BACKUP_DIR/hobbs_$DATE.db'"
+
+# === PostgreSQL版の場合 ===
+# pg_dump -U hobbs -h localhost hobbs > "$BACKUP_DIR/hobbs_$DATE.sql"
+# または圧縮形式で:
+# pg_dump -U hobbs -h localhost -Fc hobbs > "$BACKUP_DIR/hobbs_$DATE.dump"
 
 # ファイルストレージをコピー
 tar -czf "$BACKUP_DIR/files_$DATE.tar.gz" -C "$HOBBS_DIR/data" files/
@@ -379,15 +578,17 @@ echo "Backup completed: $DATE"
 
 ### リストア手順
 
+#### SQLite版
+
 ```bash
 #!/bin/bash
-# restore.sh
+# restore_sqlite.sh
 
 BACKUP_FILE="$1"
 HOBBS_DIR="/opt/hobbs"
 
 if [ -z "$BACKUP_FILE" ]; then
-    echo "Usage: restore.sh <backup_db_file>"
+    echo "Usage: restore_sqlite.sh <backup_db_file>"
     exit 1
 fi
 
@@ -406,12 +607,56 @@ sudo systemctl start hobbs
 echo "Restore completed"
 ```
 
+#### PostgreSQL版
+
+```bash
+#!/bin/bash
+# restore_postgres.sh
+
+BACKUP_FILE="$1"
+DB_NAME="hobbs"
+DB_USER="hobbs"
+
+if [ -z "$BACKUP_FILE" ]; then
+    echo "Usage: restore_postgres.sh <backup_file.sql or .dump>"
+    exit 1
+fi
+
+# サーバー停止
+sudo systemctl stop hobbs
+
+# データベースを再作成
+dropdb -U "$DB_USER" "$DB_NAME"
+createdb -U "$DB_USER" "$DB_NAME"
+
+# リストア（.sql形式）
+# psql -U "$DB_USER" "$DB_NAME" < "$BACKUP_FILE"
+
+# リストア（.dump形式）
+pg_restore -U "$DB_USER" -d "$DB_NAME" "$BACKUP_FILE"
+
+# サーバー起動
+sudo systemctl start hobbs
+
+echo "Restore completed"
+```
+
 ### オンラインバックアップ
+
+#### SQLite版
 
 SQLiteのWALモードを使用しているため、サーバー稼働中でもバックアップ可能です：
 
 ```bash
 sqlite3 data/hobbs.db ".backup data/hobbs_backup.db"
+```
+
+#### PostgreSQL版
+
+PostgreSQLは標準でオンラインバックアップに対応しています：
+
+```bash
+pg_dump -U hobbs -h localhost hobbs > hobbs_backup.sql
 ```
 
 ---
@@ -451,6 +696,8 @@ sqlite3 data/hobbs.db ".backup data/hobbs_backup.db"
 
 ### データベースエラー
 
+#### SQLite版
+
 1. **データベースのロック**
    - 複数プロセスが同時にアクセスしている可能性
    - `lsof data/hobbs.db` で確認
@@ -468,6 +715,27 @@ sqlite3 data/hobbs.db ".backup data/hobbs_backup.db"
    ```bash
    # WALチェックポイント
    sqlite3 data/hobbs.db "PRAGMA wal_checkpoint(TRUNCATE);"
+   ```
+
+#### PostgreSQL版
+
+1. **接続エラー**
+   ```bash
+   # PostgreSQLサービスが起動しているか確認
+   sudo systemctl status postgresql
+
+   # 接続テスト
+   psql -U hobbs -h localhost -d hobbs -c "SELECT 1;"
+   ```
+
+2. **認証エラー**
+   - `pg_hba.conf` の設定を確認
+   - パスワード認証が許可されているか確認
+
+3. **接続数超過**
+   ```bash
+   # 現在の接続数を確認
+   psql -U hobbs -c "SELECT count(*) FROM pg_stat_activity WHERE datname='hobbs';"
    ```
 
 ### メモリ使用量が高い

@@ -4,9 +4,10 @@
 //! from the database.
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, OptionalExtension};
 
 use super::room::MessageType;
+use crate::db::DbPool;
+use crate::{HobbsError, Result};
 
 /// Default number of recent logs to retrieve.
 pub const DEFAULT_RECENT_LOG_COUNT: usize = 20;
@@ -39,6 +40,50 @@ impl ChatLog {
             MessageType::System => format!("*** {}", self.content),
             MessageType::Join => format!("*** {}", self.content),
             MessageType::Leave => format!("*** {}", self.content),
+        }
+    }
+}
+
+/// Database row type for ChatLog.
+#[derive(sqlx::FromRow)]
+struct ChatLogRow {
+    id: i64,
+    room_id: String,
+    user_id: Option<i64>,
+    sender_name: String,
+    message_type: String,
+    content: String,
+    created_at: String,
+}
+
+impl From<ChatLogRow> for ChatLog {
+    fn from(row: ChatLogRow) -> Self {
+        let message_type = match row.message_type.as_str() {
+            "chat" => MessageType::Chat,
+            "action" => MessageType::Action,
+            "system" => MessageType::System,
+            "join" => MessageType::Join,
+            "leave" => MessageType::Leave,
+            _ => MessageType::Chat, // Default fallback
+        };
+
+        // Try RFC3339 first, then database format (YYYY-MM-DD HH:MM:SS)
+        let created_at = DateTime::parse_from_rfc3339(&row.created_at)
+            .map(|dt| dt.with_timezone(&Utc))
+            .or_else(|_| {
+                chrono::NaiveDateTime::parse_from_str(&row.created_at, "%Y-%m-%d %H:%M:%S")
+                    .map(|naive| naive.and_utc())
+            })
+            .unwrap_or_else(|_| Utc::now());
+
+        Self {
+            id: row.id,
+            room_id: row.room_id,
+            user_id: row.user_id,
+            sender_name: row.sender_name,
+            message_type,
+            content: row.content,
+            created_at,
         }
     }
 }
@@ -137,139 +182,130 @@ impl NewChatLog {
 }
 
 /// Repository for chat log operations.
-pub struct ChatLogRepository;
+pub struct ChatLogRepository<'a> {
+    pool: &'a DbPool,
+}
 
-impl ChatLogRepository {
+impl<'a> ChatLogRepository<'a> {
+    /// Create a new ChatLogRepository with the given database pool reference.
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
+
     /// Save a chat log entry.
-    pub fn save(conn: &Connection, log: &NewChatLog) -> rusqlite::Result<i64> {
-        conn.execute(
+    pub async fn save(&self, log: &NewChatLog) -> Result<i64> {
+        let id: i64 = sqlx::query_scalar(
             r#"
             INSERT INTO chat_logs (room_id, user_id, sender_name, message_type, content)
-            VALUES (?1, ?2, ?3, ?4, ?5)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
             "#,
-            params![
-                log.room_id,
-                log.user_id,
-                log.sender_name,
-                log.message_type.as_str(),
-                log.content,
-            ],
-        )?;
-        Ok(conn.last_insert_rowid())
+        )
+        .bind(&log.room_id)
+        .bind(log.user_id)
+        .bind(&log.sender_name)
+        .bind(log.message_type.as_str())
+        .bind(&log.content)
+        .fetch_one(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(id)
     }
 
     /// Get a log entry by ID.
-    pub fn get_by_id(conn: &Connection, id: i64) -> rusqlite::Result<Option<ChatLog>> {
-        conn.query_row(
+    pub async fn get_by_id(&self, id: i64) -> Result<Option<ChatLog>> {
+        let result = sqlx::query_as::<_, ChatLogRow>(
             r#"
             SELECT id, room_id, user_id, sender_name, message_type, content, created_at
             FROM chat_logs
-            WHERE id = ?1
+            WHERE id = $1
             "#,
-            [id],
-            Self::map_row,
         )
-        .optional()
+        .bind(id)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.map(ChatLog::from))
     }
 
     /// Get recent logs for a room.
     ///
     /// Returns logs in chronological order (oldest first).
-    pub fn get_recent(
-        conn: &Connection,
-        room_id: &str,
-        limit: usize,
-    ) -> rusqlite::Result<Vec<ChatLog>> {
-        let mut stmt = conn.prepare(
+    pub async fn get_recent(&self, room_id: &str, limit: usize) -> Result<Vec<ChatLog>> {
+        let rows = sqlx::query_as::<_, ChatLogRow>(
             r#"
             SELECT id, room_id, user_id, sender_name, message_type, content, created_at
             FROM chat_logs
-            WHERE room_id = ?1
+            WHERE room_id = $1
             ORDER BY created_at DESC, id DESC
-            LIMIT ?2
+            LIMIT $2
             "#,
-        )?;
-
-        let logs: Vec<ChatLog> = stmt
-            .query_map(params![room_id, limit as i64], Self::map_row)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        )
+        .bind(room_id)
+        .bind(limit as i64)
+        .fetch_all(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         // Reverse to get chronological order
-        Ok(logs.into_iter().rev().collect())
+        let logs: Vec<ChatLog> = rows.into_iter().map(ChatLog::from).rev().collect();
+        Ok(logs)
     }
 
     /// Get logs for a room after a specific timestamp.
     ///
     /// Returns logs in chronological order (oldest first).
-    pub fn get_since(
-        conn: &Connection,
-        room_id: &str,
-        since: DateTime<Utc>,
-    ) -> rusqlite::Result<Vec<ChatLog>> {
-        let mut stmt = conn.prepare(
+    pub async fn get_since(&self, room_id: &str, since: DateTime<Utc>) -> Result<Vec<ChatLog>> {
+        let rows = sqlx::query_as::<_, ChatLogRow>(
             r#"
             SELECT id, room_id, user_id, sender_name, message_type, content, created_at
             FROM chat_logs
-            WHERE room_id = ?1 AND created_at > ?2
+            WHERE room_id = $1 AND created_at > $2
             ORDER BY created_at ASC, id ASC
             "#,
-        )?;
+        )
+        .bind(room_id)
+        .bind(since.to_rfc3339())
+        .fetch_all(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let logs: Vec<ChatLog> = stmt
-            .query_map(params![room_id, since.to_rfc3339()], Self::map_row)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-
-        Ok(logs)
+        Ok(rows.into_iter().map(ChatLog::from).collect())
     }
 
     /// Count logs for a room.
-    pub fn count(conn: &Connection, room_id: &str) -> rusqlite::Result<i64> {
-        conn.query_row(
-            "SELECT COUNT(*) FROM chat_logs WHERE room_id = ?1",
-            [room_id],
-            |row| row.get(0),
-        )
+    pub async fn count(&self, room_id: &str) -> Result<i64> {
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM chat_logs WHERE room_id = $1")
+            .bind(room_id)
+            .fetch_one(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(count.0)
     }
 
     /// Delete logs older than a specific timestamp.
-    pub fn delete_before(conn: &Connection, before: DateTime<Utc>) -> rusqlite::Result<usize> {
-        conn.execute(
-            "DELETE FROM chat_logs WHERE created_at < ?1",
-            [before.to_rfc3339()],
-        )
+    pub async fn delete_before(&self, before: DateTime<Utc>) -> Result<usize> {
+        let result = sqlx::query("DELETE FROM chat_logs WHERE created_at < $1")
+            .bind(before.to_rfc3339())
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() as usize)
     }
 
     /// Delete all logs for a room.
-    pub fn delete_room(conn: &Connection, room_id: &str) -> rusqlite::Result<usize> {
-        conn.execute("DELETE FROM chat_logs WHERE room_id = ?1", [room_id])
-    }
+    pub async fn delete_room(&self, room_id: &str) -> Result<usize> {
+        let result = sqlx::query("DELETE FROM chat_logs WHERE room_id = $1")
+            .bind(room_id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-    /// Map a database row to a ChatLog.
-    fn map_row(row: &rusqlite::Row) -> rusqlite::Result<ChatLog> {
-        let message_type_str: String = row.get(4)?;
-        let message_type = match message_type_str.as_str() {
-            "chat" => MessageType::Chat,
-            "action" => MessageType::Action,
-            "system" => MessageType::System,
-            "join" => MessageType::Join,
-            "leave" => MessageType::Leave,
-            _ => MessageType::Chat, // Default fallback
-        };
-
-        let created_at_str: String = row.get(6)?;
-        let created_at = DateTime::parse_from_rfc3339(&created_at_str)
-            .map(|dt| dt.with_timezone(&Utc))
-            .unwrap_or_else(|_| Utc::now());
-
-        Ok(ChatLog {
-            id: row.get(0)?,
-            room_id: row.get(1)?,
-            user_id: row.get(2)?,
-            sender_name: row.get(3)?,
-            message_type,
-            content: row.get(5)?,
-            created_at,
-        })
+        Ok(result.rows_affected() as usize)
     }
 }
 
@@ -278,14 +314,14 @@ mod tests {
     use super::*;
     use crate::db::{Database, NewUser, UserRepository};
 
-    fn setup_db() -> Database {
-        Database::open_in_memory().unwrap()
+    async fn setup_db() -> Database {
+        Database::open_in_memory().await.unwrap()
     }
 
-    fn create_test_user(db: &Database) -> i64 {
-        let repo = UserRepository::new(db);
+    async fn create_test_user(db: &Database) -> i64 {
+        let repo = UserRepository::new(db.pool());
         let user = NewUser::new("testuser", "password123", "Test User");
-        repo.create(&user).unwrap().id
+        repo.create(&user).await.unwrap().id
     }
 
     #[test]
@@ -335,18 +371,17 @@ mod tests {
         assert!(log.content.contains("退室"));
     }
 
-    #[test]
-    fn test_save_and_get_by_id() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_save_and_get_by_id() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let repo = ChatLogRepository::new(db.pool());
         let log = NewChatLog::chat("lobby", user_id, "Alice", "Hello!");
 
-        let id = ChatLogRepository::save(db.conn(), &log).unwrap();
+        let id = repo.save(&log).await.unwrap();
         assert!(id > 0);
 
-        let retrieved = ChatLogRepository::get_by_id(db.conn(), id)
-            .unwrap()
-            .unwrap();
+        let retrieved = repo.get_by_id(id).await.unwrap().unwrap();
 
         assert_eq!(retrieved.id, id);
         assert_eq!(retrieved.room_id, "lobby");
@@ -356,26 +391,28 @@ mod tests {
         assert_eq!(retrieved.content, "Hello!");
     }
 
-    #[test]
-    fn test_get_by_id_not_found() {
-        let db = setup_db();
-        let result = ChatLogRepository::get_by_id(db.conn(), 999).unwrap();
+    #[tokio::test]
+    async fn test_get_by_id_not_found() {
+        let db = setup_db().await;
+        let repo = ChatLogRepository::new(db.pool());
+        let result = repo.get_by_id(999).await.unwrap();
         assert!(result.is_none());
     }
 
-    #[test]
-    fn test_get_recent() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_get_recent() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let repo = ChatLogRepository::new(db.pool());
 
         // Create multiple logs
         for i in 1..=5 {
             let log = NewChatLog::chat("lobby", user_id, "Alice", format!("Message {i}"));
-            ChatLogRepository::save(db.conn(), &log).unwrap();
+            repo.save(&log).await.unwrap();
         }
 
         // Get recent 3
-        let logs = ChatLogRepository::get_recent(db.conn(), "lobby", 3).unwrap();
+        let logs = repo.get_recent("lobby", 3).await.unwrap();
 
         assert_eq!(logs.len(), 3);
         // Should be in chronological order (oldest first)
@@ -384,31 +421,29 @@ mod tests {
         assert!(logs[2].content.contains("5"));
     }
 
-    #[test]
-    fn test_get_recent_empty() {
-        let db = setup_db();
-        let logs = ChatLogRepository::get_recent(db.conn(), "lobby", 10).unwrap();
+    #[tokio::test]
+    async fn test_get_recent_empty() {
+        let db = setup_db().await;
+        let repo = ChatLogRepository::new(db.pool());
+        let logs = repo.get_recent("lobby", 10).await.unwrap();
         assert!(logs.is_empty());
     }
 
-    #[test]
-    fn test_get_recent_different_rooms() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_get_recent_different_rooms() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let repo = ChatLogRepository::new(db.pool());
 
-        ChatLogRepository::save(
-            db.conn(),
-            &NewChatLog::chat("lobby", user_id, "Alice", "Lobby msg"),
-        )
-        .unwrap();
-        ChatLogRepository::save(
-            db.conn(),
-            &NewChatLog::chat("room2", user_id, "Alice", "Room2 msg"),
-        )
-        .unwrap();
+        repo.save(&NewChatLog::chat("lobby", user_id, "Alice", "Lobby msg"))
+            .await
+            .unwrap();
+        repo.save(&NewChatLog::chat("room2", user_id, "Alice", "Room2 msg"))
+            .await
+            .unwrap();
 
-        let lobby_logs = ChatLogRepository::get_recent(db.conn(), "lobby", 10).unwrap();
-        let room2_logs = ChatLogRepository::get_recent(db.conn(), "room2", 10).unwrap();
+        let lobby_logs = repo.get_recent("lobby", 10).await.unwrap();
+        let room2_logs = repo.get_recent("room2", 10).await.unwrap();
 
         assert_eq!(lobby_logs.len(), 1);
         assert_eq!(room2_logs.len(), 1);
@@ -416,47 +451,43 @@ mod tests {
         assert!(room2_logs[0].content.contains("Room2"));
     }
 
-    #[test]
-    fn test_count() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_count() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let repo = ChatLogRepository::new(db.pool());
 
-        assert_eq!(ChatLogRepository::count(db.conn(), "lobby").unwrap(), 0);
+        assert_eq!(repo.count("lobby").await.unwrap(), 0);
 
         for i in 1..=3 {
             let log = NewChatLog::chat("lobby", user_id, "Alice", format!("Message {i}"));
-            ChatLogRepository::save(db.conn(), &log).unwrap();
+            repo.save(&log).await.unwrap();
         }
 
-        assert_eq!(ChatLogRepository::count(db.conn(), "lobby").unwrap(), 3);
+        assert_eq!(repo.count("lobby").await.unwrap(), 3);
     }
 
-    #[test]
-    fn test_delete_room() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_delete_room() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let repo = ChatLogRepository::new(db.pool());
 
-        ChatLogRepository::save(
-            db.conn(),
-            &NewChatLog::chat("lobby", user_id, "Alice", "Msg 1"),
-        )
-        .unwrap();
-        ChatLogRepository::save(
-            db.conn(),
-            &NewChatLog::chat("lobby", user_id, "Alice", "Msg 2"),
-        )
-        .unwrap();
-        ChatLogRepository::save(
-            db.conn(),
-            &NewChatLog::chat("room2", user_id, "Alice", "Msg 3"),
-        )
-        .unwrap();
+        repo.save(&NewChatLog::chat("lobby", user_id, "Alice", "Msg 1"))
+            .await
+            .unwrap();
+        repo.save(&NewChatLog::chat("lobby", user_id, "Alice", "Msg 2"))
+            .await
+            .unwrap();
+        repo.save(&NewChatLog::chat("room2", user_id, "Alice", "Msg 3"))
+            .await
+            .unwrap();
 
-        let deleted = ChatLogRepository::delete_room(db.conn(), "lobby").unwrap();
+        let deleted = repo.delete_room("lobby").await.unwrap();
         assert_eq!(deleted, 2);
 
-        assert_eq!(ChatLogRepository::count(db.conn(), "lobby").unwrap(), 0);
-        assert_eq!(ChatLogRepository::count(db.conn(), "room2").unwrap(), 1);
+        assert_eq!(repo.count("lobby").await.unwrap(), 0);
+        assert_eq!(repo.count("room2").await.unwrap(), 1);
     }
 
     #[test]
@@ -495,10 +526,11 @@ mod tests {
         assert_eq!(system_log.format(), "*** Server notice");
     }
 
-    #[test]
-    fn test_save_all_message_types() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_save_all_message_types() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let repo = ChatLogRepository::new(db.pool());
 
         let logs = vec![
             NewChatLog::chat("lobby", user_id, "Alice", "Hello"),
@@ -509,10 +541,10 @@ mod tests {
         ];
 
         for log in &logs {
-            ChatLogRepository::save(db.conn(), log).unwrap();
+            repo.save(log).await.unwrap();
         }
 
-        let retrieved = ChatLogRepository::get_recent(db.conn(), "lobby", 10).unwrap();
+        let retrieved = repo.get_recent("lobby", 10).await.unwrap();
 
         assert_eq!(retrieved.len(), 5);
         assert_eq!(retrieved[0].message_type, MessageType::Chat);
@@ -522,16 +554,15 @@ mod tests {
         assert_eq!(retrieved[4].message_type, MessageType::Leave);
     }
 
-    #[test]
-    fn test_save_system_message_null_user() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_save_system_message_null_user() {
+        let db = setup_db().await;
+        let repo = ChatLogRepository::new(db.pool());
         let log = NewChatLog::system("lobby", "Server maintenance");
 
-        let id = ChatLogRepository::save(db.conn(), &log).unwrap();
+        let id = repo.save(&log).await.unwrap();
 
-        let retrieved = ChatLogRepository::get_by_id(db.conn(), id)
-            .unwrap()
-            .unwrap();
+        let retrieved = repo.get_by_id(id).await.unwrap().unwrap();
 
         assert!(retrieved.user_id.is_none());
     }

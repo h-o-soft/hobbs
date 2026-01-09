@@ -1,3 +1,4 @@
+#![cfg(feature = "sqlite")]
 //! End-to-end encoding tests for HOBBS.
 //!
 //! These tests verify that character encoding works correctly throughout

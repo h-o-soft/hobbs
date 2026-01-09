@@ -2,12 +2,13 @@
 //!
 //! Provides logging for script executions.
 
-use crate::db::Database;
+use crate::db::{DbPool, SQL_TRUE};
 use crate::error::Result;
-use rusqlite::params;
+use crate::HobbsError;
+use chrono::{Duration, Utc};
 
 /// A single script execution log entry.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ScriptLog {
     /// Unique identifier.
     pub id: i64,
@@ -27,17 +28,17 @@ pub struct ScriptLog {
 
 /// Repository for script execution logs.
 pub struct ScriptLogRepository<'a> {
-    db: &'a Database,
+    pool: &'a DbPool,
 }
 
 impl<'a> ScriptLogRepository<'a> {
     /// Create a new script log repository.
-    pub fn new(db: &'a Database) -> Self {
-        Self { db }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
     }
 
     /// Log a script execution.
-    pub fn log_execution(
+    pub async fn log_execution(
         &self,
         script_id: i64,
         user_id: Option<i64>,
@@ -45,205 +46,194 @@ impl<'a> ScriptLogRepository<'a> {
         success: bool,
         error_message: Option<&str>,
     ) -> Result<i64> {
-        let conn = self.db.conn();
-        conn.execute(
+        let id: i64 = sqlx::query_scalar(
             r#"
             INSERT INTO script_logs (script_id, user_id, execution_ms, success, error_message)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
             "#,
-            params![
-                script_id,
-                user_id,
-                execution_ms,
-                success as i32,
-                error_message
-            ],
-        )?;
+        )
+        .bind(script_id)
+        .bind(user_id)
+        .bind(execution_ms)
+        .bind(success)
+        .bind(error_message)
+        .fetch_one(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        Ok(conn.last_insert_rowid())
+        Ok(id)
     }
 
     /// Get logs for a specific script.
-    pub fn get_by_script(&self, script_id: i64, limit: usize) -> Result<Vec<ScriptLog>> {
-        let conn = self.db.conn();
-        let mut stmt = conn.prepare(
+    pub async fn get_by_script(&self, script_id: i64, limit: usize) -> Result<Vec<ScriptLog>> {
+        let logs = sqlx::query_as::<_, ScriptLog>(
             r#"
             SELECT id, script_id, user_id, executed_at, execution_ms, success, error_message
             FROM script_logs
-            WHERE script_id = ?
+            WHERE script_id = $1
             ORDER BY id DESC
-            LIMIT ?
+            LIMIT $2
             "#,
-        )?;
-
-        let logs = stmt
-            .query_map(params![script_id, limit as i64], |row| {
-                Ok(ScriptLog {
-                    id: row.get(0)?,
-                    script_id: row.get(1)?,
-                    user_id: row.get(2)?,
-                    executed_at: row.get(3)?,
-                    execution_ms: row.get(4)?,
-                    success: row.get::<_, i32>(5)? != 0,
-                    error_message: row.get(6)?,
-                })
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
+        )
+        .bind(script_id)
+        .bind(limit as i64)
+        .fetch_all(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(logs)
     }
 
     /// Get logs for a specific user.
-    pub fn get_by_user(&self, user_id: i64, limit: usize) -> Result<Vec<ScriptLog>> {
-        let conn = self.db.conn();
-        let mut stmt = conn.prepare(
+    pub async fn get_by_user(&self, user_id: i64, limit: usize) -> Result<Vec<ScriptLog>> {
+        let logs = sqlx::query_as::<_, ScriptLog>(
             r#"
             SELECT id, script_id, user_id, executed_at, execution_ms, success, error_message
             FROM script_logs
-            WHERE user_id = ?
+            WHERE user_id = $1
             ORDER BY id DESC
-            LIMIT ?
+            LIMIT $2
             "#,
-        )?;
-
-        let logs = stmt
-            .query_map(params![user_id, limit as i64], |row| {
-                Ok(ScriptLog {
-                    id: row.get(0)?,
-                    script_id: row.get(1)?,
-                    user_id: row.get(2)?,
-                    executed_at: row.get(3)?,
-                    execution_ms: row.get(4)?,
-                    success: row.get::<_, i32>(5)? != 0,
-                    error_message: row.get(6)?,
-                })
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
+        )
+        .bind(user_id)
+        .bind(limit as i64)
+        .fetch_all(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(logs)
     }
 
     /// Get execution count for a script.
-    pub fn get_execution_count(&self, script_id: i64) -> Result<i64> {
-        let conn = self.db.conn();
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM script_logs WHERE script_id = ?",
-            params![script_id],
-            |row| row.get(0),
-        )?;
+    pub async fn get_execution_count(&self, script_id: i64) -> Result<i64> {
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM script_logs WHERE script_id = $1")
+            .bind(script_id)
+            .fetch_one(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        Ok(count)
+        Ok(count.0)
     }
 
     /// Get success rate for a script (as percentage 0-100).
-    pub fn get_success_rate(&self, script_id: i64) -> Result<Option<f64>> {
-        let conn = self.db.conn();
-        let total: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM script_logs WHERE script_id = ?",
-            params![script_id],
-            |row| row.get(0),
-        )?;
+    pub async fn get_success_rate(&self, script_id: i64) -> Result<Option<f64>> {
+        let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM script_logs WHERE script_id = $1")
+            .bind(script_id)
+            .fetch_one(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        if total == 0 {
+        if total.0 == 0 {
             return Ok(None);
         }
 
-        let success: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM script_logs WHERE script_id = ? AND success = 1",
-            params![script_id],
-            |row| row.get(0),
-        )?;
+        let success: (i64,) = sqlx::query_as(&format!(
+            "SELECT COUNT(*) FROM script_logs WHERE script_id = $1 AND success = {}",
+            SQL_TRUE
+        ))
+        .bind(script_id)
+                .fetch_one(self.pool)
+                .await
+                .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        Ok(Some((success as f64 / total as f64) * 100.0))
+        Ok(Some((success.0 as f64 / total.0 as f64) * 100.0))
     }
 
     /// Get average execution time for a script (in milliseconds).
-    pub fn get_avg_execution_time(&self, script_id: i64) -> Result<Option<f64>> {
-        let conn = self.db.conn();
-        let avg: Option<f64> = conn
-            .query_row(
-                "SELECT AVG(execution_ms) FROM script_logs WHERE script_id = ?",
-                params![script_id],
-                |row| row.get(0),
-            )
-            .ok();
+    pub async fn get_avg_execution_time(&self, script_id: i64) -> Result<Option<f64>> {
+        let avg: (Option<f64>,) =
+            sqlx::query_as("SELECT AVG(execution_ms) FROM script_logs WHERE script_id = $1")
+                .bind(script_id)
+                .fetch_one(self.pool)
+                .await
+                .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        Ok(avg)
+        Ok(avg.0)
     }
 
     /// Delete old logs (older than specified days).
-    pub fn delete_old_logs(&self, days: i32) -> Result<usize> {
-        let conn = self.db.conn();
-        let affected = conn.execute(
-            "DELETE FROM script_logs WHERE executed_at < datetime('now', ?)",
-            params![format!("-{} days", days)],
-        )?;
+    pub async fn delete_old_logs(&self, days: i32) -> Result<usize> {
+        let cutoff = Utc::now() - Duration::days(i64::from(days));
+        let cutoff_str = cutoff.format("%Y-%m-%d %H:%M:%S").to_string();
 
-        Ok(affected)
+        let result = sqlx::query("DELETE FROM script_logs WHERE executed_at < $1")
+            .bind(&cutoff_str)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() as usize)
     }
 
     /// Delete all logs for a script.
-    pub fn delete_by_script(&self, script_id: i64) -> Result<usize> {
-        let conn = self.db.conn();
-        let affected = conn.execute(
-            "DELETE FROM script_logs WHERE script_id = ?",
-            params![script_id],
-        )?;
+    pub async fn delete_by_script(&self, script_id: i64) -> Result<usize> {
+        let result = sqlx::query("DELETE FROM script_logs WHERE script_id = $1")
+            .bind(script_id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        Ok(affected)
+        Ok(result.rows_affected() as usize)
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
+    use crate::Database;
+    use sqlx::SqlitePool;
 
-    fn create_test_db() -> Database {
-        Database::open_in_memory().expect("Failed to create test database")
+    async fn create_test_db() -> Database {
+        Database::open_in_memory()
+            .await
+            .expect("Failed to create test database")
     }
 
-    fn create_test_script(db: &Database) -> i64 {
-        let conn = db.conn();
-        conn.execute(
+    async fn create_test_script(pool: &SqlitePool) -> i64 {
+        let result = sqlx::query(
             r#"
             INSERT INTO scripts (file_path, name, slug, min_role, enabled)
             VALUES ('test.lua', 'Test Script', 'test', 0, 1)
             "#,
-            [],
         )
+        .execute(pool)
+        .await
         .expect("Failed to create test script");
 
-        conn.last_insert_rowid()
+        result.last_insert_rowid()
     }
 
-    fn create_test_user(db: &Database) -> i64 {
-        let conn = db.conn();
-        conn.execute(
+    async fn create_test_user(pool: &SqlitePool) -> i64 {
+        let result = sqlx::query(
             r#"
             INSERT INTO users (username, password, nickname, role)
             VALUES ('testuser', 'hash', 'Test User', 'member')
             "#,
-            [],
         )
+        .execute(pool)
+        .await
         .expect("Failed to create test user");
 
-        conn.last_insert_rowid()
+        result.last_insert_rowid()
     }
 
-    #[test]
-    fn test_log_execution_success() {
-        let db = create_test_db();
-        let script_id = create_test_script(&db);
-        let user_id = create_test_user(&db);
-        let repo = ScriptLogRepository::new(&db);
+    #[tokio::test]
+    async fn test_log_execution_success() {
+        let db = create_test_db().await;
+        let pool = db.pool();
+        let script_id = create_test_script(pool).await;
+        let user_id = create_test_user(pool).await;
+        let repo = ScriptLogRepository::new(pool);
 
         let log_id = repo
             .log_execution(script_id, Some(user_id), 100, true, None)
+            .await
             .unwrap();
 
         assert!(log_id > 0);
 
-        let logs = repo.get_by_script(script_id, 10).unwrap();
+        let logs = repo.get_by_script(script_id, 10).await.unwrap();
         assert_eq!(logs.len(), 1);
         assert_eq!(logs[0].script_id, script_id);
         assert_eq!(logs[0].user_id, Some(user_id));
@@ -252,11 +242,12 @@ mod tests {
         assert!(logs[0].error_message.is_none());
     }
 
-    #[test]
-    fn test_log_execution_error() {
-        let db = create_test_db();
-        let script_id = create_test_script(&db);
-        let repo = ScriptLogRepository::new(&db);
+    #[tokio::test]
+    async fn test_log_execution_error() {
+        let db = create_test_db().await;
+        let pool = db.pool();
+        let script_id = create_test_script(pool).await;
+        let repo = ScriptLogRepository::new(pool);
 
         repo.log_execution(
             script_id,
@@ -265,9 +256,10 @@ mod tests {
             false,
             Some("Script error: undefined variable"),
         )
+        .await
         .unwrap();
 
-        let logs = repo.get_by_script(script_id, 10).unwrap();
+        let logs = repo.get_by_script(script_id, 10).await.unwrap();
         assert_eq!(logs.len(), 1);
         assert!(!logs[0].success);
         assert_eq!(
@@ -276,113 +268,143 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_get_by_user() {
-        let db = create_test_db();
-        let script_id = create_test_script(&db);
-        let user_id = create_test_user(&db);
-        let repo = ScriptLogRepository::new(&db);
+    #[tokio::test]
+    async fn test_get_by_user() {
+        let db = create_test_db().await;
+        let pool = db.pool();
+        let script_id = create_test_script(pool).await;
+        let user_id = create_test_user(pool).await;
+        let repo = ScriptLogRepository::new(pool);
 
         repo.log_execution(script_id, Some(user_id), 100, true, None)
+            .await
             .unwrap();
         repo.log_execution(script_id, Some(user_id), 150, true, None)
+            .await
             .unwrap();
         repo.log_execution(script_id, None, 200, true, None)
+            .await
             .unwrap(); // Guest
 
-        let user_logs = repo.get_by_user(user_id, 10).unwrap();
+        let user_logs = repo.get_by_user(user_id, 10).await.unwrap();
         assert_eq!(user_logs.len(), 2);
     }
 
-    #[test]
-    fn test_get_execution_count() {
-        let db = create_test_db();
-        let script_id = create_test_script(&db);
-        let repo = ScriptLogRepository::new(&db);
+    #[tokio::test]
+    async fn test_get_execution_count() {
+        let db = create_test_db().await;
+        let pool = db.pool();
+        let script_id = create_test_script(pool).await;
+        let repo = ScriptLogRepository::new(pool);
 
         // Initially 0
-        assert_eq!(repo.get_execution_count(script_id).unwrap(), 0);
+        assert_eq!(repo.get_execution_count(script_id).await.unwrap(), 0);
 
         repo.log_execution(script_id, None, 100, true, None)
+            .await
             .unwrap();
         repo.log_execution(script_id, None, 150, false, Some("error"))
+            .await
             .unwrap();
 
-        assert_eq!(repo.get_execution_count(script_id).unwrap(), 2);
+        assert_eq!(repo.get_execution_count(script_id).await.unwrap(), 2);
     }
 
-    #[test]
-    fn test_get_success_rate() {
-        let db = create_test_db();
-        let script_id = create_test_script(&db);
-        let repo = ScriptLogRepository::new(&db);
+    #[tokio::test]
+    async fn test_get_success_rate() {
+        let db = create_test_db().await;
+        let pool = db.pool();
+        let script_id = create_test_script(pool).await;
+        let repo = ScriptLogRepository::new(pool);
 
         // No logs - None
-        assert!(repo.get_success_rate(script_id).unwrap().is_none());
+        assert!(repo.get_success_rate(script_id).await.unwrap().is_none());
 
         // 2 success, 1 failure = 66.67%
         repo.log_execution(script_id, None, 100, true, None)
+            .await
             .unwrap();
         repo.log_execution(script_id, None, 100, true, None)
+            .await
             .unwrap();
         repo.log_execution(script_id, None, 100, false, Some("error"))
+            .await
             .unwrap();
 
-        let rate = repo.get_success_rate(script_id).unwrap().unwrap();
+        let rate = repo.get_success_rate(script_id).await.unwrap().unwrap();
         assert!((rate - 66.67).abs() < 1.0);
     }
 
-    #[test]
-    fn test_get_avg_execution_time() {
-        let db = create_test_db();
-        let script_id = create_test_script(&db);
-        let repo = ScriptLogRepository::new(&db);
+    #[tokio::test]
+    async fn test_get_avg_execution_time() {
+        let db = create_test_db().await;
+        let pool = db.pool();
+        let script_id = create_test_script(pool).await;
+        let repo = ScriptLogRepository::new(pool);
 
         // No logs - None
-        assert!(repo.get_avg_execution_time(script_id).unwrap().is_none());
+        assert!(repo
+            .get_avg_execution_time(script_id)
+            .await
+            .unwrap()
+            .is_none());
 
         repo.log_execution(script_id, None, 100, true, None)
+            .await
             .unwrap();
         repo.log_execution(script_id, None, 200, true, None)
+            .await
             .unwrap();
         repo.log_execution(script_id, None, 300, true, None)
+            .await
             .unwrap();
 
-        let avg = repo.get_avg_execution_time(script_id).unwrap().unwrap();
+        let avg = repo
+            .get_avg_execution_time(script_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert!((avg - 200.0).abs() < 0.01);
     }
 
-    #[test]
-    fn test_delete_by_script() {
-        let db = create_test_db();
-        let script_id = create_test_script(&db);
-        let repo = ScriptLogRepository::new(&db);
+    #[tokio::test]
+    async fn test_delete_by_script() {
+        let db = create_test_db().await;
+        let pool = db.pool();
+        let script_id = create_test_script(pool).await;
+        let repo = ScriptLogRepository::new(pool);
 
         repo.log_execution(script_id, None, 100, true, None)
+            .await
             .unwrap();
         repo.log_execution(script_id, None, 100, true, None)
+            .await
             .unwrap();
 
-        let deleted = repo.delete_by_script(script_id).unwrap();
+        let deleted = repo.delete_by_script(script_id).await.unwrap();
         assert_eq!(deleted, 2);
 
-        assert_eq!(repo.get_execution_count(script_id).unwrap(), 0);
+        assert_eq!(repo.get_execution_count(script_id).await.unwrap(), 0);
     }
 
-    #[test]
-    fn test_logs_ordered_by_time() {
-        let db = create_test_db();
-        let script_id = create_test_script(&db);
-        let repo = ScriptLogRepository::new(&db);
+    #[tokio::test]
+    async fn test_logs_ordered_by_time() {
+        let db = create_test_db().await;
+        let pool = db.pool();
+        let script_id = create_test_script(pool).await;
+        let repo = ScriptLogRepository::new(pool);
 
         repo.log_execution(script_id, None, 100, true, None)
+            .await
             .unwrap();
         repo.log_execution(script_id, None, 200, true, None)
+            .await
             .unwrap();
         repo.log_execution(script_id, None, 300, true, None)
+            .await
             .unwrap();
 
-        let logs = repo.get_by_script(script_id, 10).unwrap();
+        let logs = repo.get_by_script(script_id, 10).await.unwrap();
         // Should be ordered by executed_at DESC, so newest first
         assert_eq!(logs[0].execution_ms, 300);
         assert_eq!(logs[1].execution_ms, 200);

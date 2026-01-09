@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use super::common::ScreenContext;
 use super::ScreenResult;
-use crate::db::{Database, Role, UserRepository};
+use crate::db::{Role, UserRepository};
 use crate::error::Result;
 use crate::script::{create_script_runtime, Script, ScriptContext, ScriptMessage, ScriptService};
 use crate::server::TelnetSession;
@@ -24,7 +24,7 @@ impl ScriptScreen {
     /// Run the script screen.
     pub async fn run(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<ScreenResult> {
         let scripts_dir = Self::get_scripts_dir(ctx);
-        let user_role = Self::get_user_role(ctx, session);
+        let user_role = Self::get_user_role(ctx, session).await;
 
         loop {
             // Display script list
@@ -33,8 +33,8 @@ impl ScriptScreen {
                 .await?;
             ctx.send_line(session, "").await?;
 
-            let service = ScriptService::new(&ctx.db).with_scripts_dir(&scripts_dir);
-            let scripts = service.list_scripts(user_role)?;
+            let service = ScriptService::new(ctx.db.pool(), &ctx.db).with_scripts_dir(&scripts_dir);
+            let scripts = service.list_scripts(user_role).await?;
 
             // Display scripts with localized names/descriptions
             let lang = ctx.i18n.locale();
@@ -112,9 +112,9 @@ impl ScriptScreen {
         scripts_dir: &PathBuf,
         script_id: i64,
     ) -> Result<()> {
-        let service = ScriptService::new(&ctx.db).with_scripts_dir(scripts_dir);
+        let service = ScriptService::new(ctx.db.pool(), &ctx.db).with_scripts_dir(scripts_dir);
 
-        let script = match service.get_script_by_id(script_id)? {
+        let script = match service.get_script_by_id(script_id).await? {
             Some(s) => s,
             None => {
                 ctx.send_line(session, &ctx.i18n.t("script.not_found"))
@@ -124,7 +124,7 @@ impl ScriptScreen {
         };
 
         // Create script context
-        let script_context = Self::create_script_context(ctx, session);
+        let script_context = Self::create_script_context(ctx, session).await;
 
         // Display script header with localized name
         let lang = ctx.i18n.locale();
@@ -172,42 +172,49 @@ impl ScriptScreen {
         let (runtime, handle) = create_script_runtime();
         let handle = Arc::new(handle);
 
+        // Save user_id for later use (before script_context is moved)
+        let user_id = script_context.user_id;
+
+        // Load script data BEFORE entering blocking context (async-safe)
+        let service = ScriptService::new(ctx.db.pool(), &ctx.db);
+        let script_data = service.load_script_data(script.id, user_id).await?;
+
         // Clone data needed for the blocking task
-        let db_path = PathBuf::from(&ctx.config.database.path);
+        let db = Arc::clone(&ctx.db);
         let scripts_dir = scripts_dir.clone();
         let script_clone = script.clone();
 
         // Spawn the script execution in a blocking thread
         let script_handle = Arc::clone(&handle);
         let task_handle = tokio::task::spawn_blocking(move || {
-            // Create a new database connection for this thread
-            let db = match Database::open(&db_path) {
-                Ok(db) => db,
-                Err(e) => {
-                    return ExecutionResult {
+            let service = ScriptService::new(db.pool(), &db).with_scripts_dir(&scripts_dir);
+
+            // Execute with pre-loaded data (no database access in blocking context)
+            match service.execute_with_data(
+                &script_clone,
+                script_context,
+                Some(script_handle),
+                script_data,
+            ) {
+                Ok((result, modified_data)) => (
+                    ExecutionResult {
+                        success: result.success,
+                        error: result.error,
+                    },
+                    Some(modified_data),
+                ),
+                Err(e) => (
+                    ExecutionResult {
                         success: false,
-                        error: Some(format!("Database error: {}", e)),
-                    };
-                }
-            };
-
-            let service = ScriptService::new(&db).with_scripts_dir(&scripts_dir);
-
-            // Execute with runtime for interactive I/O
-            match service.execute_with_runtime(&script_clone, script_context, Some(script_handle)) {
-                Ok(result) => ExecutionResult {
-                    success: result.success,
-                    error: result.error,
-                },
-                Err(e) => ExecutionResult {
-                    success: false,
-                    error: Some(e.to_string()),
-                },
+                        error: Some(e.to_string()),
+                    },
+                    None,
+                ),
             }
         });
 
         // Message loop: handle output and input requests
-        let result = loop {
+        let (result, modified_data) = loop {
             // Poll for messages with a timeout
             match runtime.recv_timeout(Duration::from_millis(50)) {
                 Some(ScriptMessage::Output(text)) => {
@@ -227,8 +234,11 @@ impl ScriptScreen {
                     runtime.send_input(Some(input));
                 }
                 Some(ScriptMessage::Done { success, error }) => {
-                    // Script finished
-                    break ExecutionResult { success, error };
+                    // Script finished - wait for task to get modified data
+                    match task_handle.await {
+                        Ok((_, data)) => break (ExecutionResult { success, error }, data),
+                        Err(_) => break (ExecutionResult { success, error }, None),
+                    }
                 }
                 None => {
                     // Timeout - check if the task is still running
@@ -236,18 +246,29 @@ impl ScriptScreen {
                         // Task finished without sending Done message
                         // This might happen if the script panicked
                         match task_handle.await {
-                            Ok(result) => break result,
+                            Ok((result, data)) => break (result, data),
                             Err(e) => {
-                                break ExecutionResult {
-                                    success: false,
-                                    error: Some(format!("Script execution failed: {}", e)),
-                                };
+                                break (
+                                    ExecutionResult {
+                                        success: false,
+                                        error: Some(format!("Script execution failed: {}", e)),
+                                    },
+                                    None,
+                                );
                             }
                         }
                     }
                 }
             }
         };
+
+        // Save modified data AFTER exiting blocking context (async-safe)
+        if let Some(data) = modified_data {
+            let service = ScriptService::new(ctx.db.pool(), &ctx.db);
+            if let Err(e) = service.save_script_data(script.id, user_id, &data).await {
+                tracing::error!("Failed to save script data: {}", e);
+            }
+        }
 
         Ok(result)
     }
@@ -315,8 +336,8 @@ impl ScriptScreen {
         ctx.send_line(session, &ctx.i18n.t("script.syncing"))
             .await?;
 
-        let service = ScriptService::new(&ctx.db).with_scripts_dir(scripts_dir);
-        let result = service.sync_scripts()?;
+        let service = ScriptService::new(ctx.db.pool(), &ctx.db).with_scripts_dir(scripts_dir);
+        let result = service.sync_scripts().await?;
 
         ctx.send_line(session, "").await?;
         ctx.send_line(
@@ -367,8 +388,8 @@ impl ScriptScreen {
     ) -> Result<()> {
         // Get scripts first, then drop service to release borrow
         let scripts = {
-            let service = ScriptService::new(&ctx.db).with_scripts_dir(scripts_dir);
-            service.list_all_scripts()?
+            let service = ScriptService::new(ctx.db.pool(), &ctx.db).with_scripts_dir(scripts_dir);
+            service.list_all_scripts().await?
         };
 
         ctx.send_line(session, "").await?;
@@ -423,8 +444,8 @@ impl ScriptScreen {
                 let new_enabled = !script.enabled;
 
                 // Create new service for set_enabled
-                let service = ScriptService::new(&ctx.db).with_scripts_dir(scripts_dir);
-                service.set_enabled(script.id, new_enabled)?;
+                let service = ScriptService::new(ctx.db.pool(), &ctx.db).with_scripts_dir(scripts_dir);
+                service.set_enabled(script.id, new_enabled).await?;
 
                 let name = script.get_name(&lang);
                 let message = if new_enabled {
@@ -477,10 +498,10 @@ impl ScriptScreen {
     }
 
     /// Get the user's role from the session.
-    fn get_user_role(ctx: &ScreenContext, session: &TelnetSession) -> i32 {
+    async fn get_user_role(ctx: &ScreenContext, session: &TelnetSession) -> i32 {
         if let Some(user_id) = session.user_id() {
-            let user_repo = UserRepository::new(&ctx.db);
-            if let Ok(Some(user)) = user_repo.get_by_id(user_id) {
+            let user_repo = UserRepository::new(ctx.db.pool());
+            if let Ok(Some(user)) = user_repo.get_by_id(user_id).await {
                 return user.role as i32;
             }
         }
@@ -488,12 +509,12 @@ impl ScriptScreen {
     }
 
     /// Create a script execution context from the session.
-    fn create_script_context(ctx: &ScreenContext, session: &TelnetSession) -> ScriptContext {
+    async fn create_script_context(ctx: &ScreenContext, session: &TelnetSession) -> ScriptContext {
         let lang = ctx.i18n.locale().to_string();
 
         if let Some(user_id) = session.user_id() {
-            let user_repo = UserRepository::new(&ctx.db);
-            if let Ok(Some(user)) = user_repo.get_by_id(user_id) {
+            let user_repo = UserRepository::new(ctx.db.pool());
+            if let Ok(Some(user)) = user_repo.get_by_id(user_id).await {
                 return ScriptContext {
                     script_id: None, // Set by ScriptService.execute()
                     user_id: Some(user_id),

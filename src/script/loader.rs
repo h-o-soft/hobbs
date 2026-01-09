@@ -8,7 +8,7 @@ use chrono::Utc;
 
 use super::repository::ScriptRepository;
 use super::types::{Script, ScriptMetadata, SyncResult};
-use crate::db::Database;
+use crate::db::DbPool;
 use crate::Result;
 
 /// Loader for scanning Lua scripts from the file system.
@@ -31,22 +31,24 @@ impl ScriptLoader {
     /// 1. Scan the scripts directory for .lua files
     /// 2. Parse metadata from each file
     /// 3. Add new scripts, update changed ones, and remove deleted ones
-    pub fn sync(&self, db: &Database) -> Result<SyncResult> {
-        let repo = ScriptRepository::new(db);
+    pub async fn sync(&self, pool: &DbPool) -> Result<SyncResult> {
+        let repo = ScriptRepository::new(pool);
         let mut result = SyncResult::default();
 
         // Get existing file paths from DB
-        let existing_paths: HashSet<String> = repo.list_all_file_paths()?.into_iter().collect();
+        let existing_paths: HashSet<String> =
+            repo.list_all_file_paths().await?.into_iter().collect();
         let mut found_paths: HashSet<String> = HashSet::new();
 
         // Scan directory for .lua files
         if self.scripts_dir.exists() {
-            self.scan_directory(&self.scripts_dir, &repo, &mut result, &mut found_paths)?;
+            self.scan_directory(&self.scripts_dir, &repo, &mut result, &mut found_paths)
+                .await?;
         }
 
         // Remove scripts that no longer exist on disk
         for path in existing_paths.difference(&found_paths) {
-            if let Err(e) = repo.delete_by_file_path(path) {
+            if let Err(e) = repo.delete_by_file_path(path).await {
                 result.errors.push((path.clone(), e.to_string()));
             } else {
                 result.removed += 1;
@@ -57,10 +59,10 @@ impl ScriptLoader {
     }
 
     /// Scan a directory recursively for .lua files.
-    fn scan_directory(
+    async fn scan_directory(
         &self,
         dir: &Path,
-        repo: &ScriptRepository,
+        repo: &ScriptRepository<'_>,
         result: &mut SyncResult,
         found_paths: &mut HashSet<String>,
     ) -> Result<()> {
@@ -79,10 +81,13 @@ impl ScriptLoader {
 
             if path.is_dir() {
                 // Recurse into subdirectories
-                self.scan_directory(&path, repo, result, found_paths)?;
+                Box::pin(self.scan_directory(&path, repo, result, found_paths)).await?;
             } else if path.extension().is_some_and(|ext| ext == "lua") {
                 // Process .lua file
-                if let Err(e) = self.process_script_file(&path, repo, result, found_paths) {
+                if let Err(e) = self
+                    .process_script_file(&path, repo, result, found_paths)
+                    .await
+                {
                     result
                         .errors
                         .push((path.display().to_string(), e.to_string()));
@@ -94,10 +99,10 @@ impl ScriptLoader {
     }
 
     /// Process a single script file.
-    fn process_script_file(
+    async fn process_script_file(
         &self,
         path: &Path,
-        repo: &ScriptRepository,
+        repo: &ScriptRepository<'_>,
         result: &mut SyncResult,
         found_paths: &mut HashSet<String>,
     ) -> Result<()> {
@@ -117,7 +122,7 @@ impl ScriptLoader {
         let file_hash = Self::calculate_hash(&content);
 
         // Check if script exists and is unchanged
-        if let Some(existing) = repo.get_by_file_path(&rel_path)? {
+        if let Some(existing) = repo.get_by_file_path(&rel_path).await? {
             if existing.file_hash.as_deref() == Some(&file_hash) {
                 // Unchanged, skip
                 return Ok(());
@@ -152,9 +157,9 @@ impl ScriptLoader {
         };
 
         // Check if this is an update or insert
-        let is_update = repo.get_by_file_path(&rel_path)?.is_some();
+        let is_update = repo.get_by_file_path(&rel_path).await?.is_some();
 
-        repo.upsert(&script)?;
+        repo.upsert(&script).await?;
 
         if is_update {
             result.updated += 1;
@@ -368,12 +373,11 @@ impl ScriptLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Database;
     use tempfile::tempdir;
 
-    fn create_test_db() -> Database {
-        let dir = tempdir().unwrap();
-        let db_path = dir.path().join("test.db");
-        Database::open(db_path).unwrap()
+    async fn setup_db() -> Database {
+        Database::open_in_memory().await.unwrap()
     }
 
     #[test]
@@ -539,13 +543,13 @@ bbs.println("Hello")
         assert_eq!(hash1, hash3);
     }
 
-    #[test]
-    fn test_sync_empty_directory() {
-        let db = create_test_db();
+    #[tokio::test]
+    async fn test_sync_empty_directory() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
 
         let loader = ScriptLoader::new(dir.path());
-        let result = loader.sync(&db).unwrap();
+        let result = loader.sync(db.pool()).await.unwrap();
 
         assert_eq!(result.added, 0);
         assert_eq!(result.updated, 0);
@@ -553,9 +557,9 @@ bbs.println("Hello")
         assert!(!result.has_changes());
     }
 
-    #[test]
-    fn test_sync_adds_new_scripts() {
-        let db = create_test_db();
+    #[tokio::test]
+    async fn test_sync_adds_new_scripts() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
 
         // Create test script
@@ -566,22 +570,22 @@ bbs.println("Hello")
         fs::write(dir.path().join("test.lua"), script_content).unwrap();
 
         let loader = ScriptLoader::new(dir.path());
-        let result = loader.sync(&db).unwrap();
+        let result = loader.sync(db.pool()).await.unwrap();
 
         assert_eq!(result.added, 1);
         assert_eq!(result.updated, 0);
         assert_eq!(result.removed, 0);
 
         // Verify script was added
-        let repo = ScriptRepository::new(&db);
-        let script = repo.get_by_slug("test").unwrap().unwrap();
+        let repo = ScriptRepository::new(db.pool());
+        let script = repo.get_by_slug("test").await.unwrap().unwrap();
         assert_eq!(script.name, "Test Script");
         assert_eq!(script.description, Some("A test".to_string()));
     }
 
-    #[test]
-    fn test_sync_updates_changed_scripts() {
-        let db = create_test_db();
+    #[tokio::test]
+    async fn test_sync_updates_changed_scripts() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
 
         let script_path = dir.path().join("test.lua");
@@ -596,7 +600,7 @@ bbs.println("v1")
         .unwrap();
 
         let loader = ScriptLoader::new(dir.path());
-        loader.sync(&db).unwrap();
+        loader.sync(db.pool()).await.unwrap();
 
         // Update script
         fs::write(
@@ -607,21 +611,21 @@ bbs.println("v2")
         )
         .unwrap();
 
-        let result = loader.sync(&db).unwrap();
+        let result = loader.sync(db.pool()).await.unwrap();
 
         assert_eq!(result.added, 0);
         assert_eq!(result.updated, 1);
         assert_eq!(result.removed, 0);
 
         // Verify script was updated
-        let repo = ScriptRepository::new(&db);
-        let script = repo.get_by_slug("test").unwrap().unwrap();
+        let repo = ScriptRepository::new(db.pool());
+        let script = repo.get_by_slug("test").await.unwrap().unwrap();
         assert_eq!(script.name, "Version 2");
     }
 
-    #[test]
-    fn test_sync_removes_deleted_scripts() {
-        let db = create_test_db();
+    #[tokio::test]
+    async fn test_sync_removes_deleted_scripts() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
 
         let script_path = dir.path().join("test.lua");
@@ -629,26 +633,26 @@ bbs.println("v2")
         // Create and sync script
         fs::write(&script_path, "bbs.println(\"Hello\")").unwrap();
         let loader = ScriptLoader::new(dir.path());
-        loader.sync(&db).unwrap();
+        loader.sync(db.pool()).await.unwrap();
 
         // Delete script file
         fs::remove_file(&script_path).unwrap();
 
-        let result = loader.sync(&db).unwrap();
+        let result = loader.sync(db.pool()).await.unwrap();
 
         assert_eq!(result.added, 0);
         assert_eq!(result.updated, 0);
         assert_eq!(result.removed, 1);
 
         // Verify script was removed
-        let repo = ScriptRepository::new(&db);
-        let script = repo.get_by_slug("test").unwrap();
+        let repo = ScriptRepository::new(db.pool());
+        let script = repo.get_by_slug("test").await.unwrap();
         assert!(script.is_none());
     }
 
-    #[test]
-    fn test_sync_handles_subdirectories() {
-        let db = create_test_db();
+    #[tokio::test]
+    async fn test_sync_handles_subdirectories() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
 
         // Create subdirectory
@@ -660,19 +664,19 @@ bbs.println("v2")
         fs::write(subdir.join("game.lua"), "bbs.println(\"game\")").unwrap();
 
         let loader = ScriptLoader::new(dir.path());
-        let result = loader.sync(&db).unwrap();
+        let result = loader.sync(db.pool()).await.unwrap();
 
         assert_eq!(result.added, 2);
 
         // Verify both scripts were added
-        let repo = ScriptRepository::new(&db);
-        assert!(repo.get_by_slug("root").unwrap().is_some());
-        assert!(repo.get_by_slug("game").unwrap().is_some());
+        let repo = ScriptRepository::new(db.pool());
+        assert!(repo.get_by_slug("root").await.unwrap().is_some());
+        assert!(repo.get_by_slug("game").await.unwrap().is_some());
     }
 
-    #[test]
-    fn test_sync_skips_unchanged_scripts() {
-        let db = create_test_db();
+    #[tokio::test]
+    async fn test_sync_skips_unchanged_scripts() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
 
         // Create script
@@ -681,11 +685,11 @@ bbs.println("v2")
         let loader = ScriptLoader::new(dir.path());
 
         // First sync
-        let result1 = loader.sync(&db).unwrap();
+        let result1 = loader.sync(db.pool()).await.unwrap();
         assert_eq!(result1.added, 1);
 
         // Second sync (no changes)
-        let result2 = loader.sync(&db).unwrap();
+        let result2 = loader.sync(db.pool()).await.unwrap();
         assert_eq!(result2.added, 0);
         assert_eq!(result2.updated, 0);
         assert_eq!(result2.removed, 0);

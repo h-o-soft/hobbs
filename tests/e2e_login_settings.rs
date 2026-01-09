@@ -1,3 +1,4 @@
+#![cfg(feature = "sqlite")]
 //! E2E tests for login settings application.
 //!
 //! Tests that user's language/encoding settings are applied on login.
@@ -22,6 +23,7 @@ async fn test_login_applies_user_language() {
         "ja",    // Japanese
         "utf-8", // UTF-8 encoding
     )
+    .await
     .unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -84,6 +86,7 @@ async fn test_login_applies_user_english_language() {
         "en",    // English
         "utf-8", // UTF-8 encoding
     )
+    .await
     .unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 

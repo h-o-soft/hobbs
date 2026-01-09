@@ -26,7 +26,7 @@ pub use user::{generate_password, UserAdminService, UserDetail, DEFAULT_PASSWORD
 use thiserror::Error;
 
 use crate::auth::{require_subop, require_sysop, PermissionError};
-use crate::db::{Database, Role, User};
+use crate::db::{Database, Role, User, SQL_FALSE, SQL_TRUE};
 
 /// Admin-related errors.
 #[derive(Error, Debug)]
@@ -53,7 +53,7 @@ pub enum AdminError {
 
     /// Database error.
     #[error("データベースエラー: {0}")]
-    Database(#[from] rusqlite::Error),
+    Database(#[from] sqlx::Error),
 
     /// General HOBBS error.
     #[error("{0}")]
@@ -203,13 +203,12 @@ impl<'a> AdminService<'a> {
     /// Check if there are multiple SysOps in the system.
     ///
     /// This is used to prevent demoting the last SysOp.
-    pub fn has_multiple_sysops(&self) -> std::result::Result<bool, AdminError> {
-        let conn = self.db.conn();
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM users WHERE role = 'sysop' AND is_active = 1",
-            [],
-            |row| row.get(0),
-        )?;
+    pub async fn has_multiple_sysops(&self) -> std::result::Result<bool, AdminError> {
+        let query = format!(
+            "SELECT COUNT(*) FROM users WHERE role = 'sysop' AND is_active = {}",
+            SQL_TRUE
+        );
+        let count: i64 = sqlx::query_scalar(&query).fetch_one(self.db.pool()).await?;
         Ok(count > 1)
     }
 
@@ -225,7 +224,7 @@ impl<'a> AdminService<'a> {
     /// * `admin` - The admin performing the change
     /// * `target` - The target user
     /// * `new_role` - The new role to assign
-    pub fn validate_role_change(
+    pub async fn validate_role_change(
         &self,
         admin: &User,
         target: &User,
@@ -235,7 +234,10 @@ impl<'a> AdminService<'a> {
         can_change_role(admin, target)?;
 
         // Check if demoting from SysOp
-        if target.role == Role::SysOp && new_role != Role::SysOp && !self.has_multiple_sysops()? {
+        if target.role == Role::SysOp
+            && new_role != Role::SysOp
+            && !self.has_multiple_sysops().await?
+        {
             return Err(AdminError::LastSysOp);
         }
 
@@ -246,6 +248,7 @@ impl<'a> AdminService<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::{SQL_FALSE, SQL_TRUE};
     use crate::server::CharacterEncoding;
 
     fn create_test_user(id: i64, role: Role) -> User {
@@ -407,101 +410,109 @@ mod tests {
         let err = AdminError::LastSysOp;
         assert!(err.to_string().contains("最後のSysOp"));
 
-        // Database error is tested via rusqlite::Error conversion
+        // Database error is tested via sqlx::Error conversion
     }
 
     // AdminService tests
-    #[test]
-    fn test_admin_service_new() {
-        let db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_admin_service_new() {
+        let db = Database::open_in_memory().await.unwrap();
         let service = AdminService::new(&db);
         assert!(std::ptr::eq(service.db(), &db));
     }
 
-    #[test]
-    fn test_has_multiple_sysops_none() {
-        let db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_has_multiple_sysops_none() {
+        let db = Database::open_in_memory().await.unwrap();
         let service = AdminService::new(&db);
 
         // Initially no sysops
-        assert!(!service.has_multiple_sysops().unwrap());
+        assert!(!service.has_multiple_sysops().await.unwrap());
     }
 
-    #[test]
-    fn test_has_multiple_sysops_one() {
-        let db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_has_multiple_sysops_one() {
+        let db = Database::open_in_memory().await.unwrap();
 
         // Create one sysop
-        let conn = db.conn();
-        conn.execute(
+        sqlx::query(&format!(
             "INSERT INTO users (username, password, nickname, role, terminal, encoding, is_active)
-             VALUES ('sysop', 'hash', 'SysOp', 'sysop', 'standard', 'shiftjis', 1)",
-            [],
-        )
+             VALUES ('sysop', 'hash', 'SysOp', 'sysop', 'standard', 'shiftjis', {})",
+            SQL_TRUE
+        ))
+        .execute(db.pool())
+        .await
         .unwrap();
 
         let service = AdminService::new(&db);
-        assert!(!service.has_multiple_sysops().unwrap());
+        assert!(!service.has_multiple_sysops().await.unwrap());
     }
 
-    #[test]
-    fn test_has_multiple_sysops_two() {
-        let db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_has_multiple_sysops_two() {
+        let db = Database::open_in_memory().await.unwrap();
 
         // Create two sysops
-        let conn = db.conn();
-        conn.execute(
+        sqlx::query(&format!(
             "INSERT INTO users (username, password, nickname, role, terminal, encoding, is_active)
-             VALUES ('sysop1', 'hash', 'SysOp 1', 'sysop', 'standard', 'shiftjis', 1)",
-            [],
-        )
+             VALUES ('sysop1', 'hash', 'SysOp 1', 'sysop', 'standard', 'shiftjis', {})",
+            SQL_TRUE
+        ))
+        .execute(db.pool())
+        .await
         .unwrap();
-        conn.execute(
+        sqlx::query(&format!(
             "INSERT INTO users (username, password, nickname, role, terminal, encoding, is_active)
-             VALUES ('sysop2', 'hash', 'SysOp 2', 'sysop', 'standard', 'shiftjis', 1)",
-            [],
-        )
+             VALUES ('sysop2', 'hash', 'SysOp 2', 'sysop', 'standard', 'shiftjis', {})",
+            SQL_TRUE
+        ))
+        .execute(db.pool())
+        .await
         .unwrap();
 
         let service = AdminService::new(&db);
-        assert!(service.has_multiple_sysops().unwrap());
+        assert!(service.has_multiple_sysops().await.unwrap());
     }
 
-    #[test]
-    fn test_has_multiple_sysops_one_inactive() {
-        let db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_has_multiple_sysops_one_inactive() {
+        let db = Database::open_in_memory().await.unwrap();
 
         // Create two sysops, one inactive
-        let conn = db.conn();
-        conn.execute(
+        sqlx::query(&format!(
             "INSERT INTO users (username, password, nickname, role, terminal, encoding, is_active)
-             VALUES ('sysop1', 'hash', 'SysOp 1', 'sysop', 'standard', 'shiftjis', 1)",
-            [],
-        )
+             VALUES ('sysop1', 'hash', 'SysOp 1', 'sysop', 'standard', 'shiftjis', {})",
+            SQL_TRUE
+        ))
+        .execute(db.pool())
+        .await
         .unwrap();
-        conn.execute(
+        sqlx::query(&format!(
             "INSERT INTO users (username, password, nickname, role, terminal, encoding, is_active)
-             VALUES ('sysop2', 'hash', 'SysOp 2', 'sysop', 'standard', 'shiftjis', 0)",
-            [],
-        )
+             VALUES ('sysop2', 'hash', 'SysOp 2', 'sysop', 'standard', 'shiftjis', {})",
+            SQL_FALSE
+        ))
+        .execute(db.pool())
+        .await
         .unwrap();
 
         let service = AdminService::new(&db);
         // Only one active sysop
-        assert!(!service.has_multiple_sysops().unwrap());
+        assert!(!service.has_multiple_sysops().await.unwrap());
     }
 
-    #[test]
-    fn test_validate_role_change_demote_last_sysop() {
-        let db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_validate_role_change_demote_last_sysop() {
+        let db = Database::open_in_memory().await.unwrap();
 
         // Create one sysop
-        let conn = db.conn();
-        conn.execute(
+        sqlx::query(&format!(
             "INSERT INTO users (username, password, nickname, role, terminal, encoding, is_active)
-             VALUES ('sysop', 'hash', 'SysOp', 'sysop', 'standard', 'shiftjis', 1)",
-            [],
-        )
+             VALUES ('sysop', 'hash', 'SysOp', 'sysop', 'standard', 'shiftjis', {})",
+            SQL_TRUE
+        ))
+        .execute(db.pool())
+        .await
         .unwrap();
 
         let admin = User {
@@ -539,35 +550,41 @@ mod tests {
         };
 
         // Insert the second sysop but make them inactive (so only 1 active)
-        conn.execute(
+        sqlx::query(&format!(
             "INSERT INTO users (username, password, nickname, role, terminal, encoding, is_active)
-             VALUES ('sysop2', 'hash', 'SysOp 2', 'sysop', 'standard', 'shiftjis', 0)",
-            [],
-        )
+             VALUES ('sysop2', 'hash', 'SysOp 2', 'sysop', 'standard', 'shiftjis', {})",
+            SQL_FALSE
+        ))
+        .execute(db.pool())
+        .await
         .unwrap();
 
         let service = AdminService::new(&db);
 
         // Try to demote the "target" from SysOp to Member
-        // Note: In this test, we're checking validation logic even though target isn't in DB
         // We need to add target to DB as active sysop for proper test
-        conn.execute(
-            "UPDATE users SET is_active = 1 WHERE username = 'sysop2'",
-            [],
-        )
-        .unwrap();
+        sqlx::query(&format!(
+            "UPDATE users SET is_active = {} WHERE username = 'sysop2'",
+            SQL_TRUE
+        ))
+            .execute(db.pool())
+            .await
+            .unwrap();
 
         // Now we have 2 sysops, demotion should be allowed
         assert!(service
             .validate_role_change(&admin, &target, Role::Member)
+            .await
             .is_ok());
 
         // Make one inactive again
-        conn.execute(
-            "UPDATE users SET is_active = 0 WHERE username = 'sysop2'",
-            [],
-        )
-        .unwrap();
+        sqlx::query(&format!(
+            "UPDATE users SET is_active = {} WHERE username = 'sysop2'",
+            SQL_FALSE
+        ))
+            .execute(db.pool())
+            .await
+            .unwrap();
 
         // Create a new target that's the active sysop (id=1)
         let single_sysop = User {
@@ -588,30 +605,36 @@ mod tests {
         };
 
         // Now trying to demote should fail (last sysop)
-        let result = service.validate_role_change(&admin, &single_sysop, Role::Member);
+        let result = service
+            .validate_role_change(&admin, &single_sysop, Role::Member)
+            .await;
         assert!(matches!(result, Err(AdminError::LastSysOp)));
     }
 
-    #[test]
-    fn test_validate_role_change_subop_cannot_change() {
-        let db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_validate_role_change_subop_cannot_change() {
+        let db = Database::open_in_memory().await.unwrap();
         let service = AdminService::new(&db);
 
         let subop = create_test_user(1, Role::SubOp);
         let target = create_test_user(2, Role::Member);
 
-        let result = service.validate_role_change(&subop, &target, Role::SubOp);
+        let result = service
+            .validate_role_change(&subop, &target, Role::SubOp)
+            .await;
         assert!(matches!(result, Err(AdminError::Permission(_))));
     }
 
-    #[test]
-    fn test_validate_role_change_self() {
-        let db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_validate_role_change_self() {
+        let db = Database::open_in_memory().await.unwrap();
         let service = AdminService::new(&db);
 
         let sysop = create_test_user(1, Role::SysOp);
 
-        let result = service.validate_role_change(&sysop, &sysop, Role::Member);
+        let result = service
+            .validate_role_change(&sysop, &sysop, Role::Member)
+            .await;
         assert!(matches!(result, Err(AdminError::CannotModifySelf)));
     }
 }

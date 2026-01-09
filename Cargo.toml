@@ -5,12 +5,17 @@ edition = "2021"
 description = "Hobbyist Bulletin Board System - A retro BBS host program accessible via Telnet"
 license = "MIT"
 
+[features]
+default = ["sqlite"]
+sqlite = ["sqlx/sqlite"]
+postgres = ["sqlx/postgres"]
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 encoding_rs = "0.8"
 codepage-437 = "0.1"
 petscii = "0.2"
-rusqlite = { version = "0.31", features = ["bundled"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "chrono", "migrate"] }
 argon2 = { version = "0.5", features = ["std"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 toml = "0.8"

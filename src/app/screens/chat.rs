@@ -184,7 +184,8 @@ impl ChatScreen {
         session: &mut TelnetSession,
         room_id: &str,
     ) -> Result<()> {
-        let logs = ChatLogRepository::get_recent(ctx.db.conn(), room_id, 10)?;
+        let repo = ChatLogRepository::new(ctx.db.pool());
+        let logs = repo.get_recent(room_id, 10).await?;
 
         if !logs.is_empty() {
             ctx.send_line(session, "--- Recent messages ---").await?;
@@ -277,7 +278,8 @@ impl ChatScreen {
                                                 ctx.send_line(session, &format!("* {} {}", nickname, action)).await?;
                                                 // Save to log
                                                 let log = NewChatLog::action(room.id(), user_id.unwrap_or(0), nickname, &action);
-                                                let _ = ChatLogRepository::save(ctx.db.conn(), &log);
+                                                let repo = ChatLogRepository::new(ctx.db.pool());
+                                                let _ = repo.save(&log).await;
                                             }
                                         }
                                         ChatCommand::Help => {
@@ -321,7 +323,8 @@ impl ChatScreen {
                                         ctx.send_line(session, &format!("<{}> {}", nickname, content)).await?;
                                         // Save to log
                                         let log = NewChatLog::chat(room.id(), user_id.unwrap_or(0), nickname, &content);
-                                        let _ = ChatLogRepository::save(ctx.db.conn(), &log);
+                                        let repo = ChatLogRepository::new(ctx.db.pool());
+                                        let _ = repo.save(&log).await;
                                     }
                                 }
                             }

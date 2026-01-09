@@ -3,7 +3,7 @@
 //! This module defines the Post struct for both thread-based and flat boards.
 
 /// Post entity representing a message in a board or thread.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct Post {
     /// Unique post ID.
     pub id: i64,

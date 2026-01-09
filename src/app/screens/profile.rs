@@ -5,6 +5,7 @@ use tracing::error;
 use super::common::ScreenContext;
 use super::ScreenResult;
 use crate::auth::{change_password, update_profile, ProfileUpdateRequest};
+use crate::datetime::format_datetime;
 use crate::db::{Role, UserRepository, UserUpdate};
 use crate::error::Result;
 use crate::server::{EchoMode, TelnetSession};
@@ -28,8 +29,8 @@ impl ProfileScreen {
 
         loop {
             // Get user info
-            let user_repo = UserRepository::new(&ctx.db);
-            let user = match user_repo.get_by_id(user_id)? {
+            let user_repo = UserRepository::new(ctx.db.pool());
+            let user = match user_repo.get_by_id(user_id).await? {
                 Some(u) => u,
                 None => return Ok(ScreenResult::Back),
             };
@@ -46,10 +47,22 @@ impl ProfileScreen {
                 "user.role_name",
                 Value::string(Self::role_name(ctx, user.role)),
             );
-            context.set("user.created_at", Value::string(user.created_at.clone()));
+            context.set(
+                "user.created_at",
+                Value::string(format_datetime(
+                    &user.created_at,
+                    &ctx.config.server.timezone,
+                    "%Y/%m/%d %H:%M",
+                )),
+            );
             context.set(
                 "user.last_login",
-                Value::string(user.last_login.as_deref().unwrap_or("-").to_string()),
+                Value::string(
+                    user.last_login
+                        .as_deref()
+                        .map(|dt| format_datetime(dt, &ctx.config.server.timezone, "%Y/%m/%d %H:%M"))
+                        .unwrap_or_else(|| "-".to_string()),
+                ),
             );
             if let Some(ref bio) = user.profile {
                 context.set("user.bio", Value::string(bio.clone()));
@@ -100,8 +113,8 @@ impl ProfileScreen {
     ) -> Result<()> {
         // Get user info first
         let (current_nickname, current_email) = {
-            let user_repo = UserRepository::new(&ctx.db);
-            let user = match user_repo.get_by_id(user_id)? {
+            let user_repo = UserRepository::new(ctx.db.pool());
+            let user = match user_repo.get_by_id(user_id).await? {
                 Some(u) => u,
                 None => return Ok(()),
             };
@@ -182,8 +195,8 @@ impl ProfileScreen {
         }
 
         // Apply update - create a new user_repo for this operation
-        let user_repo = UserRepository::new(&ctx.db);
-        match update_profile(&user_repo, user_id, request) {
+        let user_repo = UserRepository::new(ctx.db.pool());
+        match update_profile(&user_repo, user_id, request).await {
             Ok(_) => {
                 ctx.send_line(session, ctx.i18n.t("profile.profile_updated"))
                     .await?;
@@ -250,8 +263,8 @@ impl ProfileScreen {
         }
 
         // Change password
-        let user_repo = UserRepository::new(&ctx.db);
-        match change_password(&user_repo, user_id, &current, &new_password) {
+        let user_repo = UserRepository::new(ctx.db.pool());
+        match change_password(&user_repo, user_id, &current, &new_password).await {
             Ok(()) => {
                 ctx.send_line(session, ctx.i18n.t("auth.password_changed"))
                     .await?;
@@ -274,8 +287,8 @@ impl ProfileScreen {
     ) -> Result<Option<ScreenResult>> {
         // Get current settings
         let (current_language, current_encoding, current_terminal, current_auto_paging) = {
-            let user_repo = UserRepository::new(&ctx.db);
-            let user = match user_repo.get_by_id(user_id)? {
+            let user_repo = UserRepository::new(ctx.db.pool());
+            let user = match user_repo.get_by_id(user_id).await? {
                 Some(u) => u,
                 None => return Ok(None),
             };
@@ -488,7 +501,7 @@ impl ProfileScreen {
         }
 
         // Save to database
-        let user_repo = UserRepository::new(&ctx.db);
+        let user_repo = UserRepository::new(ctx.db.pool());
         let mut update = UserUpdate::new()
             .language(new_language.clone())
             .encoding(new_encoding);
@@ -501,7 +514,7 @@ impl ProfileScreen {
             update = update.auto_paging(new_auto_paging);
         }
 
-        match user_repo.update(user_id, &update) {
+        match user_repo.update(user_id, &update).await {
             Ok(_) => {
                 ctx.send_line(session, "").await?;
                 ctx.send_line(session, ctx.i18n.t("settings.settings_saved"))

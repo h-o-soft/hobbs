@@ -2,218 +2,328 @@
 //!
 //! This module provides CRUD operations for threads in the database.
 
-use rusqlite::{params, Row};
+use sqlx::{FromRow, QueryBuilder};
 
-use super::thread::{NewThread, Thread, ThreadUpdate};
-use crate::db::Database;
+use super::thread::{NewThread, ThreadUpdate};
+
+// SQL datetime function for current timestamp
+#[cfg(feature = "sqlite")]
+const SQL_NOW: &str = "datetime('now')";
+#[cfg(feature = "postgres")]
+const SQL_NOW: &str = "TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')";
+use crate::db::DbPool;
 use crate::{HobbsError, Result};
+
+/// Thread entity representing a discussion thread in a board.
+///
+/// This struct is used for database queries with sqlx::FromRow.
+#[derive(Debug, Clone, FromRow)]
+pub struct ThreadRow {
+    /// Unique thread ID.
+    pub id: i64,
+    /// ID of the board this thread belongs to.
+    pub board_id: i64,
+    /// Thread title.
+    pub title: String,
+    /// ID of the user who created the thread.
+    pub author_id: i64,
+    /// Number of posts in this thread.
+    pub post_count: i32,
+    /// Thread creation timestamp.
+    pub created_at: String,
+    /// Last update timestamp (when a new post was added).
+    pub updated_at: String,
+}
+
+impl From<ThreadRow> for super::thread::Thread {
+    fn from(row: ThreadRow) -> Self {
+        super::thread::Thread {
+            id: row.id,
+            board_id: row.board_id,
+            title: row.title,
+            author_id: row.author_id,
+            post_count: row.post_count,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }
+    }
+}
 
 /// Repository for thread CRUD operations.
 pub struct ThreadRepository<'a> {
-    db: &'a Database,
+    pool: &'a DbPool,
 }
 
 impl<'a> ThreadRepository<'a> {
-    /// Create a new ThreadRepository with the given database reference.
-    pub fn new(db: &'a Database) -> Self {
-        Self { db }
+    /// Create a new ThreadRepository with the given database pool reference.
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
     }
 
     /// Create a new thread in the database.
     ///
     /// Returns the created thread with the assigned ID.
-    pub fn create(&self, new_thread: &NewThread) -> Result<Thread> {
-        self.db.conn().execute(
-            "INSERT INTO threads (board_id, title, author_id) VALUES (?, ?, ?)",
-            params![new_thread.board_id, &new_thread.title, new_thread.author_id,],
-        )?;
+    #[cfg(feature = "sqlite")]
+    pub async fn create(&self, new_thread: &NewThread) -> Result<super::thread::Thread> {
+        let id: i64 =
+            sqlx::query_scalar("INSERT INTO threads (board_id, title, author_id) VALUES (?, ?, ?) RETURNING id")
+                .bind(new_thread.board_id)
+                .bind(&new_thread.title)
+                .bind(new_thread.author_id)
+                .fetch_one(self.pool)
+                .await
+                .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = self.db.conn().last_insert_rowid();
-        self.get_by_id(id)?
+        self.get_by_id(id)
+            .await?
+            .ok_or_else(|| HobbsError::NotFound("thread".to_string()))
+    }
+
+    /// Create a new thread in the database.
+    ///
+    /// Returns the created thread with the assigned ID.
+    #[cfg(feature = "postgres")]
+    pub async fn create(&self, new_thread: &NewThread) -> Result<super::thread::Thread> {
+        let id: i64 =
+            sqlx::query_scalar("INSERT INTO threads (board_id, title, author_id) VALUES ($1, $2, $3) RETURNING id")
+                .bind(new_thread.board_id)
+                .bind(&new_thread.title)
+                .bind(new_thread.author_id)
+                .fetch_one(self.pool)
+                .await
+                .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        self.get_by_id(id)
+            .await?
             .ok_or_else(|| HobbsError::NotFound("thread".to_string()))
     }
 
     /// Get a thread by ID.
-    pub fn get_by_id(&self, id: i64) -> Result<Option<Thread>> {
-        let result = self.db.conn().query_row(
+    pub async fn get_by_id(&self, id: i64) -> Result<Option<super::thread::Thread>> {
+        let result = sqlx::query_as::<_, ThreadRow>(
             "SELECT id, board_id, title, author_id, post_count, created_at, updated_at
-             FROM threads WHERE id = ?",
-            [id],
-            Self::row_to_thread,
-        );
+             FROM threads WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        match result {
-            Ok(thread) => Ok(Some(thread)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        Ok(result.map(Into::into))
     }
 
     /// Update a thread by ID.
     ///
     /// Only fields that are set in the update will be modified.
     /// Returns the updated thread, or None if not found.
-    pub fn update(&self, id: i64, update: &ThreadUpdate) -> Result<Option<Thread>> {
+    #[cfg(feature = "sqlite")]
+    pub async fn update(
+        &self,
+        id: i64,
+        update: &ThreadUpdate,
+    ) -> Result<Option<super::thread::Thread>> {
         if update.is_empty() {
-            return self.get_by_id(id);
+            return self.get_by_id(id).await;
         }
 
-        let mut fields = Vec::new();
-        let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        let mut query: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new("UPDATE threads SET ");
+        let mut separated = query.separated(", ");
 
         if let Some(ref title) = update.title {
-            fields.push("title = ?");
-            values.push(Box::new(title.clone()));
+            separated.push("title = ");
+            separated.push_bind_unseparated(title);
         }
         if let Some(delta) = update.post_count_delta {
-            fields.push("post_count = post_count + ?");
-            values.push(Box::new(delta));
+            separated.push("post_count = post_count + ");
+            separated.push_bind_unseparated(delta);
         }
         if update.touch {
-            fields.push("updated_at = datetime('now')");
+            separated.push(format!("updated_at = {SQL_NOW}"));
         }
 
-        let sql = format!("UPDATE threads SET {} WHERE id = ?", fields.join(", "));
-        values.push(Box::new(id));
+        query.push(" WHERE id = ");
+        query.push_bind(id);
 
-        let params: Vec<&dyn rusqlite::ToSql> = values.iter().map(|v| v.as_ref()).collect();
-        let affected = self.db.conn().execute(&sql, params.as_slice())?;
+        let result = query
+            .build()
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        if affected == 0 {
+        if result.rows_affected() == 0 {
             return Ok(None);
         }
 
-        self.get_by_id(id)
+        self.get_by_id(id).await
+    }
+
+    /// Update a thread by ID.
+    ///
+    /// Only fields that are set in the update will be modified.
+    /// Returns the updated thread, or None if not found.
+    #[cfg(feature = "postgres")]
+    pub async fn update(
+        &self,
+        id: i64,
+        update: &ThreadUpdate,
+    ) -> Result<Option<super::thread::Thread>> {
+        if update.is_empty() {
+            return self.get_by_id(id).await;
+        }
+
+        let mut query: QueryBuilder<sqlx::Postgres> = QueryBuilder::new("UPDATE threads SET ");
+        let mut separated = query.separated(", ");
+
+        if let Some(ref title) = update.title {
+            separated.push("title = ");
+            separated.push_bind_unseparated(title);
+        }
+        if let Some(delta) = update.post_count_delta {
+            separated.push("post_count = post_count + ");
+            separated.push_bind_unseparated(delta);
+        }
+        if update.touch {
+            separated.push(format!("updated_at = {SQL_NOW}"));
+        }
+
+        query.push(" WHERE id = ");
+        query.push_bind(id);
+
+        let result = query
+            .build()
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        if result.rows_affected() == 0 {
+            return Ok(None);
+        }
+
+        self.get_by_id(id).await
     }
 
     /// Delete a thread by ID.
     ///
     /// Returns true if a thread was deleted, false if not found.
     /// Note: This will cascade delete all posts in the thread.
-    pub fn delete(&self, id: i64) -> Result<bool> {
-        let affected = self
-            .db
-            .conn()
-            .execute("DELETE FROM threads WHERE id = ?", [id])?;
-        Ok(affected > 0)
+    pub async fn delete(&self, id: i64) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM threads WHERE id = $1")
+            .bind(id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+        Ok(result.rows_affected() > 0)
     }
 
     /// List threads in a board, ordered by updated_at descending.
-    pub fn list_by_board(&self, board_id: i64) -> Result<Vec<Thread>> {
-        let mut stmt = self.db.conn().prepare(
+    pub async fn list_by_board(&self, board_id: i64) -> Result<Vec<super::thread::Thread>> {
+        let rows = sqlx::query_as::<_, ThreadRow>(
             "SELECT id, board_id, title, author_id, post_count, created_at, updated_at
-             FROM threads WHERE board_id = ? ORDER BY updated_at DESC, id DESC",
-        )?;
+             FROM threads WHERE board_id = $1 ORDER BY updated_at DESC, id DESC",
+        )
+        .bind(board_id)
+        .fetch_all(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let threads = stmt
-            .query_map([board_id], Self::row_to_thread)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-
-        Ok(threads)
+        Ok(rows.into_iter().map(Into::into).collect())
     }
 
     /// List threads in a board with pagination.
-    pub fn list_by_board_paginated(
+    pub async fn list_by_board_paginated(
         &self,
         board_id: i64,
         offset: i64,
         limit: i64,
-    ) -> Result<Vec<Thread>> {
-        let mut stmt = self.db.conn().prepare(
+    ) -> Result<Vec<super::thread::Thread>> {
+        let rows = sqlx::query_as::<_, ThreadRow>(
             "SELECT id, board_id, title, author_id, post_count, created_at, updated_at
-             FROM threads WHERE board_id = ? ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?",
-        )?;
+             FROM threads WHERE board_id = $1 ORDER BY updated_at DESC, id DESC LIMIT $2 OFFSET $3",
+        )
+        .bind(board_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let threads = stmt
-            .query_map([board_id, limit, offset], Self::row_to_thread)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-
-        Ok(threads)
+        Ok(rows.into_iter().map(Into::into).collect())
     }
 
     /// List threads by author.
-    pub fn list_by_author(&self, author_id: i64) -> Result<Vec<Thread>> {
-        let mut stmt = self.db.conn().prepare(
+    pub async fn list_by_author(&self, author_id: i64) -> Result<Vec<super::thread::Thread>> {
+        let rows = sqlx::query_as::<_, ThreadRow>(
             "SELECT id, board_id, title, author_id, post_count, created_at, updated_at
-             FROM threads WHERE author_id = ? ORDER BY updated_at DESC",
-        )?;
+             FROM threads WHERE author_id = $1 ORDER BY updated_at DESC",
+        )
+        .bind(author_id)
+        .fetch_all(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let threads = stmt
-            .query_map([author_id], Self::row_to_thread)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-
-        Ok(threads)
+        Ok(rows.into_iter().map(Into::into).collect())
     }
 
     /// Count threads in a board.
-    pub fn count_by_board(&self, board_id: i64) -> Result<i64> {
-        let count: i64 = self.db.conn().query_row(
-            "SELECT COUNT(*) FROM threads WHERE board_id = ?",
-            [board_id],
-            |row| row.get(0),
-        )?;
-        Ok(count)
+    pub async fn count_by_board(&self, board_id: i64) -> Result<i64> {
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM threads WHERE board_id = $1")
+            .bind(board_id)
+            .fetch_one(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+        Ok(count.0)
     }
 
     /// Touch a thread (update updated_at to now) and increment post count.
     ///
     /// This is a convenience method for when a new post is added to a thread.
-    pub fn touch_and_increment(&self, id: i64) -> Result<Option<Thread>> {
+    pub async fn touch_and_increment(&self, id: i64) -> Result<Option<super::thread::Thread>> {
         self.update(id, &ThreadUpdate::new().touch().increment_post_count())
+            .await
     }
 
     /// Decrement post count when a post is deleted.
-    pub fn decrement_post_count(&self, id: i64) -> Result<Option<Thread>> {
+    pub async fn decrement_post_count(&self, id: i64) -> Result<Option<super::thread::Thread>> {
         self.update(id, &ThreadUpdate::new().decrement_post_count())
-    }
-
-    /// Convert a database row to a Thread struct.
-    fn row_to_thread(row: &Row<'_>) -> rusqlite::Result<Thread> {
-        Ok(Thread {
-            id: row.get(0)?,
-            board_id: row.get(1)?,
-            title: row.get(2)?,
-            author_id: row.get(3)?,
-            post_count: row.get(4)?,
-            created_at: row.get(5)?,
-            updated_at: row.get(6)?,
-        })
+            .await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::board::{BoardRepository, NewBoard};
+    use crate::board::{BoardRepository, NewBoard, NewThread};
     use crate::db::{NewUser, UserRepository};
+    use crate::Database;
 
-    fn setup_db() -> Database {
-        Database::open_in_memory().unwrap()
+    async fn setup_db() -> Database {
+        Database::open_in_memory().await.unwrap()
     }
 
-    fn create_test_board(db: &Database) -> i64 {
-        let repo = BoardRepository::new(db);
-        let board = repo.create(&NewBoard::new("test-board")).unwrap();
+    async fn create_test_board(db: &Database) -> i64 {
+        let repo = BoardRepository::new(db.pool());
+        let board = repo.create(&NewBoard::new("test-board")).await.unwrap();
         board.id
     }
 
-    fn create_test_user(db: &Database) -> i64 {
-        let repo = UserRepository::new(db);
+    async fn create_test_user(db: &Database) -> i64 {
+        let repo = UserRepository::new(db.pool());
         let user = repo
             .create(&NewUser::new("testuser", "hash", "Test User"))
+            .await
             .unwrap();
         user.id
     }
 
-    #[test]
-    fn test_create_thread() {
-        let db = setup_db();
-        let board_id = create_test_board(&db);
-        let author_id = create_test_user(&db);
-        let repo = ThreadRepository::new(&db);
+    #[tokio::test]
+    async fn test_create_thread() {
+        let db = setup_db().await;
+        let board_id = create_test_board(&db).await;
+        let author_id = create_test_user(&db).await;
+        let repo = ThreadRepository::new(db.pool());
 
         let new_thread = NewThread::new(board_id, "Test Thread", author_id);
-        let thread = repo.create(&new_thread).unwrap();
+        let thread = repo.create(&new_thread).await.unwrap();
 
         assert_eq!(thread.board_id, board_id);
         assert_eq!(thread.title, "Test Thread");
@@ -221,219 +331,229 @@ mod tests {
         assert_eq!(thread.post_count, 0);
     }
 
-    #[test]
-    fn test_get_by_id() {
-        let db = setup_db();
-        let board_id = create_test_board(&db);
-        let author_id = create_test_user(&db);
-        let repo = ThreadRepository::new(&db);
+    #[tokio::test]
+    async fn test_get_by_id() {
+        let db = setup_db().await;
+        let board_id = create_test_board(&db).await;
+        let author_id = create_test_user(&db).await;
+        let repo = ThreadRepository::new(db.pool());
 
         let new_thread = NewThread::new(board_id, "Test Thread", author_id);
-        let created = repo.create(&new_thread).unwrap();
+        let created = repo.create(&new_thread).await.unwrap();
 
-        let found = repo.get_by_id(created.id).unwrap();
+        let found = repo.get_by_id(created.id).await.unwrap();
         assert!(found.is_some());
         assert_eq!(found.unwrap().title, "Test Thread");
 
-        let not_found = repo.get_by_id(999).unwrap();
+        let not_found = repo.get_by_id(999).await.unwrap();
         assert!(not_found.is_none());
     }
 
-    #[test]
-    fn test_update_thread_title() {
-        let db = setup_db();
-        let board_id = create_test_board(&db);
-        let author_id = create_test_user(&db);
-        let repo = ThreadRepository::new(&db);
+    #[tokio::test]
+    async fn test_update_thread_title() {
+        let db = setup_db().await;
+        let board_id = create_test_board(&db).await;
+        let author_id = create_test_user(&db).await;
+        let repo = ThreadRepository::new(db.pool());
 
         let new_thread = NewThread::new(board_id, "Original Title", author_id);
-        let thread = repo.create(&new_thread).unwrap();
+        let thread = repo.create(&new_thread).await.unwrap();
 
         let update = ThreadUpdate::new().title("Updated Title");
-        let updated = repo.update(thread.id, &update).unwrap().unwrap();
+        let updated = repo.update(thread.id, &update).await.unwrap().unwrap();
 
         assert_eq!(updated.title, "Updated Title");
     }
 
-    #[test]
-    fn test_update_empty() {
-        let db = setup_db();
-        let board_id = create_test_board(&db);
-        let author_id = create_test_user(&db);
-        let repo = ThreadRepository::new(&db);
+    #[tokio::test]
+    async fn test_update_empty() {
+        let db = setup_db().await;
+        let board_id = create_test_board(&db).await;
+        let author_id = create_test_user(&db).await;
+        let repo = ThreadRepository::new(db.pool());
 
         let new_thread = NewThread::new(board_id, "Test Thread", author_id);
-        let thread = repo.create(&new_thread).unwrap();
+        let thread = repo.create(&new_thread).await.unwrap();
 
         let update = ThreadUpdate::new();
-        let result = repo.update(thread.id, &update).unwrap();
+        let result = repo.update(thread.id, &update).await.unwrap();
 
         assert!(result.is_some());
         assert_eq!(result.unwrap().title, "Test Thread");
     }
 
-    #[test]
-    fn test_update_nonexistent_thread() {
-        let db = setup_db();
-        let repo = ThreadRepository::new(&db);
+    #[tokio::test]
+    async fn test_update_nonexistent_thread() {
+        let db = setup_db().await;
+        let repo = ThreadRepository::new(db.pool());
 
         let update = ThreadUpdate::new().title("New Title");
-        let result = repo.update(999, &update).unwrap();
+        let result = repo.update(999, &update).await.unwrap();
 
         assert!(result.is_none());
     }
 
-    #[test]
-    fn test_touch_and_increment() {
-        let db = setup_db();
-        let board_id = create_test_board(&db);
-        let author_id = create_test_user(&db);
-        let repo = ThreadRepository::new(&db);
+    #[tokio::test]
+    async fn test_touch_and_increment() {
+        let db = setup_db().await;
+        let board_id = create_test_board(&db).await;
+        let author_id = create_test_user(&db).await;
+        let repo = ThreadRepository::new(db.pool());
 
         let new_thread = NewThread::new(board_id, "Test Thread", author_id);
-        let thread = repo.create(&new_thread).unwrap();
+        let thread = repo.create(&new_thread).await.unwrap();
         let original_updated_at = thread.updated_at.clone();
         assert_eq!(thread.post_count, 0);
 
         // Wait a tiny bit to ensure timestamp changes
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
-        let updated = repo.touch_and_increment(thread.id).unwrap().unwrap();
+        let updated = repo.touch_and_increment(thread.id).await.unwrap().unwrap();
         assert_eq!(updated.post_count, 1);
         // updated_at should be different (or at least not less than original)
         assert!(updated.updated_at >= original_updated_at);
     }
 
-    #[test]
-    fn test_decrement_post_count() {
-        let db = setup_db();
-        let board_id = create_test_board(&db);
-        let author_id = create_test_user(&db);
-        let repo = ThreadRepository::new(&db);
+    #[tokio::test]
+    async fn test_decrement_post_count() {
+        let db = setup_db().await;
+        let board_id = create_test_board(&db).await;
+        let author_id = create_test_user(&db).await;
+        let repo = ThreadRepository::new(db.pool());
 
         let new_thread = NewThread::new(board_id, "Test Thread", author_id);
-        let thread = repo.create(&new_thread).unwrap();
+        let thread = repo.create(&new_thread).await.unwrap();
 
         // First increment
-        repo.touch_and_increment(thread.id).unwrap();
-        repo.touch_and_increment(thread.id).unwrap();
+        repo.touch_and_increment(thread.id).await.unwrap();
+        repo.touch_and_increment(thread.id).await.unwrap();
 
-        let thread = repo.get_by_id(thread.id).unwrap().unwrap();
+        let thread = repo.get_by_id(thread.id).await.unwrap().unwrap();
         assert_eq!(thread.post_count, 2);
 
         // Then decrement
-        let updated = repo.decrement_post_count(thread.id).unwrap().unwrap();
+        let updated = repo.decrement_post_count(thread.id).await.unwrap().unwrap();
         assert_eq!(updated.post_count, 1);
     }
 
-    #[test]
-    fn test_delete_thread() {
-        let db = setup_db();
-        let board_id = create_test_board(&db);
-        let author_id = create_test_user(&db);
-        let repo = ThreadRepository::new(&db);
+    #[tokio::test]
+    async fn test_delete_thread() {
+        let db = setup_db().await;
+        let board_id = create_test_board(&db).await;
+        let author_id = create_test_user(&db).await;
+        let repo = ThreadRepository::new(db.pool());
 
         let new_thread = NewThread::new(board_id, "Test Thread", author_id);
-        let thread = repo.create(&new_thread).unwrap();
+        let thread = repo.create(&new_thread).await.unwrap();
 
-        let deleted = repo.delete(thread.id).unwrap();
+        let deleted = repo.delete(thread.id).await.unwrap();
         assert!(deleted);
 
-        let found = repo.get_by_id(thread.id).unwrap();
+        let found = repo.get_by_id(thread.id).await.unwrap();
         assert!(found.is_none());
 
         // Deleting again should return false
-        let deleted_again = repo.delete(thread.id).unwrap();
+        let deleted_again = repo.delete(thread.id).await.unwrap();
         assert!(!deleted_again);
     }
 
-    #[test]
-    fn test_list_by_board() {
-        let db = setup_db();
-        let board_id = create_test_board(&db);
-        let author_id = create_test_user(&db);
-        let repo = ThreadRepository::new(&db);
+    #[tokio::test]
+    async fn test_list_by_board() {
+        let db = setup_db().await;
+        let board_id = create_test_board(&db).await;
+        let author_id = create_test_user(&db).await;
+        let repo = ThreadRepository::new(db.pool());
 
         // Create some threads
         repo.create(&NewThread::new(board_id, "Thread 1", author_id))
+            .await
             .unwrap();
         repo.create(&NewThread::new(board_id, "Thread 2", author_id))
+            .await
             .unwrap();
         repo.create(&NewThread::new(board_id, "Thread 3", author_id))
+            .await
             .unwrap();
 
-        let threads = repo.list_by_board(board_id).unwrap();
+        let threads = repo.list_by_board(board_id).await.unwrap();
         assert_eq!(threads.len(), 3);
         // Should be ordered by updated_at DESC, so newest first
         assert_eq!(threads[0].title, "Thread 3");
     }
 
-    #[test]
-    fn test_list_by_board_paginated() {
-        let db = setup_db();
-        let board_id = create_test_board(&db);
-        let author_id = create_test_user(&db);
-        let repo = ThreadRepository::new(&db);
+    #[tokio::test]
+    async fn test_list_by_board_paginated() {
+        let db = setup_db().await;
+        let board_id = create_test_board(&db).await;
+        let author_id = create_test_user(&db).await;
+        let repo = ThreadRepository::new(db.pool());
 
         // Create some threads
         for i in 1..=5 {
             repo.create(&NewThread::new(board_id, format!("Thread {i}"), author_id))
+                .await
                 .unwrap();
         }
 
         // Get first page
-        let page1 = repo.list_by_board_paginated(board_id, 0, 2).unwrap();
+        let page1 = repo.list_by_board_paginated(board_id, 0, 2).await.unwrap();
         assert_eq!(page1.len(), 2);
         assert_eq!(page1[0].title, "Thread 5");
         assert_eq!(page1[1].title, "Thread 4");
 
         // Get second page
-        let page2 = repo.list_by_board_paginated(board_id, 2, 2).unwrap();
+        let page2 = repo.list_by_board_paginated(board_id, 2, 2).await.unwrap();
         assert_eq!(page2.len(), 2);
         assert_eq!(page2[0].title, "Thread 3");
         assert_eq!(page2[1].title, "Thread 2");
     }
 
-    #[test]
-    fn test_list_by_author() {
-        let db = setup_db();
-        let board_id = create_test_board(&db);
-        let author_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_list_by_author() {
+        let db = setup_db().await;
+        let board_id = create_test_board(&db).await;
+        let author_id = create_test_user(&db).await;
 
         // Create another user
-        let user_repo = UserRepository::new(&db);
+        let user_repo = UserRepository::new(db.pool());
         let other_author = user_repo
             .create(&NewUser::new("other", "hash", "Other"))
+            .await
             .unwrap();
 
-        let repo = ThreadRepository::new(&db);
+        let repo = ThreadRepository::new(db.pool());
 
         // Create threads by different authors
         repo.create(&NewThread::new(board_id, "Thread 1", author_id))
+            .await
             .unwrap();
         repo.create(&NewThread::new(board_id, "Thread 2", other_author.id))
+            .await
             .unwrap();
         repo.create(&NewThread::new(board_id, "Thread 3", author_id))
+            .await
             .unwrap();
 
-        let threads = repo.list_by_author(author_id).unwrap();
+        let threads = repo.list_by_author(author_id).await.unwrap();
         assert_eq!(threads.len(), 2);
     }
 
-    #[test]
-    fn test_count_by_board() {
-        let db = setup_db();
-        let board_id = create_test_board(&db);
-        let author_id = create_test_user(&db);
-        let repo = ThreadRepository::new(&db);
+    #[tokio::test]
+    async fn test_count_by_board() {
+        let db = setup_db().await;
+        let board_id = create_test_board(&db).await;
+        let author_id = create_test_user(&db).await;
+        let repo = ThreadRepository::new(db.pool());
 
-        assert_eq!(repo.count_by_board(board_id).unwrap(), 0);
+        assert_eq!(repo.count_by_board(board_id).await.unwrap(), 0);
 
         repo.create(&NewThread::new(board_id, "Thread 1", author_id))
+            .await
             .unwrap();
         repo.create(&NewThread::new(board_id, "Thread 2", author_id))
+            .await
             .unwrap();
 
-        assert_eq!(repo.count_by_board(board_id).unwrap(), 2);
+        assert_eq!(repo.count_by_board(board_id).await.unwrap(), 2);
     }
 }

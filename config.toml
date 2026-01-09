@@ -9,7 +9,11 @@ idle_timeout_secs = 300
 timezone = "Asia/Tokyo"
 
 [database]
+# SQLite版（--features sqlite でビルドした場合）
 path = "data/hobbs.db"
+
+# PostgreSQL版（--features postgres でビルドした場合、上記pathの代わりに使用）
+# url = "postgres://hobbs:password@localhost/hobbs"
 
 [files]
 storage_path = "data/files"

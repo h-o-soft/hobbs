@@ -1,37 +1,45 @@
 //! Test helpers for E2E tests.
 //!
 //! Provides TestClient, TestServer, and helper functions for E2E testing.
+//!
+//! Note: TestServer uses file-based SQLite databases for isolation,
+//! so E2E tests are only available when compiled with the `sqlite` feature.
 
 use std::net::SocketAddr;
+#[cfg(feature = "sqlite")]
 use std::path::PathBuf;
+#[cfg(feature = "sqlite")]
 use std::sync::Arc;
+#[cfg(feature = "sqlite")]
 use std::thread;
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+#[cfg(feature = "sqlite")]
 use tokio::sync::oneshot;
-use tokio::task::LocalSet;
 use tokio::time::timeout;
 
+#[cfg(feature = "sqlite")]
 use hobbs::chat::ChatRoomManager;
-use hobbs::config::{
-    BbsConfig, Config, DatabaseConfig, LocaleConfig, LoggingConfig, RssConfig, ServerConfig,
-    WebConfig,
-};
+use hobbs::config::{BbsConfig, Config, DatabaseConfig, LocaleConfig, LoggingConfig, ServerConfig};
 use hobbs::server::{encode_for_client, CharacterEncoding, SessionManager};
+#[cfg(feature = "sqlite")]
 use hobbs::{Application, Database, I18nManager, TelnetServer, TelnetSession, TemplateLoader};
 
 /// Default timeout for test operations.
+#[cfg(feature = "sqlite")]
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Test client for connecting to the BBS server.
+#[cfg(feature = "sqlite")]
 pub struct TestClient {
     stream: TcpStream,
     encoding: CharacterEncoding,
     buffer: Vec<u8>,
 }
 
+#[cfg(feature = "sqlite")]
 impl TestClient {
     /// Connect to the server at the given address.
     pub async fn connect(addr: SocketAddr) -> Result<Self, std::io::Error> {
@@ -359,6 +367,10 @@ impl TestClient {
 
 /// Test server configuration and lifecycle management.
 /// Runs the server in a separate thread with its own tokio runtime.
+///
+/// Note: This struct is only available with the `sqlite` feature because
+/// it uses file-based SQLite databases for test isolation.
+#[cfg(feature = "sqlite")]
 pub struct TestServer {
     addr: SocketAddr,
     db: Database,
@@ -367,6 +379,7 @@ pub struct TestServer {
     _thread_handle: Option<thread::JoinHandle<()>>,
 }
 
+#[cfg(feature = "sqlite")]
 impl TestServer {
     /// Create a new test server with a temporary file-based database.
     pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
@@ -379,7 +392,7 @@ impl TestServer {
         let db_path = std::env::temp_dir().join(format!("hobbs_test_{}.db", uuid::Uuid::new_v4()));
 
         // Create database for test setup (in this thread)
-        let db = Database::open(&db_path)?;
+        let db = Database::open(&db_path).await?;
 
         // Bind server to a random port first to get the address
         let server_config = ServerConfig {
@@ -414,6 +427,7 @@ impl TestServer {
                     // Create database connection for this thread
                     let server_db = Arc::new(
                         Database::open(&db_path_for_server)
+                            .await
                             .expect("Failed to open database in server thread"),
                     );
 
@@ -499,6 +513,7 @@ impl TestServer {
     }
 }
 
+#[cfg(feature = "sqlite")]
 impl Drop for TestServer {
     fn drop(&mut self) {
         self.stop();
@@ -526,6 +541,7 @@ pub fn test_config() -> Config {
         },
         database: DatabaseConfig {
             path: ":memory:".to_string(),
+            ..Default::default()
         },
         bbs: BbsConfig {
             name: "Test BBS".to_string(),
@@ -554,6 +570,7 @@ pub fn test_config() -> Config {
 /// async closure with a connected client, and cleans up afterward.
 /// Note: The client receives raw connection data; tests should handle
 /// Telnet negotiation and welcome screen as needed.
+#[cfg(feature = "sqlite")]
 pub async fn with_test_server<F, Fut>(f: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: FnOnce(TestClient) -> Fut,
@@ -578,6 +595,7 @@ where
 }
 
 /// Run a test with a server and multiple clients.
+#[cfg(feature = "sqlite")]
 pub async fn with_test_server_multi<F, Fut>(
     num_clients: usize,
     f: F,
@@ -609,56 +627,69 @@ where
 }
 
 /// Create a test user in the database.
-pub fn create_test_user(
-    db: &Database,
+#[cfg(feature = "sqlite")]
+pub async fn create_test_user(
+    db: &hobbs::Database,
     username: &str,
     password: &str,
     role: &str,
 ) -> Result<i64, Box<dyn std::error::Error>> {
+    use hobbs::db::{NewUser, Role, UserRepository};
+
     let password_hash = hobbs::hash_password(password)?;
+    let user_role: Role = role.parse().unwrap_or(Role::Member);
 
-    db.conn().execute(
-        "INSERT INTO users (username, password, nickname, role) VALUES (?, ?, ?, ?)",
-        rusqlite::params![username, password_hash, username, role],
-    )?;
+    let user_repo = UserRepository::new(db.pool());
+    let new_user = NewUser::new(username, &password_hash, username).with_role(user_role);
+    let user = user_repo.create(&new_user).await?;
 
-    let id = db.conn().last_insert_rowid();
-    Ok(id)
+    Ok(user.id)
 }
 
 /// Create a test user with specific language and encoding settings.
-pub fn create_test_user_with_settings(
-    db: &Database,
+#[cfg(feature = "sqlite")]
+pub async fn create_test_user_with_settings(
+    db: &hobbs::Database,
     username: &str,
     password: &str,
     role: &str,
     language: &str,
     encoding: &str,
 ) -> Result<i64, Box<dyn std::error::Error>> {
+    use hobbs::db::{NewUser, Role, UserRepository};
+    use hobbs::server::CharacterEncoding;
+
     let password_hash = hobbs::hash_password(password)?;
+    let user_role: Role = role.parse().unwrap_or(Role::Member);
+    let char_encoding: CharacterEncoding = encoding.parse().unwrap_or(CharacterEncoding::ShiftJIS);
 
-    db.conn().execute(
-        "INSERT INTO users (username, password, nickname, role, language, encoding) VALUES (?, ?, ?, ?, ?, ?)",
-        rusqlite::params![username, password_hash, username, role, language, encoding],
-    )?;
+    let user_repo = UserRepository::new(db.pool());
+    let new_user = NewUser::new(username, &password_hash, username)
+        .with_role(user_role)
+        .with_language(language)
+        .with_encoding(char_encoding);
+    let user = user_repo.create(&new_user).await?;
 
-    let id = db.conn().last_insert_rowid();
-    Ok(id)
+    Ok(user.id)
 }
 
 /// Create a test board in the database.
-pub fn create_test_board(
-    db: &Database,
+#[cfg(feature = "sqlite")]
+pub async fn create_test_board(
+    db: &hobbs::Database,
     name: &str,
     board_type: &str,
 ) -> Result<i64, Box<dyn std::error::Error>> {
-    db.conn().execute(
-        "INSERT INTO boards (name, description, board_type) VALUES (?, ?, ?)",
-        rusqlite::params![name, format!("Test board: {}", name), board_type],
-    )?;
+    use hobbs::board::{BoardRepository, BoardType, NewBoard};
 
-    let id = db.conn().last_insert_rowid();
-    Ok(id)
+    let bt: BoardType = board_type.parse().unwrap_or(BoardType::Thread);
+    let board_repo = BoardRepository::new(db.pool());
+    let new_board = NewBoard::new(name)
+        .with_description(&format!("Test board: {}", name))
+        .with_board_type(bt);
+    let board = board_repo.create(&new_board).await?;
+
+    Ok(board.id)
 }
 
 #[cfg(test)]
@@ -672,6 +703,7 @@ mod tests {
         assert_eq!(config.locale.language, "en");
     }
 
+    #[cfg(feature = "sqlite")]
     #[tokio::test]
     async fn test_create_test_server() {
         let server = TestServer::new().await;

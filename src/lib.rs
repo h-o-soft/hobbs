@@ -91,9 +91,9 @@ pub use template::{
 };
 
 pub use app::{Application, MenuAction, MenuError, SessionHandler};
+pub use rate_limit::{ActionRateLimiter, RateLimitConfig, RateLimitResult, RateLimiters};
 pub use script::{
     BbsApi, ExecutionResult, ResourceLimits, Script, ScriptContext, ScriptEngine, ScriptLoader,
     ScriptMetadata, ScriptRepository, ScriptService, SyncResult,
 };
-pub use rate_limit::{ActionRateLimiter, RateLimitConfig, RateLimitResult, RateLimiters};
 pub use xmodem::{xmodem_receive, xmodem_send, TransferError, TransferResult};

@@ -2,12 +2,19 @@
 //!
 //! Provides storage for script-specific data, both global and per-user.
 
-use crate::db::Database;
-use crate::error::Result;
-use rusqlite::{params, OptionalExtension};
+use crate::db::DbPool;
+use crate::error::{HobbsError, Result};
+
+/// SQL expression for current timestamp (SQLite).
+#[cfg(feature = "sqlite")]
+const SQL_NOW: &str = "datetime('now')";
+
+/// SQL expression for current timestamp (PostgreSQL).
+#[cfg(feature = "postgres")]
+const SQL_NOW: &str = "TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')";
 
 /// A single script data entry.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ScriptData {
     /// Unique identifier.
     pub id: i64,
@@ -25,375 +32,461 @@ pub struct ScriptData {
 
 /// Repository for script data operations.
 pub struct ScriptDataRepository<'a> {
-    db: &'a Database,
+    pool: &'a DbPool,
 }
 
 impl<'a> ScriptDataRepository<'a> {
     /// Create a new script data repository.
-    pub fn new(db: &'a Database) -> Self {
-        Self { db }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
     }
 
     /// Get global data for a script.
-    pub fn get_global(&self, script_id: i64, key: &str) -> Result<Option<String>> {
-        let conn = self.db.conn();
-        let mut stmt = conn.prepare(
-            "SELECT value FROM script_data WHERE script_id = ? AND user_id IS NULL AND key = ?",
-        )?;
-
-        let result = stmt
-            .query_row(params![script_id, key], |row| row.get::<_, String>(0))
-            .optional()?;
+    pub async fn get_global(&self, script_id: i64, key: &str) -> Result<Option<String>> {
+        let result = sqlx::query_scalar::<_, String>(
+            "SELECT value FROM script_data WHERE script_id = $1 AND user_id IS NULL AND key = $2",
+        )
+        .bind(script_id)
+        .bind(key)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(result)
     }
 
     /// Set global data for a script.
-    pub fn set_global(&self, script_id: i64, key: &str, value: &str) -> Result<()> {
-        let conn = self.db.conn();
-
+    pub async fn set_global(&self, script_id: i64, key: &str, value: &str) -> Result<()> {
         // SQLite doesn't treat NULL as equal in UNIQUE constraints,
         // so we need to check and update/insert separately
-        let exists: i32 = conn
-            .prepare("SELECT COUNT(*) FROM script_data WHERE script_id = ? AND user_id IS NULL AND key = ?")?
-            .query_row(params![script_id, key], |row| row.get(0))?;
+        let exists: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM script_data WHERE script_id = $1 AND user_id IS NULL AND key = $2",
+        )
+        .bind(script_id)
+        .bind(key)
+        .fetch_one(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         if exists > 0 {
-            conn.execute(
-                "UPDATE script_data SET value = ?, updated_at = datetime('now') WHERE script_id = ? AND user_id IS NULL AND key = ?",
-                params![value, script_id, key],
-            )?;
+            sqlx::query(&format!(
+                "UPDATE script_data SET value = $1, updated_at = {} WHERE script_id = $2 AND user_id IS NULL AND key = $3",
+                SQL_NOW
+            ))
+            .bind(value)
+            .bind(script_id)
+            .bind(key)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
         } else {
-            conn.execute(
-                "INSERT INTO script_data (script_id, user_id, key, value, updated_at) VALUES (?, NULL, ?, ?, datetime('now'))",
-                params![script_id, key, value],
-            )?;
+            sqlx::query(&format!(
+                "INSERT INTO script_data (script_id, user_id, key, value, updated_at) VALUES ($1, NULL, $2, $3, {})",
+                SQL_NOW
+            ))
+            .bind(script_id)
+            .bind(key)
+            .bind(value)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
         }
 
         Ok(())
     }
 
     /// Delete global data for a script.
-    pub fn delete_global(&self, script_id: i64, key: &str) -> Result<bool> {
-        let conn = self.db.conn();
-        let affected = conn.execute(
-            "DELETE FROM script_data WHERE script_id = ? AND user_id IS NULL AND key = ?",
-            params![script_id, key],
-        )?;
+    pub async fn delete_global(&self, script_id: i64, key: &str) -> Result<bool> {
+        let result = sqlx::query(
+            "DELETE FROM script_data WHERE script_id = $1 AND user_id IS NULL AND key = $2",
+        )
+        .bind(script_id)
+        .bind(key)
+        .execute(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        Ok(affected > 0)
+        Ok(result.rows_affected() > 0)
     }
 
     /// Get user-specific data for a script.
-    pub fn get_user(&self, script_id: i64, user_id: i64, key: &str) -> Result<Option<String>> {
-        let conn = self.db.conn();
-        let mut stmt = conn.prepare(
-            "SELECT value FROM script_data WHERE script_id = ? AND user_id = ? AND key = ?",
-        )?;
-
-        let result = stmt
-            .query_row(params![script_id, user_id, key], |row| {
-                row.get::<_, String>(0)
-            })
-            .optional()?;
+    pub async fn get_user(
+        &self,
+        script_id: i64,
+        user_id: i64,
+        key: &str,
+    ) -> Result<Option<String>> {
+        let result = sqlx::query_scalar::<_, String>(
+            "SELECT value FROM script_data WHERE script_id = $1 AND user_id = $2 AND key = $3",
+        )
+        .bind(script_id)
+        .bind(user_id)
+        .bind(key)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(result)
     }
 
     /// Set user-specific data for a script.
-    pub fn set_user(&self, script_id: i64, user_id: i64, key: &str, value: &str) -> Result<()> {
-        let conn = self.db.conn();
-        conn.execute(
+    pub async fn set_user(
+        &self,
+        script_id: i64,
+        user_id: i64,
+        key: &str,
+        value: &str,
+    ) -> Result<()> {
+        sqlx::query(&format!(
             r#"
             INSERT INTO script_data (script_id, user_id, key, value, updated_at)
-            VALUES (?, ?, ?, ?, datetime('now'))
+            VALUES ($1, $2, $3, $4, {})
             ON CONFLICT(script_id, user_id, key) DO UPDATE SET
                 value = excluded.value,
-                updated_at = datetime('now')
+                updated_at = {}
             "#,
-            params![script_id, user_id, key, value],
-        )?;
+            SQL_NOW, SQL_NOW
+        ))
+        .bind(script_id)
+        .bind(user_id)
+        .bind(key)
+        .bind(value)
+        .execute(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(())
     }
 
     /// Delete user-specific data for a script.
-    pub fn delete_user(&self, script_id: i64, user_id: i64, key: &str) -> Result<bool> {
-        let conn = self.db.conn();
-        let affected = conn.execute(
-            "DELETE FROM script_data WHERE script_id = ? AND user_id = ? AND key = ?",
-            params![script_id, user_id, key],
-        )?;
+    pub async fn delete_user(&self, script_id: i64, user_id: i64, key: &str) -> Result<bool> {
+        let result =
+            sqlx::query("DELETE FROM script_data WHERE script_id = $1 AND user_id = $2 AND key = $3")
+                .bind(script_id)
+                .bind(user_id)
+                .bind(key)
+                .execute(self.pool)
+                .await
+                .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        Ok(affected > 0)
+        Ok(result.rows_affected() > 0)
     }
 
     /// List all global keys for a script.
-    pub fn list_global_keys(&self, script_id: i64) -> Result<Vec<String>> {
-        let conn = self.db.conn();
-        let mut stmt = conn.prepare(
-            "SELECT key FROM script_data WHERE script_id = ? AND user_id IS NULL ORDER BY key",
-        )?;
-
-        let keys = stmt
-            .query_map(params![script_id], |row| row.get::<_, String>(0))?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
+    pub async fn list_global_keys(&self, script_id: i64) -> Result<Vec<String>> {
+        let keys = sqlx::query_scalar::<_, String>(
+            "SELECT key FROM script_data WHERE script_id = $1 AND user_id IS NULL ORDER BY key",
+        )
+        .bind(script_id)
+        .fetch_all(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(keys)
     }
 
     /// List all user-specific keys for a script.
-    pub fn list_user_keys(&self, script_id: i64, user_id: i64) -> Result<Vec<String>> {
-        let conn = self.db.conn();
-        let mut stmt = conn.prepare(
-            "SELECT key FROM script_data WHERE script_id = ? AND user_id = ? ORDER BY key",
-        )?;
-
-        let keys = stmt
-            .query_map(params![script_id, user_id], |row| row.get::<_, String>(0))?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
+    pub async fn list_user_keys(&self, script_id: i64, user_id: i64) -> Result<Vec<String>> {
+        let keys = sqlx::query_scalar::<_, String>(
+            "SELECT key FROM script_data WHERE script_id = $1 AND user_id = $2 ORDER BY key",
+        )
+        .bind(script_id)
+        .bind(user_id)
+        .fetch_all(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(keys)
     }
 
     /// Delete all data for a script.
-    pub fn delete_all_for_script(&self, script_id: i64) -> Result<usize> {
-        let conn = self.db.conn();
-        let affected = conn.execute(
-            "DELETE FROM script_data WHERE script_id = ?",
-            params![script_id],
-        )?;
+    pub async fn delete_all_for_script(&self, script_id: i64) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM script_data WHERE script_id = $1")
+            .bind(script_id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        Ok(affected)
+        Ok(result.rows_affected())
     }
 
     /// Delete all data for a user across all scripts.
-    pub fn delete_all_for_user(&self, user_id: i64) -> Result<usize> {
-        let conn = self.db.conn();
-        let affected = conn.execute(
-            "DELETE FROM script_data WHERE user_id = ?",
-            params![user_id],
-        )?;
+    pub async fn delete_all_for_user(&self, user_id: i64) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM script_data WHERE user_id = $1")
+            .bind(user_id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        Ok(affected)
+        Ok(result.rows_affected())
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
+    use crate::Database;
+    use sqlx::SqlitePool;
 
-    fn create_test_db() -> Database {
-        Database::open_in_memory().expect("Failed to create test database")
+    async fn create_test_pool() -> SqlitePool {
+        let db = Database::open_in_memory()
+            .await
+            .expect("Failed to create test database");
+        db.pool().clone()
     }
 
-    fn create_test_script(db: &Database) -> i64 {
-        let conn = db.conn();
-        conn.execute(
+    async fn create_test_script(pool: &SqlitePool) -> i64 {
+        sqlx::query(
             r#"
             INSERT INTO scripts (file_path, name, slug, min_role, enabled)
             VALUES ('test.lua', 'Test Script', 'test', 0, 1)
             "#,
-            [],
         )
+        .execute(pool)
+        .await
         .expect("Failed to create test script");
 
-        conn.last_insert_rowid()
+        sqlx::query_scalar::<_, i64>("SELECT last_insert_rowid()")
+            .fetch_one(pool)
+            .await
+            .expect("Failed to get last insert rowid")
     }
 
-    fn create_test_user(db: &Database) -> i64 {
-        let conn = db.conn();
-        conn.execute(
+    async fn create_test_user(pool: &SqlitePool) -> i64 {
+        sqlx::query(
             r#"
             INSERT INTO users (username, password, nickname, role)
             VALUES ('testuser', 'hash', 'Test User', 'member')
             "#,
-            [],
         )
+        .execute(pool)
+        .await
         .expect("Failed to create test user");
 
-        conn.last_insert_rowid()
+        sqlx::query_scalar::<_, i64>("SELECT last_insert_rowid()")
+            .fetch_one(pool)
+            .await
+            .expect("Failed to get last insert rowid")
     }
 
-    #[test]
-    fn test_global_data_crud() {
-        let db = create_test_db();
-        let script_id = create_test_script(&db);
-        let repo = ScriptDataRepository::new(&db);
+    #[tokio::test]
+    async fn test_global_data_crud() {
+        let pool = create_test_pool().await;
+        let script_id = create_test_script(&pool).await;
+        let repo = ScriptDataRepository::new(&pool);
 
         // Initially no data
-        assert!(repo.get_global(script_id, "score").unwrap().is_none());
+        assert!(repo.get_global(script_id, "score").await.unwrap().is_none());
 
         // Set data
-        repo.set_global(script_id, "score", "100").unwrap();
+        repo.set_global(script_id, "score", "100").await.unwrap();
         assert_eq!(
-            repo.get_global(script_id, "score").unwrap(),
+            repo.get_global(script_id, "score").await.unwrap(),
             Some("100".to_string())
         );
 
         // Update data
-        repo.set_global(script_id, "score", "200").unwrap();
+        repo.set_global(script_id, "score", "200").await.unwrap();
         assert_eq!(
-            repo.get_global(script_id, "score").unwrap(),
+            repo.get_global(script_id, "score").await.unwrap(),
             Some("200".to_string())
         );
 
         // Delete data
-        assert!(repo.delete_global(script_id, "score").unwrap());
-        assert!(repo.get_global(script_id, "score").unwrap().is_none());
+        assert!(repo.delete_global(script_id, "score").await.unwrap());
+        assert!(repo.get_global(script_id, "score").await.unwrap().is_none());
 
         // Delete non-existent
-        assert!(!repo.delete_global(script_id, "nonexistent").unwrap());
+        assert!(!repo.delete_global(script_id, "nonexistent").await.unwrap());
     }
 
-    #[test]
-    fn test_user_data_crud() {
-        let db = create_test_db();
-        let script_id = create_test_script(&db);
-        let user_id = create_test_user(&db);
-        let repo = ScriptDataRepository::new(&db);
+    #[tokio::test]
+    async fn test_user_data_crud() {
+        let pool = create_test_pool().await;
+        let script_id = create_test_script(&pool).await;
+        let user_id = create_test_user(&pool).await;
+        let repo = ScriptDataRepository::new(&pool);
 
         // Initially no data
-        assert!(repo.get_user(script_id, user_id, "wins").unwrap().is_none());
+        assert!(repo
+            .get_user(script_id, user_id, "wins")
+            .await
+            .unwrap()
+            .is_none());
 
         // Set data
-        repo.set_user(script_id, user_id, "wins", "5").unwrap();
+        repo.set_user(script_id, user_id, "wins", "5")
+            .await
+            .unwrap();
         assert_eq!(
-            repo.get_user(script_id, user_id, "wins").unwrap(),
+            repo.get_user(script_id, user_id, "wins").await.unwrap(),
             Some("5".to_string())
         );
 
         // Update data
-        repo.set_user(script_id, user_id, "wins", "10").unwrap();
+        repo.set_user(script_id, user_id, "wins", "10")
+            .await
+            .unwrap();
         assert_eq!(
-            repo.get_user(script_id, user_id, "wins").unwrap(),
+            repo.get_user(script_id, user_id, "wins").await.unwrap(),
             Some("10".to_string())
         );
 
         // Delete data
-        assert!(repo.delete_user(script_id, user_id, "wins").unwrap());
-        assert!(repo.get_user(script_id, user_id, "wins").unwrap().is_none());
-    }
-
-    #[test]
-    fn test_global_and_user_data_separate() {
-        let db = create_test_db();
-        let script_id = create_test_script(&db);
-        let user_id = create_test_user(&db);
-        let repo = ScriptDataRepository::new(&db);
-
-        // Set both global and user data with same key
-        repo.set_global(script_id, "counter", "global_value")
-            .unwrap();
-        repo.set_user(script_id, user_id, "counter", "user_value")
-            .unwrap();
-
-        // They should be separate
-        assert_eq!(
-            repo.get_global(script_id, "counter").unwrap(),
-            Some("global_value".to_string())
-        );
-        assert_eq!(
-            repo.get_user(script_id, user_id, "counter").unwrap(),
-            Some("user_value".to_string())
-        );
-
-        // Deleting one doesn't affect the other
-        repo.delete_global(script_id, "counter").unwrap();
-        assert!(repo.get_global(script_id, "counter").unwrap().is_none());
-        assert_eq!(
-            repo.get_user(script_id, user_id, "counter").unwrap(),
-            Some("user_value".to_string())
-        );
-    }
-
-    #[test]
-    fn test_list_keys() {
-        let db = create_test_db();
-        let script_id = create_test_script(&db);
-        let user_id = create_test_user(&db);
-        let repo = ScriptDataRepository::new(&db);
-
-        // Set multiple keys
-        repo.set_global(script_id, "key1", "v1").unwrap();
-        repo.set_global(script_id, "key2", "v2").unwrap();
-        repo.set_user(script_id, user_id, "user_key1", "uv1")
-            .unwrap();
-        repo.set_user(script_id, user_id, "user_key2", "uv2")
-            .unwrap();
-
-        // List global keys
-        let global_keys = repo.list_global_keys(script_id).unwrap();
-        assert_eq!(global_keys, vec!["key1", "key2"]);
-
-        // List user keys
-        let user_keys = repo.list_user_keys(script_id, user_id).unwrap();
-        assert_eq!(user_keys, vec!["user_key1", "user_key2"]);
-    }
-
-    #[test]
-    fn test_delete_all_for_script() {
-        let db = create_test_db();
-        let script_id = create_test_script(&db);
-        let user_id = create_test_user(&db);
-        let repo = ScriptDataRepository::new(&db);
-
-        // Set some data
-        repo.set_global(script_id, "global_key", "gv").unwrap();
-        repo.set_user(script_id, user_id, "user_key", "uv").unwrap();
-
-        // Delete all for script
-        let deleted = repo.delete_all_for_script(script_id).unwrap();
-        assert_eq!(deleted, 2);
-
-        // Verify all deleted
-        assert!(repo.get_global(script_id, "global_key").unwrap().is_none());
+        assert!(repo.delete_user(script_id, user_id, "wins").await.unwrap());
         assert!(repo
-            .get_user(script_id, user_id, "user_key")
+            .get_user(script_id, user_id, "wins")
+            .await
             .unwrap()
             .is_none());
     }
 
-    #[test]
-    fn test_delete_all_for_user() {
-        let db = create_test_db();
-        let script_id = create_test_script(&db);
-        let user_id = create_test_user(&db);
-        let repo = ScriptDataRepository::new(&db);
+    #[tokio::test]
+    async fn test_global_and_user_data_separate() {
+        let pool = create_test_pool().await;
+        let script_id = create_test_script(&pool).await;
+        let user_id = create_test_user(&pool).await;
+        let repo = ScriptDataRepository::new(&pool);
+
+        // Set both global and user data with same key
+        repo.set_global(script_id, "counter", "global_value")
+            .await
+            .unwrap();
+        repo.set_user(script_id, user_id, "counter", "user_value")
+            .await
+            .unwrap();
+
+        // They should be separate
+        assert_eq!(
+            repo.get_global(script_id, "counter").await.unwrap(),
+            Some("global_value".to_string())
+        );
+        assert_eq!(
+            repo.get_user(script_id, user_id, "counter").await.unwrap(),
+            Some("user_value".to_string())
+        );
+
+        // Deleting one doesn't affect the other
+        repo.delete_global(script_id, "counter").await.unwrap();
+        assert!(repo
+            .get_global(script_id, "counter")
+            .await
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            repo.get_user(script_id, user_id, "counter").await.unwrap(),
+            Some("user_value".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_list_keys() {
+        let pool = create_test_pool().await;
+        let script_id = create_test_script(&pool).await;
+        let user_id = create_test_user(&pool).await;
+        let repo = ScriptDataRepository::new(&pool);
+
+        // Set multiple keys
+        repo.set_global(script_id, "key1", "v1").await.unwrap();
+        repo.set_global(script_id, "key2", "v2").await.unwrap();
+        repo.set_user(script_id, user_id, "user_key1", "uv1")
+            .await
+            .unwrap();
+        repo.set_user(script_id, user_id, "user_key2", "uv2")
+            .await
+            .unwrap();
+
+        // List global keys
+        let global_keys = repo.list_global_keys(script_id).await.unwrap();
+        assert_eq!(global_keys, vec!["key1", "key2"]);
+
+        // List user keys
+        let user_keys = repo.list_user_keys(script_id, user_id).await.unwrap();
+        assert_eq!(user_keys, vec!["user_key1", "user_key2"]);
+    }
+
+    #[tokio::test]
+    async fn test_delete_all_for_script() {
+        let pool = create_test_pool().await;
+        let script_id = create_test_script(&pool).await;
+        let user_id = create_test_user(&pool).await;
+        let repo = ScriptDataRepository::new(&pool);
 
         // Set some data
-        repo.set_global(script_id, "global_key", "gv").unwrap();
-        repo.set_user(script_id, user_id, "user_key", "uv").unwrap();
+        repo.set_global(script_id, "global_key", "gv")
+            .await
+            .unwrap();
+        repo.set_user(script_id, user_id, "user_key", "uv")
+            .await
+            .unwrap();
+
+        // Delete all for script
+        let deleted = repo.delete_all_for_script(script_id).await.unwrap();
+        assert_eq!(deleted, 2);
+
+        // Verify all deleted
+        assert!(repo
+            .get_global(script_id, "global_key")
+            .await
+            .unwrap()
+            .is_none());
+        assert!(repo
+            .get_user(script_id, user_id, "user_key")
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn test_delete_all_for_user() {
+        let pool = create_test_pool().await;
+        let script_id = create_test_script(&pool).await;
+        let user_id = create_test_user(&pool).await;
+        let repo = ScriptDataRepository::new(&pool);
+
+        // Set some data
+        repo.set_global(script_id, "global_key", "gv")
+            .await
+            .unwrap();
+        repo.set_user(script_id, user_id, "user_key", "uv")
+            .await
+            .unwrap();
 
         // Delete all for user
-        let deleted = repo.delete_all_for_user(user_id).unwrap();
+        let deleted = repo.delete_all_for_user(user_id).await.unwrap();
         assert_eq!(deleted, 1);
 
         // Global data should remain
         assert_eq!(
-            repo.get_global(script_id, "global_key").unwrap(),
+            repo.get_global(script_id, "global_key").await.unwrap(),
             Some("gv".to_string())
         );
         // User data should be deleted
         assert!(repo
             .get_user(script_id, user_id, "user_key")
+            .await
             .unwrap()
             .is_none());
     }
 
-    #[test]
-    fn test_json_values() {
-        let db = create_test_db();
-        let script_id = create_test_script(&db);
-        let repo = ScriptDataRepository::new(&db);
+    #[tokio::test]
+    async fn test_json_values() {
+        let pool = create_test_pool().await;
+        let script_id = create_test_script(&pool).await;
+        let repo = ScriptDataRepository::new(&pool);
 
         // Store JSON value
         let json_value = r#"{"score":100,"level":5,"items":["sword","shield"]}"#;
         repo.set_global(script_id, "game_state", json_value)
+            .await
             .unwrap();
 
         // Retrieve and verify
-        let retrieved = repo.get_global(script_id, "game_state").unwrap().unwrap();
+        let retrieved = repo
+            .get_global(script_id, "game_state")
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(retrieved, json_value);
     }
 }

@@ -27,13 +27,15 @@ Telnetプロトコルで接続するレトロなパソコン通信BBSホスト�
 | 文字コード | ShiftJIS（クライアント側）/ UTF-8（内部処理） |
 | 画面装飾 | ANSIエスケープシーケンス対応 |
 | 実装言語 | Rust |
-| データベース | SQLite |
+| データベース | SQLite / PostgreSQL（選択可能） |
 | 想定規模 | 同時接続〜20人程度 |
 
 ## 必要環境
 
 - Rust 1.70以上
-- SQLite 3.x（bundled版を使用するため個別インストール不要）
+- SQLite 3.35以上（デフォルト、bundled版を使用するため個別インストール不要）
+- PostgreSQL 12以上（PostgreSQL版を使用する場合）
+- Docker / Docker Compose（PostgreSQL開発環境を使用する場合）
 - Node.js 18以上（Web UI をビルドする場合）
 
 ## インストール
@@ -45,11 +47,16 @@ Telnetプロトコルで接続するレトロなパソコン通信BBSホスト�
 git clone https://github.com/h-o-soft/hobbs.git
 cd hobbs
 
-# リリースビルド
+# SQLite版（デフォルト）
 cargo build --release
+
+# PostgreSQL版
+cargo build --release --no-default-features --features postgres
 
 # 実行ファイルは target/release/hobbs に生成されます
 ```
+
+> **Note**: SQLite版とPostgreSQL版は別々のバイナリになります。使用するデータベースに合わせてビルドしてください。
 
 ### 初期設定
 
@@ -83,7 +90,11 @@ max_connections = 20      # 最大同時接続数
 idle_timeout_secs = 300   # アイドルタイムアウト（秒）
 
 [database]
+# SQLite版の場合
 path = "data/hobbs.db"    # データベースファイルパス
+
+# PostgreSQL版の場合（上記pathの代わりに設定）
+# url = "postgres://user:password@localhost/hobbs"
 
 [files]
 storage_path = "data/files"   # ファイルストレージパス
@@ -220,14 +231,36 @@ hobbs/
 
 ## 開発
 
+### PostgreSQL開発環境（Docker）
+
+PostgreSQL版で開発する場合、Docker Composeで簡単に環境を構築できます：
+
+```bash
+# PostgreSQLを起動
+docker compose up -d postgres
+
+# PostgreSQL版をビルドして実行
+cargo build --no-default-features --features postgres
+DATABASE_URL="postgres://hobbs:hobbs_password@localhost:5433/hobbs" \
+    ./target/debug/hobbs
+
+# 停止
+docker compose down
+```
+
+詳細は [運用ガイド - PostgreSQL環境構築](docs/operation_guide.md#postgresql環境構築) を参照してください。
+
 ### テスト実行
 
 ```bash
-# 全テスト実行
-cargo test
+# 全テスト実行（SQLite版）
+cargo test --features sqlite
+
+# PostgreSQL版のテスト
+cargo test --no-default-features --features postgres
 
 # E2Eテストのみ
-cargo test --test e2e_connection --test e2e_auth --test e2e_board --test e2e_mail --test e2e_admin
+cargo test --features sqlite --test e2e_connection --test e2e_auth --test e2e_board --test e2e_mail --test e2e_admin
 
 # 特定のテスト
 cargo test test_name

@@ -1,180 +1,396 @@
 //! Database module for HOBBS.
 //!
-//! This module provides SQLite database connectivity and migration management.
+//! This module provides database connectivity and migration management.
+//!
+//! # Backend Support
+//!
+//! Supports multiple backends via feature flags:
+//! - SQLite via sqlx with connection pooling (feature = "sqlite")
+//! - PostgreSQL via sqlx with connection pooling (feature = "postgres")
 
 mod refresh_token;
 mod repository;
-mod schema;
 mod user;
 
 pub use refresh_token::{NewRefreshToken, RefreshToken, RefreshTokenRepository};
 pub use repository::UserRepository;
-pub use schema::MIGRATIONS;
 pub use user::{NewUser, Role, User, UserUpdate};
 
-use std::path::Path;
-
-use rusqlite::{Connection, Transaction};
 use tracing::{debug, info};
+
+// SQL boolean literals for cross-database compatibility
+// SQLite uses INTEGER (0/1) for boolean, PostgreSQL uses BOOLEAN (TRUE/FALSE)
+#[cfg(feature = "sqlite")]
+pub const SQL_TRUE: &str = "1";
+#[cfg(feature = "sqlite")]
+pub const SQL_FALSE: &str = "0";
+
+#[cfg(feature = "postgres")]
+pub const SQL_TRUE: &str = "TRUE";
+#[cfg(feature = "postgres")]
+pub const SQL_FALSE: &str = "FALSE";
 
 use crate::Result;
 
-/// Database wrapper for managing SQLite connections and migrations.
+// Type aliases for database pool based on feature
+#[cfg(feature = "sqlite")]
+pub type DbPool = sqlx::sqlite::SqlitePool;
+
+#[cfg(feature = "postgres")]
+pub type DbPool = sqlx::postgres::PgPool;
+
+/// Database wrapper for managing database connections with connection pooling.
 pub struct Database {
-    conn: Connection,
+    pool: DbPool,
 }
 
-impl Database {
-    /// Open a database connection at the specified path.
-    ///
-    /// If the database file doesn't exist, it will be created.
-    /// Migrations are automatically applied.
-    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let path = path.as_ref();
-        info!("Opening database at {:?}", path);
+// SQLite implementation
+#[cfg(feature = "sqlite")]
+mod sqlite_impl {
+    use super::*;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use sqlx::ConnectOptions;
+    use std::path::Path;
+    use std::time::Duration;
 
-        // Create parent directories if they don't exist
-        if let Some(parent) = path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent)?;
+    impl Database {
+        /// Open a database connection pool at the specified path.
+        ///
+        /// If the database file doesn't exist, it will be created.
+        /// Migrations are automatically applied.
+        pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
+            let path = path.as_ref();
+            info!("Opening SQLite database at {:?}", path);
+
+            // Create parent directories if they don't exist
+            if let Some(parent) = path.parent() {
+                if !parent.exists() {
+                    std::fs::create_dir_all(parent)?;
+                }
             }
+
+            let options = SqliteConnectOptions::new()
+                .filename(path)
+                .create_if_missing(true)
+                .foreign_keys(true)
+                .busy_timeout(Duration::from_secs(5))
+                .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+                .disable_statement_logging();
+
+            let pool = SqlitePoolOptions::new()
+                .max_connections(5)
+                .connect_with(options)
+                .await
+                .map_err(|e| crate::HobbsError::DatabaseConnection(e.to_string()))?;
+
+            let db = Self { pool };
+            db.migrate().await?;
+
+            Ok(db)
         }
 
-        let conn = Connection::open(path)?;
-        Self::configure_connection(&conn)?;
+        /// Open an in-memory database for testing.
+        pub async fn open_in_memory() -> Result<Self> {
+            debug!("Opening in-memory SQLite database");
 
-        let mut db = Self { conn };
-        db.migrate()?;
+            let options = SqliteConnectOptions::new()
+                .filename(":memory:")
+                .foreign_keys(true)
+                .disable_statement_logging();
 
-        Ok(db)
-    }
+            // For in-memory databases, we need exactly 1 connection to share state
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect_with(options)
+                .await
+                .map_err(|e| crate::HobbsError::DatabaseConnection(e.to_string()))?;
 
-    /// Open an in-memory database for testing.
-    pub fn open_in_memory() -> Result<Self> {
-        debug!("Opening in-memory database");
-        let conn = Connection::open_in_memory()?;
-        Self::configure_connection(&conn)?;
+            let db = Self { pool };
+            db.migrate().await?;
 
-        let mut db = Self { conn };
-        db.migrate()?;
-
-        Ok(db)
-    }
-
-    /// Configure the connection with recommended settings.
-    fn configure_connection(conn: &Connection) -> Result<()> {
-        // Enable foreign key constraints
-        conn.execute_batch("PRAGMA foreign_keys = ON")?;
-        // Use WAL mode for better concurrent read performance
-        // journal_mode returns the mode as a result, so we use query_row
-        let _: String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))?;
-        // Set busy timeout to 5 seconds (returns timeout value, so use query_row)
-        let _: i64 = conn.query_row("PRAGMA busy_timeout = 5000", [], |row| row.get(0))?;
-        Ok(())
-    }
-
-    /// Get a reference to the underlying connection.
-    pub fn conn(&self) -> &Connection {
-        &self.conn
-    }
-
-    /// Get a mutable reference to the underlying connection.
-    pub fn conn_mut(&mut self) -> &mut Connection {
-        &mut self.conn
-    }
-
-    /// Begin a new transaction.
-    pub fn transaction(&mut self) -> Result<Transaction<'_>> {
-        Ok(self.conn.transaction()?)
-    }
-
-    /// Get the current schema version.
-    pub fn schema_version(&self) -> Result<i64> {
-        // Check if schema_version table exists
-        let table_exists: bool = self.conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_version')",
-            [],
-            |row| row.get(0),
-        )?;
-
-        if !table_exists {
-            return Ok(0);
+            Ok(db)
         }
 
-        let version: i64 = self
-            .conn
-            .query_row(
-                "SELECT COALESCE(MAX(version), 0) FROM schema_version",
-                [],
-                |row| row.get(0),
+        /// Get the current schema version.
+        pub async fn schema_version(&self) -> Result<i64> {
+            // Check if _sqlx_migrations table exists
+            let table_exists: i32 = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations')",
             )
-            .unwrap_or(0);
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        Ok(version)
-    }
+            if table_exists == 0 {
+                return Ok(0);
+            }
 
-    /// Apply pending migrations.
-    pub fn migrate(&mut self) -> Result<()> {
-        let current_version = self.schema_version()?;
-        let migrations = MIGRATIONS;
+            let version: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+                .fetch_one(&self.pool)
+                .await
+                .unwrap_or(0);
 
-        if current_version as usize >= migrations.len() {
-            debug!("Database is up to date (version {})", current_version);
-            return Ok(());
+            Ok(version)
         }
 
-        info!(
-            "Migrating database from version {} to {}",
-            current_version,
-            migrations.len()
-        );
+        /// Apply pending migrations using sqlx embedded migrations.
+        ///
+        /// For legacy databases (created with rusqlite before the sqlx migration),
+        /// all migrations are marked as already applied since the schema is already in place.
+        pub async fn migrate(&self) -> Result<()> {
+            info!("Running SQLite database migrations...");
 
-        // Ensure schema_version table exists
-        self.conn.execute(
-            "CREATE TABLE IF NOT EXISTS schema_version (
-                version     INTEGER PRIMARY KEY,
-                applied_at  TEXT NOT NULL DEFAULT (datetime('now'))
-            )",
-            [],
-        )?;
+            // Check if this is a legacy database that needs migration records
+            let users_table_exists: i32 = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='users')",
+            )
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        // Apply each pending migration in a transaction
-        for (i, migration) in migrations.iter().enumerate().skip(current_version as usize) {
-            let version = (i + 1) as i64;
-            info!("Applying migration v{}", version);
+            let migrations_table_exists: i32 = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations')",
+            )
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-            let tx = self.conn.transaction()?;
+            // Check how many migrations are recorded
+            let migrations_recorded: i64 = if migrations_table_exists == 1 {
+                sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+                    .fetch_one(&self.pool)
+                    .await
+                    .unwrap_or(0)
+            } else {
+                0
+            };
 
-            // Execute the migration SQL
-            tx.execute_batch(migration)?;
+            info!(
+                "Migration check: users exists={}, migrations table exists={}, migrations recorded={}",
+                users_table_exists, migrations_table_exists, migrations_recorded
+            );
 
-            // Record the migration
-            tx.execute("INSERT INTO schema_version (version) VALUES (?)", [version])?;
+            // If users table exists but no migrations are recorded, this is a legacy database
+            if users_table_exists == 1 && migrations_recorded == 0 {
+                // Legacy database detected - mark all migrations as applied
+                info!("Legacy database detected, marking migrations as applied...");
+                self.mark_legacy_migrations_applied().await?;
+            } else {
+                // Run migrations normally
+                sqlx::migrate!("./migrations/sqlite")
+                    .run(&self.pool)
+                    .await
+                    .map_err(|e| crate::HobbsError::Database(format!("Migration failed: {}", e)))?;
+            }
 
-            tx.commit()?;
-            debug!("Migration v{} applied successfully", version);
+            let version = self.schema_version().await?;
+            info!("Database migration complete (version {})", version);
+
+            Ok(())
         }
 
-        info!(
-            "Database migration complete (now at version {})",
-            migrations.len()
-        );
-        Ok(())
+        /// Mark all migrations as applied for legacy databases.
+        ///
+        /// This is used when migrating from rusqlite to sqlx. The legacy database
+        /// already has all tables, so we just need to create the _sqlx_migrations
+        /// table and mark all migrations as completed.
+        async fn mark_legacy_migrations_applied(&self) -> Result<()> {
+            // Create _sqlx_migrations table
+            sqlx::query(
+                r#"
+                CREATE TABLE IF NOT EXISTS _sqlx_migrations (
+                    version BIGINT PRIMARY KEY,
+                    description TEXT NOT NULL,
+                    installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    success BOOLEAN NOT NULL,
+                    checksum BLOB NOT NULL,
+                    execution_time BIGINT NOT NULL
+                )
+                "#,
+            )
+            .execute(&self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+
+            // Get all migrations from the embedded migrator
+            let migrator = sqlx::migrate!("./migrations/sqlite");
+
+            for migration in migrator.iter() {
+                // Insert each migration as already applied
+                sqlx::query(
+                    r#"
+                    INSERT OR IGNORE INTO _sqlx_migrations (version, description, installed_on, success, checksum, execution_time)
+                    VALUES (?, ?, CURRENT_TIMESTAMP, 1, ?, 0)
+                    "#,
+                )
+                .bind(migration.version)
+                .bind(&*migration.description)
+                .bind(&*migration.checksum)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+            }
+
+            info!(
+                "Marked {} migrations as applied for legacy database",
+                migrator.iter().count()
+            );
+
+            Ok(())
+        }
+
+        /// Check if a table exists.
+        pub async fn table_exists(&self, table_name: &str) -> Result<bool> {
+            let exists: i32 = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)",
+            )
+            .bind(table_name)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+
+            Ok(exists == 1)
+        }
+    }
+}
+
+// PostgreSQL implementation
+#[cfg(feature = "postgres")]
+mod postgres_impl {
+    use super::*;
+    use sqlx::postgres::PgPoolOptions;
+
+    impl Database {
+        /// Open a database connection pool with the specified URL.
+        ///
+        /// Migrations are automatically applied.
+        pub async fn open(url: impl AsRef<str>) -> Result<Self> {
+            let url = url.as_ref();
+            info!("Opening PostgreSQL database");
+
+            let pool = PgPoolOptions::new()
+                .max_connections(10)
+                .connect(url)
+                .await
+                .map_err(|e| crate::HobbsError::DatabaseConnection(e.to_string()))?;
+
+            let db = Self { pool };
+            db.migrate().await?;
+
+            Ok(db)
+        }
+
+        /// Open an in-memory database for testing.
+        ///
+        /// Note: PostgreSQL doesn't support in-memory databases, so this creates
+        /// a temporary database. The DATABASE_URL environment variable must be set
+        /// to a PostgreSQL connection string for a test database.
+        pub async fn open_in_memory() -> Result<Self> {
+            debug!("Opening PostgreSQL test database");
+
+            let url = std::env::var("DATABASE_URL")
+                .unwrap_or_else(|_| "postgres://hobbs:hobbs@localhost/hobbs_test".to_string());
+
+            let pool = PgPoolOptions::new()
+                .max_connections(5)
+                .connect(&url)
+                .await
+                .map_err(|e| crate::HobbsError::DatabaseConnection(e.to_string()))?;
+
+            // Clean up existing tables for a fresh test
+            let db = Self { pool };
+            db.cleanup_test_database().await?;
+            db.migrate().await?;
+
+            Ok(db)
+        }
+
+        /// Clean up test database by dropping all tables.
+        async fn cleanup_test_database(&self) -> Result<()> {
+            // Drop _sqlx_migrations first to allow fresh migration
+            let _ = sqlx::query("DROP TABLE IF EXISTS _sqlx_migrations CASCADE")
+                .execute(&self.pool)
+                .await;
+
+            // Get all user tables and drop them
+            let tables: Vec<(String,)> = sqlx::query_as(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename != '_sqlx_migrations'"
+            )
+            .fetch_all(&self.pool)
+            .await
+            .unwrap_or_default();
+
+            for (table,) in tables {
+                let _ = sqlx::query(&format!("DROP TABLE IF EXISTS \"{}\" CASCADE", table))
+                    .execute(&self.pool)
+                    .await;
+            }
+
+            Ok(())
+        }
+
+        /// Get the current schema version.
+        pub async fn schema_version(&self) -> Result<i64> {
+            // Check if _sqlx_migrations table exists
+            let table_exists: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '_sqlx_migrations')",
+            )
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+
+            if !table_exists {
+                return Ok(0);
+            }
+
+            let version: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+                .fetch_one(&self.pool)
+                .await
+                .unwrap_or(0);
+
+            Ok(version)
+        }
+
+        /// Apply pending migrations using sqlx embedded migrations.
+        pub async fn migrate(&self) -> Result<()> {
+            info!("Running PostgreSQL database migrations...");
+
+            sqlx::migrate!("./migrations/postgres")
+                .run(&self.pool)
+                .await
+                .map_err(|e| crate::HobbsError::Database(format!("Migration failed: {}", e)))?;
+
+            let version = self.schema_version().await?;
+            info!("Database migration complete (version {})", version);
+
+            Ok(())
+        }
+
+        /// Check if a table exists.
+        pub async fn table_exists(&self, table_name: &str) -> Result<bool> {
+            let exists: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1)",
+            )
+            .bind(table_name)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+
+            Ok(exists)
+        }
+    }
+}
+
+// Common implementation for both backends
+impl Database {
+    /// Get a reference to the underlying connection pool.
+    pub fn pool(&self) -> &DbPool {
+        &self.pool
     }
 
-    /// Execute a SQL statement that doesn't return rows.
-    pub fn execute(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> Result<usize> {
-        Ok(self.conn.execute(sql, params)?)
-    }
-
-    /// Check if a table exists.
-    pub fn table_exists(&self, table_name: &str) -> Result<bool> {
-        let exists: bool = self.conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)",
-            [table_name],
-            |row| row.get(0),
-        )?;
-        Ok(exists)
+    /// Close the database connection pool.
+    pub async fn close(&self) {
+        self.pool.close().await;
     }
 }
 
@@ -184,141 +400,137 @@ impl std::fmt::Debug for Database {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_open_in_memory() {
-        let db = Database::open_in_memory().unwrap();
-        assert!(db.schema_version().unwrap() > 0);
+    #[tokio::test]
+    async fn test_open_in_memory() {
+        let db = Database::open_in_memory().await.unwrap();
+        assert!(db.schema_version().await.unwrap() > 0);
     }
 
-    #[test]
-    fn test_migrations_applied() {
-        let db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_migrations_applied() {
+        let db = Database::open_in_memory().await.unwrap();
 
         // Check that migrations were applied
-        let version = db.schema_version().unwrap();
-        assert_eq!(version as usize, MIGRATIONS.len());
+        let version = db.schema_version().await.unwrap();
+        assert_eq!(version as usize, 22); // 22 migrations
     }
 
-    #[test]
-    fn test_users_table_exists() {
-        let db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_users_table_exists() {
+        let db = Database::open_in_memory().await.unwrap();
 
         // Check that users table exists
-        assert!(db.table_exists("users").unwrap());
+        assert!(db.table_exists("users").await.unwrap());
     }
 
-    #[test]
-    fn test_schema_version_table_exists() {
-        let db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_foreign_keys_enabled() {
+        let db = Database::open_in_memory().await.unwrap();
 
-        assert!(db.table_exists("schema_version").unwrap());
-    }
-
-    #[test]
-    fn test_foreign_keys_enabled() {
-        let db = Database::open_in_memory().unwrap();
-
-        let fk_enabled: i64 = db
-            .conn()
-            .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+        let fk_enabled: i32 = sqlx::query_scalar("PRAGMA foreign_keys")
+            .fetch_one(db.pool())
+            .await
             .unwrap();
         assert_eq!(fk_enabled, 1);
     }
 
-    #[test]
-    fn test_insert_and_query_user() {
-        let db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_insert_and_query_user() {
+        let db = Database::open_in_memory().await.unwrap();
 
         // Insert a test user
-        db.execute(
-            "INSERT INTO users (username, password, nickname, role) VALUES (?, ?, ?, ?)",
-            &[&"testuser", &"hashedpassword", &"Test User", &"member"],
-        )
-        .unwrap();
-
-        // Query the user
-        let (id, username, nickname): (i64, String, String) = db
-            .conn()
-            .query_row(
-                "SELECT id, username, nickname FROM users WHERE username = ?",
-                ["testuser"],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
+        sqlx::query("INSERT INTO users (username, password, nickname, role) VALUES (?, ?, ?, ?)")
+            .bind("testuser")
+            .bind("hashedpassword")
+            .bind("Test User")
+            .bind("member")
+            .execute(db.pool())
+            .await
             .unwrap();
 
-        assert_eq!(id, 1);
-        assert_eq!(username, "testuser");
-        assert_eq!(nickname, "Test User");
+        // Query the user
+        let row: (i64, String, String) =
+            sqlx::query_as("SELECT id, username, nickname FROM users WHERE username = ?")
+                .bind("testuser")
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
+
+        assert_eq!(row.0, 1);
+        assert_eq!(row.1, "testuser");
+        assert_eq!(row.2, "Test User");
     }
 
-    #[test]
-    fn test_transaction() {
-        let mut db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_transaction() {
+        let db = Database::open_in_memory().await.unwrap();
 
         // Start a transaction
-        let tx = db.transaction().unwrap();
+        let mut tx = db.pool().begin().await.unwrap();
 
         // Insert a user
-        tx.execute(
-            "INSERT INTO users (username, password, nickname, role) VALUES (?, ?, ?, ?)",
-            ["txuser", "hash", "TX User", "member"],
-        )
-        .unwrap();
+        sqlx::query("INSERT INTO users (username, password, nickname, role) VALUES (?, ?, ?, ?)")
+            .bind("txuser")
+            .bind("hash")
+            .bind("TX User")
+            .bind("member")
+            .execute(&mut *tx)
+            .await
+            .unwrap();
 
         // Commit the transaction
-        tx.commit().unwrap();
+        tx.commit().await.unwrap();
 
         // Verify the user was inserted
-        let count: i64 = db
-            .conn()
-            .query_row(
-                "SELECT COUNT(*) FROM users WHERE username = ?",
-                ["txuser"],
-                |row| row.get(0),
-            )
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE username = ?")
+            .bind("txuser")
+            .fetch_one(db.pool())
+            .await
             .unwrap();
         assert_eq!(count, 1);
     }
 
-    #[test]
-    fn test_transaction_rollback() {
-        let mut db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_transaction_rollback() {
+        let db = Database::open_in_memory().await.unwrap();
 
         // Start a transaction
         {
-            let tx = db.transaction().unwrap();
+            let mut tx = db.pool().begin().await.unwrap();
 
             // Insert a user
-            tx.execute(
+            sqlx::query(
                 "INSERT INTO users (username, password, nickname, role) VALUES (?, ?, ?, ?)",
-                ["rollbackuser", "hash", "Rollback User", "member"],
             )
+            .bind("rollbackuser")
+            .bind("hash")
+            .bind("Rollback User")
+            .bind("member")
+            .execute(&mut *tx)
+            .await
             .unwrap();
 
             // Don't commit - transaction will be rolled back when dropped
         }
 
         // Verify the user was not inserted
-        let count: i64 = db
-            .conn()
-            .query_row(
-                "SELECT COUNT(*) FROM users WHERE username = ?",
-                ["rollbackuser"],
-                |row| row.get(0),
-            )
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE username = ?")
+            .bind("rollbackuser")
+            .fetch_one(db.pool())
+            .await
             .unwrap();
         assert_eq!(count, 0);
     }
 
-    #[test]
-    fn test_open_file_database() {
+    #[tokio::test]
+    async fn test_open_file_database() {
         use std::fs;
 
-        let temp_dir = std::env::temp_dir().join("hobbs_test");
+        let temp_dir = std::env::temp_dir().join("hobbs_test_sqlx");
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
 
@@ -326,62 +538,60 @@ mod tests {
 
         // Open and close database
         {
-            let db = Database::open(&db_path).unwrap();
-            assert!(db.table_exists("users").unwrap());
+            let db = Database::open(&db_path).await.unwrap();
+            assert!(db.table_exists("users").await.unwrap());
+            db.close().await;
         }
 
         // Reopen database
         {
-            let db = Database::open(&db_path).unwrap();
-            assert!(db.table_exists("users").unwrap());
+            let db = Database::open(&db_path).await.unwrap();
+            assert!(db.table_exists("users").await.unwrap());
             // Migrations should not be reapplied
-            assert_eq!(db.schema_version().unwrap() as usize, MIGRATIONS.len());
+            assert_eq!(db.schema_version().await.unwrap(), 22);
+            db.close().await;
         }
 
         // Cleanup
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
-    #[test]
-    fn test_users_table_columns() {
-        let db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_users_table_columns() {
+        let db = Database::open_in_memory().await.unwrap();
 
         // Check that all expected columns exist by selecting them
-        let result: rusqlite::Result<()> = db.conn().query_row(
+        let result = sqlx::query(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
                     created_at, last_login, is_active
              FROM users LIMIT 0",
-            [],
-            |_| Ok(()),
-        );
+        )
+        .execute(db.pool())
+        .await;
 
         // This should not error - if a column is missing, it will fail
-        assert!(result.is_ok() || result.unwrap_err().to_string().contains("no rows"));
+        assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_users_table_indexes() {
-        let db = Database::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_users_table_indexes() {
+        let db = Database::open_in_memory().await.unwrap();
 
         // Check indexes exist (username index was renamed to idx_users_username_nocase in v21)
-        let idx_username: i64 = db
-            .conn()
-            .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_users_username_nocase'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
+        let idx_username: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_users_username_nocase'",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
         assert_eq!(idx_username, 1);
 
-        let idx_role: i64 = db
-            .conn()
-            .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_users_role'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
+        let idx_role: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_users_role'",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
         assert_eq!(idx_role, 1);
     }
 }

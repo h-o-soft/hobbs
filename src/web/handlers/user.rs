@@ -8,6 +8,7 @@ use std::sync::Arc;
 use utoipa;
 
 use crate::auth::{hash_password, verify_password};
+use crate::datetime::to_rfc3339;
 use crate::db::{UserRepository, UserUpdate};
 use crate::web::dto::{
     ApiResponse, ChangePasswordRequest, PaginatedResponse, PaginationQuery, UpdateProfileRequest,
@@ -42,10 +43,9 @@ pub async fn list_users(
     let (offset, limit) = pagination.to_offset_limit();
 
     let (users, total) = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
+        let user_repo = UserRepository::new(state.db.pool());
 
-        let all_users = user_repo.list_active().map_err(|e| {
+        let all_users = user_repo.list_active().await.map_err(|e| {
             tracing::error!("Failed to list users: {}", e);
             ApiError::internal("Failed to list users")
         })?;
@@ -104,11 +104,11 @@ pub async fn get_user(
     Path(user_id): Path<i64>,
 ) -> Result<Json<ApiResponse<UserDetailResponse>>, ApiError> {
     let user = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
+        let user_repo = UserRepository::new(state.db.pool());
 
         user_repo
             .get_by_id(user_id)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get user: {}", e);
                 ApiError::internal("Failed to get user")
@@ -127,7 +127,7 @@ pub async fn get_user(
         nickname: user.nickname,
         role: user.role.as_str().to_string(),
         profile: user.profile,
-        created_at: user.created_at,
+        created_at: to_rfc3339(&user.created_at),
         last_login_at: user.last_login,
     };
 
@@ -152,11 +152,11 @@ pub async fn get_my_profile(
     AuthUser(claims): AuthUser,
 ) -> Result<Json<ApiResponse<UserDetailResponse>>, ApiError> {
     let user = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
+        let user_repo = UserRepository::new(state.db.pool());
 
         user_repo
             .get_by_id(claims.sub)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get user: {}", e);
                 ApiError::internal("Failed to get user")
@@ -170,7 +170,7 @@ pub async fn get_my_profile(
         nickname: user.nickname,
         role: user.role.as_str().to_string(),
         profile: user.profile,
-        created_at: user.created_at,
+        created_at: to_rfc3339(&user.created_at),
         last_login_at: user.last_login,
     };
 
@@ -231,11 +231,11 @@ pub async fn update_my_profile(
     }
 
     let user = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
+        let user_repo = UserRepository::new(state.db.pool());
 
         user_repo
             .update(claims.sub, &update)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to update profile: {}", e);
                 ApiError::internal("Failed to update profile")
@@ -249,7 +249,7 @@ pub async fn update_my_profile(
         nickname: user.nickname,
         role: user.role.as_str().to_string(),
         profile: user.profile,
-        created_at: user.created_at,
+        created_at: to_rfc3339(&user.created_at),
         last_login_at: user.last_login,
     };
 
@@ -279,11 +279,11 @@ pub async fn get_user_by_username(
     Path(username): Path<String>,
 ) -> Result<Json<ApiResponse<UserDetailResponse>>, ApiError> {
     let user = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
+        let user_repo = UserRepository::new(state.db.pool());
 
         user_repo
             .get_by_username(&username)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get user: {}", e);
                 ApiError::internal("Failed to get user")
@@ -302,7 +302,7 @@ pub async fn get_user_by_username(
         nickname: user.nickname,
         role: user.role.as_str().to_string(),
         profile: user.profile,
-        created_at: user.created_at,
+        created_at: to_rfc3339(&user.created_at),
         last_login_at: user.last_login,
     };
 
@@ -342,12 +342,12 @@ pub async fn change_password(
     }
 
     {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
+        let user_repo = UserRepository::new(state.db.pool());
 
         // Get current user
         let user = user_repo
             .get_by_id(claims.sub)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get user: {}", e);
                 ApiError::internal("Failed to get user")
@@ -366,7 +366,7 @@ pub async fn change_password(
 
         // Update password
         let update = UserUpdate::new().password(new_hash);
-        user_repo.update(claims.sub, &update).map_err(|e| {
+        user_repo.update(claims.sub, &update).await.map_err(|e| {
             tracing::error!("Failed to update password: {}", e);
             ApiError::internal("Failed to update password")
         })?;

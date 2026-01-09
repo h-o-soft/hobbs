@@ -1,11 +1,15 @@
 //! Refresh token repository for JWT authentication.
 
-use rusqlite::{params, Connection, OptionalExtension};
-
+use super::DbPool;
 use crate::Result;
 
+#[cfg(feature = "sqlite")]
+const SQL_NOW: &str = "datetime('now')";
+#[cfg(feature = "postgres")]
+const SQL_NOW: &str = "TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')";
+
 /// Refresh token entity.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct RefreshToken {
     /// Token ID.
     pub id: i64,
@@ -33,100 +37,121 @@ pub struct NewRefreshToken {
 
 /// Repository for refresh token operations.
 pub struct RefreshTokenRepository<'a> {
-    conn: &'a Connection,
+    pool: &'a DbPool,
 }
 
 impl<'a> RefreshTokenRepository<'a> {
     /// Create a new repository instance.
-    pub fn new(conn: &'a Connection) -> Self {
-        Self { conn }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
     }
 
     /// Create a new refresh token.
-    pub fn create(&self, new_token: &NewRefreshToken) -> Result<RefreshToken> {
-        self.conn.execute(
-            "INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)",
-            params![new_token.user_id, new_token.token, new_token.expires_at],
-        )?;
+    pub async fn create(&self, new_token: &NewRefreshToken) -> Result<RefreshToken> {
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3) RETURNING id",
+        )
+        .bind(new_token.user_id)
+        .bind(&new_token.token)
+        .bind(&new_token.expires_at)
+        .fetch_one(self.pool)
+        .await
+        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        let id = self.conn.last_insert_rowid();
-        self.get_by_id(id)?
+        self.get_by_id(id)
+            .await?
             .ok_or_else(|| crate::HobbsError::NotFound("Refresh token not found".into()))
     }
 
     /// Get a refresh token by ID.
-    pub fn get_by_id(&self, id: i64) -> Result<Option<RefreshToken>> {
-        let mut stmt = self.conn.prepare(
+    pub async fn get_by_id(&self, id: i64) -> Result<Option<RefreshToken>> {
+        let token = sqlx::query_as::<_, RefreshToken>(
             "SELECT id, user_id, token, expires_at, created_at, revoked_at
-             FROM refresh_tokens WHERE id = ?",
-        )?;
+             FROM refresh_tokens WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        let token = stmt.query_row([id], Self::row_to_token).optional()?;
         Ok(token)
     }
 
     /// Get a refresh token by token string.
-    pub fn get_by_token(&self, token: &str) -> Result<Option<RefreshToken>> {
-        let mut stmt = self.conn.prepare(
+    pub async fn get_by_token(&self, token: &str) -> Result<Option<RefreshToken>> {
+        let result = sqlx::query_as::<_, RefreshToken>(
             "SELECT id, user_id, token, expires_at, created_at, revoked_at
-             FROM refresh_tokens WHERE token = ?",
-        )?;
+             FROM refresh_tokens WHERE token = $1",
+        )
+        .bind(token)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        let result = stmt.query_row([token], Self::row_to_token).optional()?;
         Ok(result)
     }
 
     /// Get a valid (not expired, not revoked) refresh token.
-    pub fn get_valid_token(&self, token: &str) -> Result<Option<RefreshToken>> {
-        let mut stmt = self.conn.prepare(
+    pub async fn get_valid_token(&self, token: &str) -> Result<Option<RefreshToken>> {
+        let sql = format!(
             "SELECT id, user_id, token, expires_at, created_at, revoked_at
              FROM refresh_tokens
-             WHERE token = ?
+             WHERE token = $1
                AND revoked_at IS NULL
-               AND datetime(expires_at) > datetime('now')",
-        )?;
+               AND expires_at > {}",
+            SQL_NOW
+        );
+        let result = sqlx::query_as::<_, RefreshToken>(&sql)
+            .bind(token)
+            .fetch_optional(self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        let result = stmt.query_row([token], Self::row_to_token).optional()?;
         Ok(result)
     }
 
     /// Revoke a refresh token.
-    pub fn revoke(&self, token: &str) -> Result<bool> {
-        let rows = self.conn.execute(
-            "UPDATE refresh_tokens SET revoked_at = datetime('now') WHERE token = ? AND revoked_at IS NULL",
-            [token],
-        )?;
-        Ok(rows > 0)
+    pub async fn revoke(&self, token: &str) -> Result<bool> {
+        let sql = format!(
+            "UPDATE refresh_tokens SET revoked_at = {} WHERE token = $1 AND revoked_at IS NULL",
+            SQL_NOW
+        );
+        let result = sqlx::query(&sql)
+            .bind(token)
+            .execute(self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     /// Revoke all tokens for a user.
-    pub fn revoke_all_for_user(&self, user_id: i64) -> Result<usize> {
-        let rows = self.conn.execute(
-            "UPDATE refresh_tokens SET revoked_at = datetime('now') WHERE user_id = ? AND revoked_at IS NULL",
-            [user_id],
-        )?;
-        Ok(rows)
+    pub async fn revoke_all_for_user(&self, user_id: i64) -> Result<u64> {
+        let sql = format!(
+            "UPDATE refresh_tokens SET revoked_at = {} WHERE user_id = $1 AND revoked_at IS NULL",
+            SQL_NOW
+        );
+        let result = sqlx::query(&sql)
+            .bind(user_id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected())
     }
 
     /// Delete expired and revoked tokens (cleanup).
-    pub fn cleanup_expired(&self) -> Result<usize> {
-        let rows = self.conn.execute(
-            "DELETE FROM refresh_tokens WHERE datetime(expires_at) < datetime('now') OR revoked_at IS NOT NULL",
-            [],
-        )?;
-        Ok(rows)
-    }
+    pub async fn cleanup_expired(&self) -> Result<u64> {
+        let sql = format!(
+            "DELETE FROM refresh_tokens WHERE expires_at < {} OR revoked_at IS NOT NULL",
+            SQL_NOW
+        );
+        let result = sqlx::query(&sql)
+            .execute(self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-    /// Convert a database row to a RefreshToken.
-    fn row_to_token(row: &rusqlite::Row) -> rusqlite::Result<RefreshToken> {
-        Ok(RefreshToken {
-            id: row.get(0)?,
-            user_id: row.get(1)?,
-            token: row.get(2)?,
-            expires_at: row.get(3)?,
-            created_at: row.get(4)?,
-            revoked_at: row.get(5)?,
-        })
+        Ok(result.rows_affected())
     }
 }
 
@@ -135,22 +160,24 @@ mod tests {
     use super::*;
     use crate::Database;
 
-    fn setup_db() -> Database {
-        let db = Database::open_in_memory().unwrap();
+    async fn setup_db() -> Database {
+        let db = Database::open_in_memory().await.unwrap();
         // Create a test user
-        db.conn()
-            .execute(
-                "INSERT INTO users (username, password, nickname, role) VALUES (?, ?, ?, ?)",
-                ["testuser", "hashedpassword", "Test User", "member"],
-            )
+        sqlx::query("INSERT INTO users (username, password, nickname, role) VALUES ($1, $2, $3, $4)")
+            .bind("testuser")
+            .bind("hashedpassword")
+            .bind("Test User")
+            .bind("member")
+            .execute(db.pool())
+            .await
             .unwrap();
         db
     }
 
-    #[test]
-    fn test_create_refresh_token() {
-        let db = setup_db();
-        let repo = RefreshTokenRepository::new(db.conn());
+    #[tokio::test]
+    async fn test_create_refresh_token() {
+        let db = setup_db().await;
+        let repo = RefreshTokenRepository::new(db.pool());
 
         let new_token = NewRefreshToken {
             user_id: 1,
@@ -158,36 +185,36 @@ mod tests {
             expires_at: "2099-12-31 23:59:59".to_string(),
         };
 
-        let token = repo.create(&new_token).unwrap();
+        let token = repo.create(&new_token).await.unwrap();
         assert_eq!(token.user_id, 1);
         assert_eq!(token.token, "test-token-123");
         assert!(token.revoked_at.is_none());
     }
 
-    #[test]
-    fn test_get_by_token() {
-        let db = setup_db();
-        let repo = RefreshTokenRepository::new(db.conn());
+    #[tokio::test]
+    async fn test_get_by_token() {
+        let db = setup_db().await;
+        let repo = RefreshTokenRepository::new(db.pool());
 
         let new_token = NewRefreshToken {
             user_id: 1,
             token: "lookup-token-456".to_string(),
             expires_at: "2099-12-31 23:59:59".to_string(),
         };
-        repo.create(&new_token).unwrap();
+        repo.create(&new_token).await.unwrap();
 
-        let found = repo.get_by_token("lookup-token-456").unwrap();
+        let found = repo.get_by_token("lookup-token-456").await.unwrap();
         assert!(found.is_some());
         assert_eq!(found.unwrap().token, "lookup-token-456");
 
-        let not_found = repo.get_by_token("nonexistent").unwrap();
+        let not_found = repo.get_by_token("nonexistent").await.unwrap();
         assert!(not_found.is_none());
     }
 
-    #[test]
-    fn test_get_valid_token() {
-        let db = setup_db();
-        let repo = RefreshTokenRepository::new(db.conn());
+    #[tokio::test]
+    async fn test_get_valid_token() {
+        let db = setup_db().await;
+        let repo = RefreshTokenRepository::new(db.pool());
 
         // Create a valid token
         let valid_token = NewRefreshToken {
@@ -195,7 +222,7 @@ mod tests {
             token: "valid-token".to_string(),
             expires_at: "2099-12-31 23:59:59".to_string(),
         };
-        repo.create(&valid_token).unwrap();
+        repo.create(&valid_token).await.unwrap();
 
         // Create an expired token
         let expired_token = NewRefreshToken {
@@ -203,47 +230,47 @@ mod tests {
             token: "expired-token".to_string(),
             expires_at: "2000-01-01 00:00:00".to_string(),
         };
-        repo.create(&expired_token).unwrap();
+        repo.create(&expired_token).await.unwrap();
 
         // Valid token should be found
-        let found = repo.get_valid_token("valid-token").unwrap();
+        let found = repo.get_valid_token("valid-token").await.unwrap();
         assert!(found.is_some());
 
         // Expired token should not be found
-        let not_found = repo.get_valid_token("expired-token").unwrap();
+        let not_found = repo.get_valid_token("expired-token").await.unwrap();
         assert!(not_found.is_none());
     }
 
-    #[test]
-    fn test_revoke_token() {
-        let db = setup_db();
-        let repo = RefreshTokenRepository::new(db.conn());
+    #[tokio::test]
+    async fn test_revoke_token() {
+        let db = setup_db().await;
+        let repo = RefreshTokenRepository::new(db.pool());
 
         let new_token = NewRefreshToken {
             user_id: 1,
             token: "revoke-me".to_string(),
             expires_at: "2099-12-31 23:59:59".to_string(),
         };
-        repo.create(&new_token).unwrap();
+        repo.create(&new_token).await.unwrap();
 
         // Revoke the token
-        let revoked = repo.revoke("revoke-me").unwrap();
+        let revoked = repo.revoke("revoke-me").await.unwrap();
         assert!(revoked);
 
         // Token should no longer be valid
-        let found = repo.get_valid_token("revoke-me").unwrap();
+        let found = repo.get_valid_token("revoke-me").await.unwrap();
         assert!(found.is_none());
 
         // But should still exist in get_by_token
-        let exists = repo.get_by_token("revoke-me").unwrap();
+        let exists = repo.get_by_token("revoke-me").await.unwrap();
         assert!(exists.is_some());
         assert!(exists.unwrap().revoked_at.is_some());
     }
 
-    #[test]
-    fn test_revoke_all_for_user() {
-        let db = setup_db();
-        let repo = RefreshTokenRepository::new(db.conn());
+    #[tokio::test]
+    async fn test_revoke_all_for_user() {
+        let db = setup_db().await;
+        let repo = RefreshTokenRepository::new(db.pool());
 
         // Create multiple tokens for the user
         for i in 0..3 {
@@ -252,24 +279,27 @@ mod tests {
                 token: format!("user-token-{}", i),
                 expires_at: "2099-12-31 23:59:59".to_string(),
             };
-            repo.create(&new_token).unwrap();
+            repo.create(&new_token).await.unwrap();
         }
 
         // Revoke all tokens for user
-        let count = repo.revoke_all_for_user(1).unwrap();
+        let count = repo.revoke_all_for_user(1).await.unwrap();
         assert_eq!(count, 3);
 
         // All tokens should be invalid
         for i in 0..3 {
-            let found = repo.get_valid_token(&format!("user-token-{}", i)).unwrap();
+            let found = repo
+                .get_valid_token(&format!("user-token-{}", i))
+                .await
+                .unwrap();
             assert!(found.is_none());
         }
     }
 
-    #[test]
-    fn test_cleanup_expired() {
-        let db = setup_db();
-        let repo = RefreshTokenRepository::new(db.conn());
+    #[tokio::test]
+    async fn test_cleanup_expired() {
+        let db = setup_db().await;
+        let repo = RefreshTokenRepository::new(db.pool());
 
         // Create an expired token
         let expired = NewRefreshToken {
@@ -277,7 +307,7 @@ mod tests {
             token: "old-expired".to_string(),
             expires_at: "2000-01-01 00:00:00".to_string(),
         };
-        repo.create(&expired).unwrap();
+        repo.create(&expired).await.unwrap();
 
         // Create a valid token
         let valid = NewRefreshToken {
@@ -285,18 +315,18 @@ mod tests {
             token: "still-valid".to_string(),
             expires_at: "2099-12-31 23:59:59".to_string(),
         };
-        repo.create(&valid).unwrap();
+        repo.create(&valid).await.unwrap();
 
         // Cleanup
-        let deleted = repo.cleanup_expired().unwrap();
+        let deleted = repo.cleanup_expired().await.unwrap();
         assert_eq!(deleted, 1);
 
         // Expired token should be gone
-        let gone = repo.get_by_token("old-expired").unwrap();
+        let gone = repo.get_by_token("old-expired").await.unwrap();
         assert!(gone.is_none());
 
         // Valid token should still exist
-        let exists = repo.get_by_token("still-valid").unwrap();
+        let exists = repo.get_by_token("still-valid").await.unwrap();
         assert!(exists.is_some());
     }
 }

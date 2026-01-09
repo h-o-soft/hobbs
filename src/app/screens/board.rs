@@ -3,6 +3,7 @@
 use tracing::error;
 
 use super::common::{Pagination, ScreenContext};
+use crate::datetime::format_datetime;
 use super::ScreenResult;
 use crate::board::{
     BoardService, BoardType, Pagination as BoardPagination, PostRepository, ThreadRepository,
@@ -24,16 +25,17 @@ impl BoardScreen {
     ) -> Result<ScreenResult> {
         loop {
             // Get boards
-            let user_role = Self::get_user_role(ctx, session);
+            let user_role = Self::get_user_role(ctx, session).await;
             let board_service = BoardService::new(&ctx.db);
-            let boards = board_service.list_boards(user_role)?;
+            let boards = board_service.list_boards(user_role).await?;
 
             // Get unread counts for logged-in users
             let unread_counts: std::collections::HashMap<i64, i64> =
                 if let Some(user_id) = session.user_id() {
-                    let unread_repo = UnreadRepository::new(&ctx.db);
+                    let unread_repo = UnreadRepository::new(ctx.db.pool());
                     unread_repo
-                        .get_all_unread_counts(user_id)?
+                        .get_all_unread_counts(user_id)
+                        .await?
                         .into_iter()
                         .collect()
                 } else {
@@ -80,11 +82,11 @@ impl BoardScreen {
 
                 for (i, board) in boards.iter().enumerate() {
                     let count = if board.board_type == BoardType::Thread {
-                        let thread_repo = ThreadRepository::new(&ctx.db);
-                        thread_repo.count_by_board(board.id)?
+                        let thread_repo = ThreadRepository::new(ctx.db.pool());
+                        thread_repo.count_by_board(board.id).await?
                     } else {
-                        let post_repo = PostRepository::new(&ctx.db);
-                        post_repo.count_by_flat_board(board.id)?
+                        let post_repo = PostRepository::new(ctx.db.pool());
+                        post_repo.count_by_flat_board(board.id).await?
                     };
 
                     // Show unread count for logged-in users
@@ -186,14 +188,14 @@ impl BoardScreen {
 
         loop {
             // Get board info
-            let user_role = Self::get_user_role(ctx, session);
+            let user_role = Self::get_user_role(ctx, session).await;
             let board_service = BoardService::new(&ctx.db);
-            let board = board_service.get_board(board_id, user_role)?;
+            let board = board_service.get_board(board_id, user_role).await?;
 
             // Get threads using service with pagination
             let board_pagination =
                 BoardPagination::new(pagination.offset() as i64, pagination.per_page as i64);
-            let result = board_service.list_threads(board_id, user_role, board_pagination)?;
+            let result = board_service.list_threads(board_id, user_role, board_pagination).await?;
 
             pagination.total = result.total as usize;
 
@@ -213,8 +215,8 @@ impl BoardScreen {
                 // Get unread thread IDs for logged-in users
                 let unread_thread_ids = if let Some(user_id) = session.user_id() {
                     let thread_ids: Vec<i64> = result.items.iter().map(|t| t.id).collect();
-                    let unread_repo = UnreadRepository::new(&ctx.db);
-                    unread_repo.get_unread_thread_ids(user_id, board_id, &thread_ids)?
+                    let unread_repo = UnreadRepository::new(ctx.db.pool());
+                    unread_repo.get_unread_thread_ids(user_id, board_id, &thread_ids).await?
                 } else {
                     std::collections::HashSet::new()
                 };
@@ -357,15 +359,15 @@ impl BoardScreen {
 
         loop {
             // Get board info
-            let user_role = Self::get_user_role(ctx, session);
+            let user_role = Self::get_user_role(ctx, session).await;
             let board_service = BoardService::new(&ctx.db);
-            let board = board_service.get_board(board_id, user_role)?;
+            let board = board_service.get_board(board_id, user_role).await?;
 
             // Get posts using service with pagination
             let board_pagination =
                 BoardPagination::new(pagination.offset() as i64, pagination.per_page as i64);
             let result =
-                board_service.list_posts_in_flat_board(board_id, user_role, board_pagination)?;
+                board_service.list_posts_in_flat_board(board_id, user_role, board_pagination).await?;
 
             pagination.total = result.total as usize;
 
@@ -383,8 +385,8 @@ impl BoardScreen {
             } else {
                 // Get last read post ID for logged-in users
                 let last_read_post_id = if let Some(user_id) = session.user_id() {
-                    let unread_repo = UnreadRepository::new(&ctx.db);
-                    unread_repo.get_last_read_post_id(user_id, board_id)?
+                    let unread_repo = UnreadRepository::new(ctx.db.pool());
+                    unread_repo.get_last_read_post_id(user_id, board_id).await?
                 } else {
                     i64::MAX // For guests, mark nothing as unread
                 };
@@ -401,7 +403,7 @@ impl BoardScreen {
                 .await?;
                 ctx.send_line(session, &"-".repeat(50)).await?;
 
-                let user_repo = UserRepository::new(&ctx.db);
+                let user_repo = UserRepository::new(ctx.db.pool());
                 for (i, post) in result.items.iter().enumerate() {
                     // Number in descending order: oldest post = 1, newest = total
                     let num = result.total as usize - pagination.offset() - i;
@@ -413,7 +415,8 @@ impl BoardScreen {
                         title.to_string()
                     };
                     let author = user_repo
-                        .get_by_id(post.author_id)?
+                        .get_by_id(post.author_id)
+                        .await?
                         .map(|u| u.nickname)
                         .unwrap_or_else(|| "Unknown".to_string());
 
@@ -532,15 +535,15 @@ impl BoardScreen {
 
         loop {
             // Get thread info
-            let user_role = Self::get_user_role(ctx, session);
+            let user_role = Self::get_user_role(ctx, session).await;
             let board_service = BoardService::new(&ctx.db);
-            let thread = board_service.get_thread(thread_id, user_role)?;
+            let thread = board_service.get_thread(thread_id, user_role).await?;
 
             // Get posts using service with pagination
             let board_pagination =
                 BoardPagination::new(pagination.offset() as i64, pagination.per_page as i64);
             let result =
-                board_service.list_posts_in_thread(thread_id, user_role, board_pagination)?;
+                board_service.list_posts_in_thread(thread_id, user_role, board_pagination).await?;
 
             pagination.total = result.total as usize;
 
@@ -553,27 +556,34 @@ impl BoardScreen {
             if result.items.is_empty() {
                 ctx.send_line(session, ctx.i18n.t("board.no_posts")).await?;
             } else {
-                let user_repo = UserRepository::new(&ctx.db);
+                let user_repo = UserRepository::new(ctx.db.pool());
                 for post in &result.items {
                     let author = user_repo
-                        .get_by_id(post.author_id)?
+                        .get_by_id(post.author_id)
+                        .await?
                         .map(|u| u.nickname)
                         .unwrap_or_else(|| "Unknown".to_string());
 
+                    let formatted_time = format_datetime(
+                        &post.created_at,
+                        &ctx.config.server.timezone,
+                        "%Y-%m-%d %H:%M",
+                    );
                     ctx.send_line(
                         session,
-                        &format!("--- {} ({}) ---", author, post.created_at),
+                        &format!("--- {} ({}) ---", author, formatted_time),
                     )
                     .await?;
-                    ctx.send_line(session, &convert_caret_escape(&post.body)).await?;
+                    ctx.send_line(session, &convert_caret_escape(&post.body))
+                        .await?;
                     ctx.send_line(session, "").await?;
                 }
 
                 // Mark the last displayed post as read for logged-in users
                 if let Some(user_id) = session.user_id() {
                     if let Some(last_post) = result.items.last() {
-                        let unread_repo = UnreadRepository::new(&ctx.db);
-                        unread_repo.mark_as_read(user_id, thread.board_id, last_post.id)?;
+                        let unread_repo = UnreadRepository::new(ctx.db.pool());
+                        unread_repo.mark_as_read(user_id, thread.board_id, last_post.id).await?;
                     }
                 }
             }
@@ -630,13 +640,14 @@ impl BoardScreen {
         session: &mut TelnetSession,
         post_id: i64,
     ) -> Result<ScreenResult> {
-        let user_role = Self::get_user_role(ctx, session);
+        let user_role = Self::get_user_role(ctx, session).await;
         let board_service = BoardService::new(&ctx.db);
-        let post = board_service.get_post(post_id, user_role)?;
+        let post = board_service.get_post(post_id, user_role).await?;
 
-        let user_repo = UserRepository::new(&ctx.db);
+        let user_repo = UserRepository::new(ctx.db.pool());
         let author = user_repo
-            .get_by_id(post.author_id)?
+            .get_by_id(post.author_id)
+            .await?
             .map(|u| u.nickname)
             .unwrap_or_else(|| "Unknown".to_string());
 
@@ -646,24 +657,30 @@ impl BoardScreen {
             &format!("=== {} ===", post.title.as_deref().unwrap_or("(no title)")),
         )
         .await?;
+        let formatted_time = format_datetime(
+            &post.created_at,
+            &ctx.config.server.timezone,
+            "%Y-%m-%d %H:%M",
+        );
         ctx.send_line(
             session,
             &format!(
                 "{}: {} ({})",
                 ctx.i18n.t("board.author"),
                 author,
-                post.created_at
+                formatted_time
             ),
         )
         .await?;
         ctx.send_line(session, &"-".repeat(40)).await?;
-        ctx.send_line(session, &convert_caret_escape(&post.body)).await?;
+        ctx.send_line(session, &convert_caret_escape(&post.body))
+            .await?;
         ctx.send_line(session, &"-".repeat(40)).await?;
 
         // Mark this post as read for logged-in users
         if let Some(user_id) = session.user_id() {
-            let unread_repo = UnreadRepository::new(&ctx.db);
-            unread_repo.mark_as_read(user_id, post.board_id, post_id)?;
+            let unread_repo = UnreadRepository::new(ctx.db.pool());
+            unread_repo.mark_as_read(user_id, post.board_id, post_id).await?;
         }
 
         ctx.wait_for_enter(session).await?;
@@ -712,10 +729,10 @@ impl BoardScreen {
         }
 
         // Create thread using BoardService
-        let user_role = Self::get_user_role(ctx, session);
+        let user_role = Self::get_user_role(ctx, session).await;
         let board_service = BoardService::new(&ctx.db);
 
-        match board_service.create_thread(board_id, title, user_id, user_role) {
+        match board_service.create_thread(board_id, title, user_id, user_role).await {
             Ok(_) => {
                 // Record successful action for rate limiting
                 ctx.rate_limiters.post.record(user_id);
@@ -780,10 +797,10 @@ impl BoardScreen {
         }
 
         // Create post using BoardService
-        let user_role = Self::get_user_role(ctx, session);
+        let user_role = Self::get_user_role(ctx, session).await;
         let board_service = BoardService::new(&ctx.db);
 
-        match board_service.create_thread_post(thread_id, user_id, &body, user_role) {
+        match board_service.create_thread_post(thread_id, user_id, &body, user_role).await {
             Ok(_) => {
                 // Record successful action for rate limiting
                 ctx.rate_limiters.post.record(user_id);
@@ -857,10 +874,10 @@ impl BoardScreen {
         }
 
         // Create post using BoardService
-        let user_role = Self::get_user_role(ctx, session);
+        let user_role = Self::get_user_role(ctx, session).await;
         let board_service = BoardService::new(&ctx.db);
 
-        match board_service.create_flat_post(board_id, user_id, &title, &body, user_role) {
+        match board_service.create_flat_post(board_id, user_id, &title, &body, user_role).await {
             Ok(_) => {
                 // Record successful action for rate limiting
                 ctx.rate_limiters.post.record(user_id);
@@ -892,8 +909,8 @@ impl BoardScreen {
 
         // Get unread posts (collect into Vec to release the borrow)
         let unread_posts = {
-            let unread_repo = UnreadRepository::new(&ctx.db);
-            unread_repo.get_unread_posts(user_id, board_id)?
+            let unread_repo = UnreadRepository::new(ctx.db.pool());
+            unread_repo.get_unread_posts(user_id, board_id).await?
         };
 
         if unread_posts.is_empty() {
@@ -917,9 +934,10 @@ impl BoardScreen {
         for (index, post) in unread_posts.iter().enumerate() {
             // Display post header (create repo in block to release borrow)
             let author = {
-                let user_repo = UserRepository::new(&ctx.db);
+                let user_repo = UserRepository::new(ctx.db.pool());
                 user_repo
-                    .get_by_id(post.author_id)?
+                    .get_by_id(post.author_id)
+                    .await?
                     .map(|u| u.nickname)
                     .unwrap_or_else(|| "Unknown".to_string())
             };
@@ -931,24 +949,30 @@ impl BoardScreen {
                 &format!("=== [{}/{}] {} ===", index + 1, total, title),
             )
             .await?;
+            let formatted_time = format_datetime(
+                &post.created_at,
+                &ctx.config.server.timezone,
+                "%Y-%m-%d %H:%M",
+            );
             ctx.send_line(
                 session,
                 &format!(
                     "{}: {} ({})",
                     ctx.i18n.t("board.author"),
                     author,
-                    post.created_at
+                    formatted_time
                 ),
             )
             .await?;
             ctx.send_line(session, &"-".repeat(40)).await?;
-            ctx.send_line(session, &convert_caret_escape(&post.body)).await?;
+            ctx.send_line(session, &convert_caret_escape(&post.body))
+                .await?;
             ctx.send_line(session, &"-".repeat(40)).await?;
 
             // Mark this post as read (create repo in block to release borrow)
             {
-                let unread_repo = UnreadRepository::new(&ctx.db);
-                unread_repo.mark_as_read(user_id, board_id, post.id)?;
+                let unread_repo = UnreadRepository::new(ctx.db.pool());
+                unread_repo.mark_as_read(user_id, board_id, post.id).await?;
             }
 
             // Prompt for next action (unless this is the last post)
@@ -1010,8 +1034,8 @@ impl BoardScreen {
 
         if input == "y" || input == "yes" {
             // Mark all posts as read
-            let unread_repo = UnreadRepository::new(&ctx.db);
-            match unread_repo.mark_all_as_read(user_id, board_id) {
+            let unread_repo = UnreadRepository::new(ctx.db.pool());
+            match unread_repo.mark_all_as_read(user_id, board_id).await {
                 Ok(true) => {
                     ctx.send_line(session, ctx.i18n.t("board.marked_all_read"))
                         .await?;
@@ -1044,12 +1068,12 @@ impl BoardScreen {
             None => return Ok(ScreenResult::Back),
         };
 
-        let user_role = Self::get_user_role(ctx, session);
+        let user_role = Self::get_user_role(ctx, session).await;
 
         // Get all unread posts across all boards (collect into Vec to release the borrow)
         let unread_posts: Vec<UnreadPostWithBoard> = {
-            let unread_repo = UnreadRepository::new(&ctx.db);
-            unread_repo.get_all_unread_posts(user_id, user_role)?
+            let unread_repo = UnreadRepository::new(ctx.db.pool());
+            unread_repo.get_all_unread_posts(user_id, user_role).await?
         };
 
         if unread_posts.is_empty() {
@@ -1075,9 +1099,10 @@ impl BoardScreen {
 
             // Display post header (create repo in block to release borrow)
             let author = {
-                let user_repo = UserRepository::new(&ctx.db);
+                let user_repo = UserRepository::new(ctx.db.pool());
                 user_repo
-                    .get_by_id(post.author_id)?
+                    .get_by_id(post.author_id)
+                    .await?
                     .map(|u| u.nickname)
                     .unwrap_or_else(|| "Unknown".to_string())
             };
@@ -1096,24 +1121,30 @@ impl BoardScreen {
                 ),
             )
             .await?;
+            let formatted_time = format_datetime(
+                &post.created_at,
+                &ctx.config.server.timezone,
+                "%Y-%m-%d %H:%M",
+            );
             ctx.send_line(
                 session,
                 &format!(
                     "{}: {} ({})",
                     ctx.i18n.t("board.author"),
                     author,
-                    post.created_at
+                    formatted_time
                 ),
             )
             .await?;
             ctx.send_line(session, &"-".repeat(40)).await?;
-            ctx.send_line(session, &convert_caret_escape(&post.body)).await?;
+            ctx.send_line(session, &convert_caret_escape(&post.body))
+                .await?;
             ctx.send_line(session, &"-".repeat(40)).await?;
 
             // Mark this post as read (create repo in block to release borrow)
             {
-                let unread_repo = UnreadRepository::new(&ctx.db);
-                unread_repo.mark_as_read(user_id, post.board_id, post.id)?;
+                let unread_repo = UnreadRepository::new(ctx.db.pool());
+                unread_repo.mark_as_read(user_id, post.board_id, post.id).await?;
             }
 
             // Prompt for next action (unless this is the last post)
@@ -1153,10 +1184,10 @@ impl BoardScreen {
     }
 
     /// Get user role from session.
-    fn get_user_role(ctx: &ScreenContext, session: &TelnetSession) -> Role {
+    async fn get_user_role(ctx: &ScreenContext, session: &TelnetSession) -> Role {
         if let Some(user_id) = session.user_id() {
-            let user_repo = UserRepository::new(&ctx.db);
-            if let Ok(Some(user)) = user_repo.get_by_id(user_id) {
+            let user_repo = UserRepository::new(ctx.db.pool());
+            if let Ok(Some(user)) = user_repo.get_by_id(user_id).await {
                 return user.role;
             }
         }

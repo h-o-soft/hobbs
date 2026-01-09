@@ -13,7 +13,6 @@ use hobbs::web::router::create_router;
 use hobbs::Database;
 use serde_json::{json, Value};
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 /// Create a test configuration.
 fn create_test_config() -> WebConfig {
@@ -33,12 +32,14 @@ fn create_test_config() -> WebConfig {
 }
 
 /// Create a test server with an in-memory database.
-async fn create_test_server() -> (TestServer, Arc<Mutex<Database>>) {
+async fn create_test_server() -> (TestServer, Arc<Database>) {
     let config = create_test_config();
 
     // Create in-memory database
-    let db = Database::open_in_memory().expect("Failed to create test database");
-    let shared_db = Arc::new(Mutex::new(db));
+    let db = Database::open_in_memory()
+        .await
+        .expect("Failed to create test database");
+    let shared_db = Arc::new(db);
 
     // Create app state
     let app_state = Arc::new(AppState::new(
@@ -80,42 +81,42 @@ async fn register_test_user(
 }
 
 /// Create a test board in the database.
-async fn create_test_board(db: &Arc<Mutex<Database>>, name: &str, board_type: BoardType) -> i64 {
-    let db = db.lock().await;
-    let repo = BoardRepository::new(&*db);
+async fn create_test_board(db: &Arc<Database>, name: &str, board_type: BoardType) -> i64 {
+    let repo = BoardRepository::new(db.pool());
     let new_board = NewBoard::new(name)
         .with_description(format!("{} board", name))
         .with_board_type(board_type)
         .with_min_read_role(Role::Guest)
         .with_min_write_role(Role::Member);
     repo.create(&new_board)
+        .await
         .expect("Failed to create test board")
         .id
 }
 
 /// Create a test board that requires member role to read.
-async fn create_members_only_board(db: &Arc<Mutex<Database>>, name: &str) -> i64 {
-    let db = db.lock().await;
-    let repo = BoardRepository::new(&*db);
+async fn create_members_only_board(db: &Arc<Database>, name: &str) -> i64 {
+    let repo = BoardRepository::new(db.pool());
     let new_board = NewBoard::new(name)
         .with_description(format!("{} - members only", name))
         .with_board_type(BoardType::Thread)
         .with_min_read_role(Role::Member)
         .with_min_write_role(Role::Member);
     repo.create(&new_board)
+        .await
         .expect("Failed to create test board")
         .id
 }
 
 /// Make a user a sysop.
-async fn make_user_sysop(db: &Arc<Mutex<Database>>, user_id: i64) {
-    let db = db.lock().await;
-    let repo = UserRepository::new(&*db);
+async fn make_user_sysop(db: &Arc<Database>, user_id: i64) {
+    let repo = UserRepository::new(db.pool());
     let update = UserUpdate {
         role: Some(Role::SysOp),
         ..Default::default()
     };
     repo.update(user_id, &update)
+        .await
         .expect("Failed to update user role");
 }
 

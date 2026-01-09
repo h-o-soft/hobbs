@@ -1,3 +1,4 @@
+#![cfg(feature = "sqlite")]
 //! E2E Board tests for HOBBS.
 //!
 //! Tests board listing, thread creation, and posting.
@@ -11,7 +12,7 @@ use std::time::Duration;
 #[tokio::test]
 async fn test_board_list_guest() {
     let server = TestServer::new().await.unwrap();
-    create_test_board(server.db(), "General", "thread").unwrap();
+    create_test_board(server.db(), "General", "thread").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -46,8 +47,8 @@ async fn test_board_list_guest() {
 #[tokio::test]
 async fn test_board_list_member() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "member", "password123", "member").unwrap();
-    create_test_board(server.db(), "General", "thread").unwrap();
+    create_test_user(server.db(), "member", "password123", "member").await.unwrap();
+    create_test_board(server.db(), "General", "thread").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -75,8 +76,8 @@ async fn test_board_list_member() {
 #[tokio::test]
 async fn test_board_selection() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "member", "password123", "member").unwrap();
-    create_test_board(server.db(), "TestBoard", "thread").unwrap();
+    create_test_user(server.db(), "member", "password123", "member").await.unwrap();
+    create_test_board(server.db(), "TestBoard", "thread").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -109,8 +110,8 @@ async fn test_board_selection() {
 #[tokio::test]
 async fn test_board_back_navigation() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "member", "password123", "member").unwrap();
-    create_test_board(server.db(), "General", "thread").unwrap();
+    create_test_user(server.db(), "member", "password123", "member").await.unwrap();
+    create_test_board(server.db(), "General", "thread").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -142,7 +143,7 @@ async fn test_board_back_navigation() {
 #[tokio::test]
 async fn test_no_boards() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "member", "password123", "member").unwrap();
+    create_test_user(server.db(), "member", "password123", "member").await.unwrap();
     // No boards created
     tokio::time::sleep(Duration::from_millis(100)).await;
 

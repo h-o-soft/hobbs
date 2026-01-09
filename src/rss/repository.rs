@@ -1,130 +1,299 @@
 //! RSS repositories for HOBBS.
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, OptionalExtension};
+#[cfg(feature = "postgres")]
+use sqlx::QueryBuilder;
+#[cfg(feature = "sqlite")]
+use sqlx::QueryBuilder;
 
 use super::types::{
     NewRssFeed, NewRssItem, RssFeed, RssFeedUpdate, RssFeedWithUnread, RssItem, RssReadPosition,
     MAX_ITEMS_PER_FEED,
 };
+use crate::db::{DbPool, SQL_FALSE, SQL_TRUE};
+use crate::{HobbsError, Result};
+
+// SQL datetime function for current timestamp
+#[cfg(feature = "sqlite")]
+const SQL_NOW: &str = "datetime('now')";
+#[cfg(feature = "postgres")]
+const SQL_NOW: &str = "NOW()";
+
+/// Row type for RSS feed from database.
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct RssFeedRow {
+    id: i64,
+    url: String,
+    title: String,
+    description: Option<String>,
+    site_url: Option<String>,
+    last_fetched_at: Option<String>,
+    last_item_at: Option<String>,
+    fetch_interval: i64,
+    is_active: bool,
+    error_count: i32,
+    last_error: Option<String>,
+    created_by: i64,
+    created_at: String,
+    updated_at: String,
+}
+
+impl From<RssFeedRow> for RssFeed {
+    fn from(row: RssFeedRow) -> Self {
+        RssFeed {
+            id: row.id,
+            url: row.url,
+            title: row.title,
+            description: row.description,
+            site_url: row.site_url,
+            last_fetched_at: row.last_fetched_at.and_then(|s| parse_datetime(&s)),
+            last_item_at: row.last_item_at.and_then(|s| parse_datetime(&s)),
+            fetch_interval: row.fetch_interval,
+            is_active: row.is_active,
+            error_count: row.error_count,
+            last_error: row.last_error,
+            created_by: row.created_by,
+            created_at: parse_datetime(&row.created_at).unwrap_or_else(Utc::now),
+            updated_at: parse_datetime(&row.updated_at).unwrap_or_else(Utc::now),
+        }
+    }
+}
+
+/// Row type for RSS feed with unread count.
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct RssFeedWithUnreadRow {
+    id: i64,
+    url: String,
+    title: String,
+    description: Option<String>,
+    site_url: Option<String>,
+    last_fetched_at: Option<String>,
+    last_item_at: Option<String>,
+    fetch_interval: i64,
+    is_active: bool,
+    error_count: i32,
+    last_error: Option<String>,
+    created_by: i64,
+    created_at: String,
+    updated_at: String,
+    unread_count: i64,
+}
+
+impl From<RssFeedWithUnreadRow> for RssFeedWithUnread {
+    fn from(row: RssFeedWithUnreadRow) -> Self {
+        let feed = RssFeed {
+            id: row.id,
+            url: row.url,
+            title: row.title,
+            description: row.description,
+            site_url: row.site_url,
+            last_fetched_at: row.last_fetched_at.and_then(|s| parse_datetime(&s)),
+            last_item_at: row.last_item_at.and_then(|s| parse_datetime(&s)),
+            fetch_interval: row.fetch_interval,
+            is_active: row.is_active,
+            error_count: row.error_count,
+            last_error: row.last_error,
+            created_by: row.created_by,
+            created_at: parse_datetime(&row.created_at).unwrap_or_else(Utc::now),
+            updated_at: parse_datetime(&row.updated_at).unwrap_or_else(Utc::now),
+        };
+        RssFeedWithUnread {
+            feed,
+            unread_count: row.unread_count,
+        }
+    }
+}
+
+/// Row type for RSS item from database.
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct RssItemRow {
+    id: i64,
+    feed_id: i64,
+    guid: String,
+    title: String,
+    link: Option<String>,
+    description: Option<String>,
+    author: Option<String>,
+    published_at: Option<String>,
+    fetched_at: String,
+}
+
+impl From<RssItemRow> for RssItem {
+    fn from(row: RssItemRow) -> Self {
+        RssItem {
+            id: row.id,
+            feed_id: row.feed_id,
+            guid: row.guid,
+            title: row.title,
+            link: row.link,
+            description: row.description,
+            author: row.author,
+            published_at: row.published_at.and_then(|s| parse_datetime(&s)),
+            fetched_at: parse_datetime(&row.fetched_at).unwrap_or_else(Utc::now),
+        }
+    }
+}
+
+/// Row type for RSS read position from database.
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct RssReadPositionRow {
+    id: i64,
+    user_id: i64,
+    feed_id: i64,
+    last_read_item_id: Option<i64>,
+    last_read_at: String,
+}
+
+impl From<RssReadPositionRow> for RssReadPosition {
+    fn from(row: RssReadPositionRow) -> Self {
+        RssReadPosition {
+            id: row.id,
+            user_id: row.user_id,
+            feed_id: row.feed_id,
+            last_read_item_id: row.last_read_item_id,
+            last_read_at: parse_datetime(&row.last_read_at).unwrap_or_else(Utc::now),
+        }
+    }
+}
 
 /// Repository for RSS feed operations.
-pub struct RssFeedRepository;
+pub struct RssFeedRepository<'a> {
+    pool: &'a DbPool,
+}
 
-impl RssFeedRepository {
+impl<'a> RssFeedRepository<'a> {
+    /// Create a new repository instance.
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
+
     /// Create a new feed.
-    pub fn create(conn: &Connection, feed: &NewRssFeed) -> rusqlite::Result<RssFeed> {
-        conn.execute(
+    pub async fn create(&self, feed: &NewRssFeed) -> Result<RssFeed> {
+        let id: i64 = sqlx::query_scalar(
             r#"
             INSERT INTO rss_feeds (url, title, description, site_url, created_by)
-            VALUES (?1, ?2, ?3, ?4, ?5)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
             "#,
-            params![
-                feed.url,
-                feed.title,
-                feed.description,
-                feed.site_url,
-                feed.created_by
-            ],
-        )?;
+        )
+        .bind(&feed.url)
+        .bind(&feed.title)
+        .bind(&feed.description)
+        .bind(&feed.site_url)
+        .bind(feed.created_by)
+        .fetch_one(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = conn.last_insert_rowid();
-        Self::get_by_id(conn, id)?.ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)
+        self.get_by_id(id)
+            .await?
+            .ok_or_else(|| HobbsError::NotFound("RSS feed not found".into()))
     }
 
     /// Get a feed by ID.
-    pub fn get_by_id(conn: &Connection, id: i64) -> rusqlite::Result<Option<RssFeed>> {
-        conn.query_row(
+    pub async fn get_by_id(&self, id: i64) -> Result<Option<RssFeed>> {
+        let row = sqlx::query_as::<_, RssFeedRow>(
             r#"
             SELECT id, url, title, description, site_url, last_fetched_at, last_item_at,
                    fetch_interval, is_active, error_count, last_error, created_by,
                    created_at, updated_at
             FROM rss_feeds
-            WHERE id = ?1
+            WHERE id = $1
             "#,
-            [id],
-            Self::map_row,
         )
-        .optional()
+        .bind(id)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(row.map(RssFeed::from))
     }
 
     /// Get a feed by URL (any user).
-    pub fn get_by_url(conn: &Connection, url: &str) -> rusqlite::Result<Option<RssFeed>> {
-        conn.query_row(
+    pub async fn get_by_url(&self, url: &str) -> Result<Option<RssFeed>> {
+        let row = sqlx::query_as::<_, RssFeedRow>(
             r#"
             SELECT id, url, title, description, site_url, last_fetched_at, last_item_at,
                    fetch_interval, is_active, error_count, last_error, created_by,
                    created_at, updated_at
             FROM rss_feeds
-            WHERE url = ?1
+            WHERE url = $1
             "#,
-            [url],
-            Self::map_row,
         )
-        .optional()
+        .bind(url)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(row.map(RssFeed::from))
     }
 
     /// Get a feed by URL for a specific user.
-    pub fn get_by_user_url(
-        conn: &Connection,
-        user_id: i64,
-        url: &str,
-    ) -> rusqlite::Result<Option<RssFeed>> {
-        conn.query_row(
+    pub async fn get_by_user_url(&self, user_id: i64, url: &str) -> Result<Option<RssFeed>> {
+        let row = sqlx::query_as::<_, RssFeedRow>(
             r#"
             SELECT id, url, title, description, site_url, last_fetched_at, last_item_at,
                    fetch_interval, is_active, error_count, last_error, created_by,
                    created_at, updated_at
             FROM rss_feeds
-            WHERE created_by = ?1 AND url = ?2
+            WHERE created_by = $1 AND url = $2
             "#,
-            params![user_id, url],
-            Self::map_row,
         )
-        .optional()
+        .bind(user_id)
+        .bind(url)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(row.map(RssFeed::from))
     }
 
     /// List all active feeds (ordered by registration order).
-    pub fn list_active(conn: &Connection) -> rusqlite::Result<Vec<RssFeed>> {
-        let mut stmt = conn.prepare(
+    pub async fn list_active(&self) -> Result<Vec<RssFeed>> {
+        let query = format!(
             r#"
             SELECT id, url, title, description, site_url, last_fetched_at, last_item_at,
                    fetch_interval, is_active, error_count, last_error, created_by,
                    created_at, updated_at
             FROM rss_feeds
-            WHERE is_active = 1
+            WHERE is_active = {}
             ORDER BY id ASC
             "#,
-        )?;
+            SQL_TRUE
+        );
+        let rows = sqlx::query_as::<_, RssFeedRow>(&query)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let feeds = stmt
-            .query_map([], Self::map_row)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(feeds)
+        Ok(rows.into_iter().map(RssFeed::from).collect())
     }
 
     /// List active feeds for a specific user (ordered by registration order).
-    pub fn list_active_by_user(conn: &Connection, user_id: i64) -> rusqlite::Result<Vec<RssFeed>> {
-        let mut stmt = conn.prepare(
+    pub async fn list_active_by_user(&self, user_id: i64) -> Result<Vec<RssFeed>> {
+        let query = format!(
             r#"
             SELECT id, url, title, description, site_url, last_fetched_at, last_item_at,
                    fetch_interval, is_active, error_count, last_error, created_by,
                    created_at, updated_at
             FROM rss_feeds
-            WHERE is_active = 1 AND created_by = ?1
+            WHERE is_active = {} AND created_by = $1
             ORDER BY id ASC
             "#,
-        )?;
+            SQL_TRUE
+        );
+        let rows = sqlx::query_as::<_, RssFeedRow>(&query)
+            .bind(user_id)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let feeds = stmt
-            .query_map([user_id], Self::map_row)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(feeds)
+        Ok(rows.into_iter().map(RssFeed::from).collect())
     }
 
     /// List all feeds (including inactive, ordered by registration order).
-    pub fn list_all(conn: &Connection) -> rusqlite::Result<Vec<RssFeed>> {
-        let mut stmt = conn.prepare(
+    pub async fn list_all(&self) -> Result<Vec<RssFeed>> {
+        let rows = sqlx::query_as::<_, RssFeedRow>(
             r#"
             SELECT id, url, title, description, site_url, last_fetched_at, last_item_at,
                    fetch_interval, is_active, error_count, last_error, created_by,
@@ -132,48 +301,62 @@ impl RssFeedRepository {
             FROM rss_feeds
             ORDER BY id ASC
             "#,
-        )?;
+        )
+        .fetch_all(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let feeds = stmt
-            .query_map([], Self::map_row)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(feeds)
+        Ok(rows.into_iter().map(RssFeed::from).collect())
     }
 
     /// List feeds that are due for fetching.
-    pub fn list_due_for_fetch(conn: &Connection) -> rusqlite::Result<Vec<RssFeed>> {
-        let mut stmt = conn.prepare(
+    pub async fn list_due_for_fetch(&self) -> Result<Vec<RssFeed>> {
+        #[cfg(feature = "sqlite")]
+        let query = format!(
             r#"
             SELECT id, url, title, description, site_url, last_fetched_at, last_item_at,
                    fetch_interval, is_active, error_count, last_error, created_by,
                    created_at, updated_at
             FROM rss_feeds
-            WHERE is_active = 1
+            WHERE is_active = {}
               AND (last_fetched_at IS NULL
                    OR datetime(last_fetched_at, '+' || fetch_interval || ' seconds') <= datetime('now'))
             ORDER BY last_fetched_at ASC NULLS FIRST
             "#,
-        )?;
+            SQL_TRUE
+        );
+        #[cfg(feature = "postgres")]
+        let query = format!(
+            r#"
+            SELECT id, url, title, description, site_url, last_fetched_at, last_item_at,
+                   fetch_interval, is_active, error_count, last_error, created_by,
+                   created_at, updated_at
+            FROM rss_feeds
+            WHERE is_active = {}
+              AND (last_fetched_at IS NULL
+                   OR last_fetched_at + (fetch_interval || ' seconds')::INTERVAL <= NOW())
+            ORDER BY last_fetched_at ASC NULLS FIRST
+            "#,
+            SQL_TRUE
+        );
+        let rows = sqlx::query_as::<_, RssFeedRow>(&query)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let feeds = stmt
-            .query_map([], Self::map_row)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(feeds)
+        Ok(rows.into_iter().map(RssFeed::from).collect())
     }
 
     /// List active feeds with unread counts for a user (ordered by registration order).
     /// Only returns feeds owned by the user (personal RSS reader).
-    pub fn list_with_unread(
-        conn: &Connection,
-        user_id: Option<i64>,
-    ) -> rusqlite::Result<Vec<RssFeedWithUnread>> {
+    pub async fn list_with_unread(&self, user_id: Option<i64>) -> Result<Vec<RssFeedWithUnread>> {
         // If no user_id, return empty list (guest cannot have feeds)
         let user_id = match user_id {
             Some(id) => id,
             None => return Ok(Vec::new()),
         };
 
-        let mut stmt = conn.prepare(
+        let query = format!(
             r#"
             SELECT f.id, f.url, f.title, f.description, f.site_url, f.last_fetched_at, f.last_item_at,
                    f.fetch_interval, f.is_active, f.error_count, f.last_error, f.created_by,
@@ -182,383 +365,502 @@ impl RssFeedRepository {
                     WHERE i.feed_id = f.id
                     AND i.id > COALESCE(
                         (SELECT last_read_item_id FROM rss_read_positions
-                         WHERE user_id = ?1 AND feed_id = f.id),
+                         WHERE user_id = $1 AND feed_id = f.id),
                         0)) as unread_count
             FROM rss_feeds f
-            WHERE f.is_active = 1 AND f.created_by = ?1
+            WHERE f.is_active = {} AND f.created_by = $2
             ORDER BY f.id ASC
             "#,
-        )?;
+            SQL_TRUE
+        );
+        let rows = sqlx::query_as::<_, RssFeedWithUnreadRow>(&query)
+            .bind(user_id)
+            .bind(user_id)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let feeds = stmt
-            .query_map([user_id], |row| {
-                let feed = Self::map_row(row)?;
-                let unread_count: i64 = row.get(14)?;
-                Ok(RssFeedWithUnread { feed, unread_count })
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(feeds)
+        Ok(rows.into_iter().map(RssFeedWithUnread::from).collect())
     }
 
     /// Update a feed.
-    pub fn update(conn: &Connection, id: i64, update: &RssFeedUpdate) -> rusqlite::Result<bool> {
+    #[cfg(feature = "sqlite")]
+    pub async fn update(&self, id: i64, update: &RssFeedUpdate) -> Result<bool> {
         if update.is_empty() {
             return Ok(false);
         }
 
-        let mut sets = Vec::new();
-        let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        let mut query: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new("UPDATE rss_feeds SET ");
+        let mut separated = query.separated(", ");
 
         if let Some(ref title) = update.title {
-            sets.push("title = ?");
-            values.push(Box::new(title.clone()));
+            separated.push("title = ");
+            separated.push_bind_unseparated(title);
         }
 
         if let Some(ref description) = update.description {
-            sets.push("description = ?");
-            values.push(Box::new(description.clone()));
+            separated.push("description = ");
+            separated.push_bind_unseparated(description.clone());
         }
 
         if let Some(interval) = update.fetch_interval {
-            sets.push("fetch_interval = ?");
-            values.push(Box::new(interval));
+            separated.push("fetch_interval = ");
+            separated.push_bind_unseparated(interval);
         }
 
         if let Some(is_active) = update.is_active {
-            sets.push("is_active = ?");
-            values.push(Box::new(is_active as i32));
+            separated.push("is_active = ");
+            separated.push_bind_unseparated(is_active);
         }
 
-        sets.push("updated_at = datetime('now')");
-        values.push(Box::new(id));
+        separated.push(format!("updated_at = {}", SQL_NOW));
 
-        let sql = format!("UPDATE rss_feeds SET {} WHERE id = ?", sets.join(", "));
+        query.push(" WHERE id = ");
+        query.push_bind(id);
 
-        let params: Vec<&dyn rusqlite::ToSql> = values.iter().map(|v| v.as_ref()).collect();
-        let rows = conn.execute(&sql, params.as_slice())?;
-        Ok(rows > 0)
+        let result = query
+            .build()
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Update a feed.
+    #[cfg(feature = "postgres")]
+    pub async fn update(&self, id: i64, update: &RssFeedUpdate) -> Result<bool> {
+        if update.is_empty() {
+            return Ok(false);
+        }
+
+        let mut query: QueryBuilder<sqlx::Postgres> = QueryBuilder::new("UPDATE rss_feeds SET ");
+        let mut separated = query.separated(", ");
+
+        if let Some(ref title) = update.title {
+            separated.push("title = ");
+            separated.push_bind_unseparated(title);
+        }
+
+        if let Some(ref description) = update.description {
+            separated.push("description = ");
+            separated.push_bind_unseparated(description.clone());
+        }
+
+        if let Some(interval) = update.fetch_interval {
+            separated.push("fetch_interval = ");
+            separated.push_bind_unseparated(interval);
+        }
+
+        if let Some(is_active) = update.is_active {
+            separated.push("is_active = ");
+            separated.push_bind_unseparated(is_active);
+        }
+
+        separated.push("updated_at = NOW()");
+
+        query.push(" WHERE id = ");
+        query.push_bind(id);
+
+        let result = query
+            .build()
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     /// Update last fetched timestamp.
-    pub fn update_last_fetched(conn: &Connection, id: i64) -> rusqlite::Result<bool> {
-        let rows = conn.execute(
-            "UPDATE rss_feeds SET last_fetched_at = datetime('now'), updated_at = datetime('now') WHERE id = ?1",
-            [id],
-        )?;
-        Ok(rows > 0)
+    pub async fn update_last_fetched(&self, id: i64) -> Result<bool> {
+        let query = format!(
+            "UPDATE rss_feeds SET last_fetched_at = {}, updated_at = {} WHERE id = $1",
+            SQL_NOW, SQL_NOW
+        );
+        let result = sqlx::query(&query)
+            .bind(id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     /// Update last item timestamp.
-    pub fn update_last_item_at(
-        conn: &Connection,
-        id: i64,
-        last_item_at: DateTime<Utc>,
-    ) -> rusqlite::Result<bool> {
-        let rows = conn.execute(
-            "UPDATE rss_feeds SET last_item_at = ?2, updated_at = datetime('now') WHERE id = ?1",
-            params![id, last_item_at.to_rfc3339()],
-        )?;
-        Ok(rows > 0)
+    pub async fn update_last_item_at(&self, id: i64, last_item_at: DateTime<Utc>) -> Result<bool> {
+        let query = format!(
+            "UPDATE rss_feeds SET last_item_at = $1, updated_at = {} WHERE id = $2",
+            SQL_NOW
+        );
+        let result = sqlx::query(&query)
+            .bind(last_item_at.to_rfc3339())
+            .bind(id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     /// Increment error count and set error message.
-    pub fn increment_error(conn: &Connection, id: i64, error: &str) -> rusqlite::Result<bool> {
-        let rows = conn.execute(
+    pub async fn increment_error(&self, id: i64, error: &str) -> Result<bool> {
+        let query = format!(
             r#"
             UPDATE rss_feeds
             SET error_count = error_count + 1,
-                last_error = ?2,
-                updated_at = datetime('now')
-            WHERE id = ?1
+                last_error = $1,
+                updated_at = {}
+            WHERE id = $2
             "#,
-            params![id, error],
-        )?;
-        Ok(rows > 0)
+            SQL_NOW
+        );
+        let result = sqlx::query(&query)
+            .bind(error)
+            .bind(id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     /// Clear error count.
-    pub fn clear_error(conn: &Connection, id: i64) -> rusqlite::Result<bool> {
-        let rows = conn.execute(
+    pub async fn clear_error(&self, id: i64) -> Result<bool> {
+        let query = format!(
             r#"
             UPDATE rss_feeds
             SET error_count = 0,
                 last_error = NULL,
-                updated_at = datetime('now')
-            WHERE id = ?1
+                updated_at = {}
+            WHERE id = $1
             "#,
-            [id],
-        )?;
-        Ok(rows > 0)
+            SQL_NOW
+        );
+        let result = sqlx::query(&query)
+            .bind(id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     /// Disable feeds that have exceeded the error threshold.
-    pub fn disable_failed_feeds(conn: &Connection, max_errors: i32) -> rusqlite::Result<usize> {
-        conn.execute(
+    pub async fn disable_failed_feeds(&self, max_errors: i32) -> Result<u64> {
+        let query = format!(
             r#"
             UPDATE rss_feeds
-            SET is_active = 0, updated_at = datetime('now')
-            WHERE error_count >= ?1 AND is_active = 1
+            SET is_active = {}, updated_at = {}
+            WHERE error_count >= $1 AND is_active = {}
             "#,
-            [max_errors],
-        )
+            SQL_FALSE, SQL_NOW, SQL_TRUE
+        );
+        let result = sqlx::query(&query)
+            .bind(max_errors)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected())
     }
 
     /// Delete a feed.
-    pub fn delete(conn: &Connection, id: i64) -> rusqlite::Result<bool> {
-        let rows = conn.execute("DELETE FROM rss_feeds WHERE id = ?1", [id])?;
-        Ok(rows > 0)
+    pub async fn delete(&self, id: i64) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM rss_feeds WHERE id = $1")
+            .bind(id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     /// Count all feeds.
-    pub fn count(conn: &Connection) -> rusqlite::Result<i64> {
-        conn.query_row("SELECT COUNT(*) FROM rss_feeds", [], |row| row.get(0))
-    }
+    pub async fn count(&self) -> Result<i64> {
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM rss_feeds")
+            .fetch_one(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-    /// Map a database row to an RssFeed.
-    fn map_row(row: &rusqlite::Row) -> rusqlite::Result<RssFeed> {
-        let last_fetched_at: Option<String> = row.get(5)?;
-        let last_item_at: Option<String> = row.get(6)?;
-        let created_at_str: String = row.get(12)?;
-        let updated_at_str: String = row.get(13)?;
-
-        Ok(RssFeed {
-            id: row.get(0)?,
-            url: row.get(1)?,
-            title: row.get(2)?,
-            description: row.get(3)?,
-            site_url: row.get(4)?,
-            last_fetched_at: last_fetched_at.and_then(|s| parse_datetime(&s)),
-            last_item_at: last_item_at.and_then(|s| parse_datetime(&s)),
-            fetch_interval: row.get(7)?,
-            is_active: row.get::<_, i32>(8)? != 0,
-            error_count: row.get(9)?,
-            last_error: row.get(10)?,
-            created_by: row.get(11)?,
-            created_at: parse_datetime(&created_at_str).unwrap_or_else(Utc::now),
-            updated_at: parse_datetime(&updated_at_str).unwrap_or_else(Utc::now),
-        })
+        Ok(count.0)
     }
 }
 
 /// Repository for RSS item operations.
-pub struct RssItemRepository;
+pub struct RssItemRepository<'a> {
+    pool: &'a DbPool,
+}
 
-impl RssItemRepository {
+impl<'a> RssItemRepository<'a> {
+    /// Create a new repository instance.
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
+
     /// Create a new item, ignoring if duplicate (same feed_id + guid).
-    pub fn create_or_ignore(conn: &Connection, item: &NewRssItem) -> rusqlite::Result<Option<i64>> {
+    #[cfg(feature = "sqlite")]
+    pub async fn create_or_ignore(&self, item: &NewRssItem) -> Result<Option<i64>> {
         let published_at = item.published_at.map(|dt| dt.to_rfc3339());
 
-        let rows = conn.execute(
+        let result = sqlx::query(
             r#"
             INSERT OR IGNORE INTO rss_items (feed_id, guid, title, link, description, author, published_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             "#,
-            params![
-                item.feed_id,
-                item.guid,
-                item.title,
-                item.link,
-                item.description,
-                item.author,
-                published_at
-            ],
-        )?;
+        )
+        .bind(item.feed_id)
+        .bind(&item.guid)
+        .bind(&item.title)
+        .bind(&item.link)
+        .bind(&item.description)
+        .bind(&item.author)
+        .bind(&published_at)
+        .execute(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        if rows > 0 {
-            Ok(Some(conn.last_insert_rowid()))
+        if result.rows_affected() > 0 {
+            Ok(Some(result.last_insert_rowid()))
         } else {
             Ok(None) // Already existed
         }
     }
 
+    /// Create a new item, ignoring if duplicate (same feed_id + guid).
+    #[cfg(feature = "postgres")]
+    pub async fn create_or_ignore(&self, item: &NewRssItem) -> Result<Option<i64>> {
+        let published_at = item.published_at.map(|dt| dt.to_rfc3339());
+
+        let result: Option<(i64,)> = sqlx::query_as(
+            r#"
+            INSERT INTO rss_items (feed_id, guid, title, link, description, author, published_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (feed_id, guid) DO NOTHING
+            RETURNING id
+            "#,
+        )
+        .bind(item.feed_id)
+        .bind(&item.guid)
+        .bind(&item.title)
+        .bind(&item.link)
+        .bind(&item.description)
+        .bind(&item.author)
+        .bind(&published_at)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.map(|(id,)| id))
+    }
+
     /// Get an item by ID.
-    pub fn get_by_id(conn: &Connection, id: i64) -> rusqlite::Result<Option<RssItem>> {
-        conn.query_row(
+    pub async fn get_by_id(&self, id: i64) -> Result<Option<RssItem>> {
+        let row = sqlx::query_as::<_, RssItemRow>(
             r#"
             SELECT id, feed_id, guid, title, link, description, author, published_at, fetched_at
             FROM rss_items
-            WHERE id = ?1
+            WHERE id = $1
             "#,
-            [id],
-            Self::map_row,
         )
-        .optional()
+        .bind(id)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(row.map(RssItem::from))
     }
 
     /// Get an item by feed ID and guid.
-    pub fn get_by_guid(
-        conn: &Connection,
-        feed_id: i64,
-        guid: &str,
-    ) -> rusqlite::Result<Option<RssItem>> {
-        conn.query_row(
+    pub async fn get_by_guid(&self, feed_id: i64, guid: &str) -> Result<Option<RssItem>> {
+        let row = sqlx::query_as::<_, RssItemRow>(
             r#"
             SELECT id, feed_id, guid, title, link, description, author, published_at, fetched_at
             FROM rss_items
-            WHERE feed_id = ?1 AND guid = ?2
+            WHERE feed_id = $1 AND guid = $2
             "#,
-            params![feed_id, guid],
-            Self::map_row,
         )
-        .optional()
+        .bind(feed_id)
+        .bind(guid)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(row.map(RssItem::from))
     }
 
     /// List items for a feed (newest first).
-    pub fn list_by_feed(
-        conn: &Connection,
+    pub async fn list_by_feed(
+        &self,
         feed_id: i64,
         limit: usize,
         offset: usize,
-    ) -> rusqlite::Result<Vec<RssItem>> {
-        let mut stmt = conn.prepare(
+    ) -> Result<Vec<RssItem>> {
+        let rows = sqlx::query_as::<_, RssItemRow>(
             r#"
             SELECT id, feed_id, guid, title, link, description, author, published_at, fetched_at
             FROM rss_items
-            WHERE feed_id = ?1
+            WHERE feed_id = $1
             ORDER BY COALESCE(published_at, fetched_at) DESC, id DESC
-            LIMIT ?2 OFFSET ?3
+            LIMIT $2 OFFSET $3
             "#,
-        )?;
+        )
+        .bind(feed_id)
+        .bind(limit as i64)
+        .bind(offset as i64)
+        .fetch_all(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let items = stmt
-            .query_map(params![feed_id, limit as i64, offset as i64], Self::map_row)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(items)
+        Ok(rows.into_iter().map(RssItem::from).collect())
     }
 
     /// Count items for a feed.
-    pub fn count_by_feed(conn: &Connection, feed_id: i64) -> rusqlite::Result<i64> {
-        conn.query_row(
-            "SELECT COUNT(*) FROM rss_items WHERE feed_id = ?1",
-            [feed_id],
-            |row| row.get(0),
-        )
+    pub async fn count_by_feed(&self, feed_id: i64) -> Result<i64> {
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM rss_items WHERE feed_id = $1")
+            .bind(feed_id)
+            .fetch_one(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(count.0)
     }
 
     /// Count unread items for a user and feed.
-    pub fn count_unread(conn: &Connection, feed_id: i64, user_id: i64) -> rusqlite::Result<i64> {
-        conn.query_row(
+    pub async fn count_unread(&self, feed_id: i64, user_id: i64) -> Result<i64> {
+        let count: (i64,) = sqlx::query_as(
             r#"
             SELECT COUNT(*) FROM rss_items
-            WHERE feed_id = ?1
+            WHERE feed_id = $1
             AND id > COALESCE(
                 (SELECT last_read_item_id FROM rss_read_positions
-                 WHERE user_id = ?2 AND feed_id = ?1),
+                 WHERE user_id = $2 AND feed_id = $3),
                 0)
             "#,
-            params![feed_id, user_id],
-            |row| row.get(0),
         )
+        .bind(feed_id)
+        .bind(user_id)
+        .bind(feed_id)
+        .fetch_one(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(count.0)
     }
 
     /// Get the newest item ID for a feed.
-    pub fn get_newest_item_id(conn: &Connection, feed_id: i64) -> rusqlite::Result<Option<i64>> {
-        conn.query_row(
+    pub async fn get_newest_item_id(&self, feed_id: i64) -> Result<Option<i64>> {
+        let result: Option<(i64,)> = sqlx::query_as(
             r#"
             SELECT id FROM rss_items
-            WHERE feed_id = ?1
+            WHERE feed_id = $1
             ORDER BY COALESCE(published_at, fetched_at) DESC, id DESC
             LIMIT 1
             "#,
-            [feed_id],
-            |row| row.get(0),
         )
-        .optional()
+        .bind(feed_id)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.map(|r| r.0))
     }
 
     /// Delete old items for a feed, keeping only the most recent.
-    pub fn prune_old_items(conn: &Connection, feed_id: i64) -> rusqlite::Result<usize> {
-        conn.execute(
+    pub async fn prune_old_items(&self, feed_id: i64) -> Result<u64> {
+        let result = sqlx::query(
             r#"
             DELETE FROM rss_items
-            WHERE feed_id = ?1
+            WHERE feed_id = $1
             AND id NOT IN (
                 SELECT id FROM rss_items
-                WHERE feed_id = ?1
+                WHERE feed_id = $2
                 ORDER BY COALESCE(published_at, fetched_at) DESC, id DESC
-                LIMIT ?2
+                LIMIT $3
             )
             "#,
-            params![feed_id, MAX_ITEMS_PER_FEED as i64],
         )
+        .bind(feed_id)
+        .bind(feed_id)
+        .bind(MAX_ITEMS_PER_FEED as i64)
+        .execute(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected())
     }
 
     /// Delete all items for a feed.
-    pub fn delete_by_feed(conn: &Connection, feed_id: i64) -> rusqlite::Result<usize> {
-        conn.execute("DELETE FROM rss_items WHERE feed_id = ?1", [feed_id])
-    }
+    pub async fn delete_by_feed(&self, feed_id: i64) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM rss_items WHERE feed_id = $1")
+            .bind(feed_id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-    /// Map a database row to an RssItem.
-    fn map_row(row: &rusqlite::Row) -> rusqlite::Result<RssItem> {
-        let published_at: Option<String> = row.get(7)?;
-        let fetched_at_str: String = row.get(8)?;
-
-        Ok(RssItem {
-            id: row.get(0)?,
-            feed_id: row.get(1)?,
-            guid: row.get(2)?,
-            title: row.get(3)?,
-            link: row.get(4)?,
-            description: row.get(5)?,
-            author: row.get(6)?,
-            published_at: published_at.and_then(|s| parse_datetime(&s)),
-            fetched_at: parse_datetime(&fetched_at_str).unwrap_or_else(Utc::now),
-        })
+        Ok(result.rows_affected())
     }
 }
 
 /// Repository for RSS read position operations.
-pub struct RssReadPositionRepository;
+pub struct RssReadPositionRepository<'a> {
+    pool: &'a DbPool,
+}
 
-impl RssReadPositionRepository {
+impl<'a> RssReadPositionRepository<'a> {
+    /// Create a new repository instance.
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
+
     /// Get read position for a user and feed.
-    pub fn get(
-        conn: &Connection,
-        user_id: i64,
-        feed_id: i64,
-    ) -> rusqlite::Result<Option<RssReadPosition>> {
-        conn.query_row(
+    pub async fn get(&self, user_id: i64, feed_id: i64) -> Result<Option<RssReadPosition>> {
+        let row = sqlx::query_as::<_, RssReadPositionRow>(
             r#"
             SELECT id, user_id, feed_id, last_read_item_id, last_read_at
             FROM rss_read_positions
-            WHERE user_id = ?1 AND feed_id = ?2
+            WHERE user_id = $1 AND feed_id = $2
             "#,
-            params![user_id, feed_id],
-            Self::map_row,
         )
-        .optional()
+        .bind(user_id)
+        .bind(feed_id)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(row.map(RssReadPosition::from))
     }
 
     /// Update or insert read position.
-    pub fn upsert(
-        conn: &Connection,
-        user_id: i64,
-        feed_id: i64,
-        last_read_item_id: i64,
-    ) -> rusqlite::Result<()> {
-        conn.execute(
+    pub async fn upsert(&self, user_id: i64, feed_id: i64, last_read_item_id: i64) -> Result<()> {
+        let query = format!(
             r#"
             INSERT INTO rss_read_positions (user_id, feed_id, last_read_item_id, last_read_at)
-            VALUES (?1, ?2, ?3, datetime('now'))
+            VALUES ($1, $2, $3, {})
             ON CONFLICT(user_id, feed_id) DO UPDATE SET
-                last_read_item_id = ?3,
-                last_read_at = datetime('now')
+                last_read_item_id = $4,
+                last_read_at = {}
             "#,
-            params![user_id, feed_id, last_read_item_id],
-        )?;
+            SQL_NOW, SQL_NOW
+        );
+        sqlx::query(&query)
+            .bind(user_id)
+            .bind(feed_id)
+            .bind(last_read_item_id)
+            .bind(last_read_item_id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
         Ok(())
     }
 
     /// Mark all items as read (set to newest item ID).
-    pub fn mark_all_as_read(
-        conn: &Connection,
-        user_id: i64,
-        feed_id: i64,
-    ) -> rusqlite::Result<bool> {
-        let newest_id = RssItemRepository::get_newest_item_id(conn, feed_id)?;
+    pub async fn mark_all_as_read(&self, user_id: i64, feed_id: i64) -> Result<bool> {
+        let item_repo = RssItemRepository::new(self.pool);
+        let newest_id = item_repo.get_newest_item_id(feed_id).await?;
         match newest_id {
             Some(id) => {
-                Self::upsert(conn, user_id, feed_id, id)?;
+                self.upsert(user_id, feed_id, id).await?;
                 Ok(true)
             }
             None => Ok(false), // No items to mark as read
@@ -566,33 +868,27 @@ impl RssReadPositionRepository {
     }
 
     /// Delete read position for a user and feed.
-    pub fn delete(conn: &Connection, user_id: i64, feed_id: i64) -> rusqlite::Result<bool> {
-        let rows = conn.execute(
-            "DELETE FROM rss_read_positions WHERE user_id = ?1 AND feed_id = ?2",
-            params![user_id, feed_id],
-        )?;
-        Ok(rows > 0)
+    pub async fn delete(&self, user_id: i64, feed_id: i64) -> Result<bool> {
+        let result =
+            sqlx::query("DELETE FROM rss_read_positions WHERE user_id = $1 AND feed_id = $2")
+                .bind(user_id)
+                .bind(feed_id)
+                .execute(self.pool)
+                .await
+                .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     /// Delete all read positions for a user.
-    pub fn delete_by_user(conn: &Connection, user_id: i64) -> rusqlite::Result<usize> {
-        conn.execute(
-            "DELETE FROM rss_read_positions WHERE user_id = ?1",
-            [user_id],
-        )
-    }
+    pub async fn delete_by_user(&self, user_id: i64) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM rss_read_positions WHERE user_id = $1")
+            .bind(user_id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-    /// Map a database row to an RssReadPosition.
-    fn map_row(row: &rusqlite::Row) -> rusqlite::Result<RssReadPosition> {
-        let last_read_at_str: String = row.get(4)?;
-
-        Ok(RssReadPosition {
-            id: row.get(0)?,
-            user_id: row.get(1)?,
-            feed_id: row.get(2)?,
-            last_read_item_id: row.get(3)?,
-            last_read_at: parse_datetime(&last_read_at_str).unwrap_or_else(Utc::now),
-        })
+        Ok(result.rows_affected())
     }
 }
 
@@ -612,25 +908,27 @@ fn parse_datetime(s: &str) -> Option<DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{Database, NewUser, UserRepository};
+    use crate::db::{NewUser, UserRepository};
+    use crate::Database;
 
-    fn setup_db() -> Database {
-        Database::open_in_memory().unwrap()
+    async fn setup_db() -> Database {
+        Database::open_in_memory().await.unwrap()
     }
 
-    fn create_test_user(db: &Database) -> i64 {
-        let repo = UserRepository::new(db);
+    async fn create_test_user(db: &Database) -> i64 {
+        let repo = UserRepository::new(db.pool());
         let user = NewUser::new("testuser", "password123", "Test User");
-        repo.create(&user).unwrap().id
+        repo.create(&user).await.unwrap().id
     }
 
-    #[test]
-    fn test_create_feed() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_create_feed() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let repo = RssFeedRepository::new(db.pool());
 
         let new_feed = NewRssFeed::new("https://example.com/feed.xml", "Test Feed", user_id);
-        let feed = RssFeedRepository::create(db.conn(), &new_feed).unwrap();
+        let feed = repo.create(&new_feed).await.unwrap();
 
         assert!(feed.id > 0);
         assert_eq!(feed.url, "https://example.com/feed.xml");
@@ -640,317 +938,314 @@ mod tests {
         assert_eq!(feed.error_count, 0);
     }
 
-    #[test]
-    fn test_get_feed_by_id() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_get_feed_by_id() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let repo = RssFeedRepository::new(db.pool());
 
         let new_feed = NewRssFeed::new("https://example.com/feed.xml", "Test Feed", user_id);
-        let created = RssFeedRepository::create(db.conn(), &new_feed).unwrap();
+        let created = repo.create(&new_feed).await.unwrap();
 
-        let retrieved = RssFeedRepository::get_by_id(db.conn(), created.id)
-            .unwrap()
-            .unwrap();
+        let retrieved = repo.get_by_id(created.id).await.unwrap().unwrap();
         assert_eq!(retrieved.id, created.id);
         assert_eq!(retrieved.title, "Test Feed");
     }
 
-    #[test]
-    fn test_get_feed_by_url() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_get_feed_by_url() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let repo = RssFeedRepository::new(db.pool());
 
         let url = "https://example.com/feed.xml";
         let new_feed = NewRssFeed::new(url, "Test Feed", user_id);
-        RssFeedRepository::create(db.conn(), &new_feed).unwrap();
+        repo.create(&new_feed).await.unwrap();
 
-        let retrieved = RssFeedRepository::get_by_url(db.conn(), url)
-            .unwrap()
-            .unwrap();
+        let retrieved = repo.get_by_url(url).await.unwrap().unwrap();
         assert_eq!(retrieved.url, url);
     }
 
-    #[test]
-    fn test_list_active_feeds() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_list_active_feeds() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let repo = RssFeedRepository::new(db.pool());
 
         // Create active and inactive feeds
         let feed1 = NewRssFeed::new("https://example1.com/feed.xml", "Feed 1", user_id);
         let feed2 = NewRssFeed::new("https://example2.com/feed.xml", "Feed 2", user_id);
-        RssFeedRepository::create(db.conn(), &feed1).unwrap();
-        let created2 = RssFeedRepository::create(db.conn(), &feed2).unwrap();
+        repo.create(&feed1).await.unwrap();
+        let created2 = repo.create(&feed2).await.unwrap();
 
         // Disable feed2
-        RssFeedRepository::update(db.conn(), created2.id, &RssFeedUpdate::new().disable()).unwrap();
+        repo.update(created2.id, &RssFeedUpdate::new().disable())
+            .await
+            .unwrap();
 
-        let active = RssFeedRepository::list_active(db.conn()).unwrap();
+        let active = repo.list_active().await.unwrap();
         assert_eq!(active.len(), 1);
         assert_eq!(active[0].title, "Feed 1");
     }
 
-    #[test]
-    fn test_update_feed() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_update_feed() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let repo = RssFeedRepository::new(db.pool());
 
         let new_feed = NewRssFeed::new("https://example.com/feed.xml", "Test Feed", user_id);
-        let feed = RssFeedRepository::create(db.conn(), &new_feed).unwrap();
+        let feed = repo.create(&new_feed).await.unwrap();
 
         let update = RssFeedUpdate::new()
             .with_title("Updated Title")
             .with_fetch_interval(7200);
-        RssFeedRepository::update(db.conn(), feed.id, &update).unwrap();
+        repo.update(feed.id, &update).await.unwrap();
 
-        let updated = RssFeedRepository::get_by_id(db.conn(), feed.id)
-            .unwrap()
-            .unwrap();
+        let updated = repo.get_by_id(feed.id).await.unwrap().unwrap();
         assert_eq!(updated.title, "Updated Title");
         assert_eq!(updated.fetch_interval, 7200);
     }
 
-    #[test]
-    fn test_increment_and_clear_error() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_increment_and_clear_error() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let repo = RssFeedRepository::new(db.pool());
 
         let new_feed = NewRssFeed::new("https://example.com/feed.xml", "Test Feed", user_id);
-        let feed = RssFeedRepository::create(db.conn(), &new_feed).unwrap();
+        let feed = repo.create(&new_feed).await.unwrap();
 
         // Increment error
-        RssFeedRepository::increment_error(db.conn(), feed.id, "Connection timeout").unwrap();
-        let updated = RssFeedRepository::get_by_id(db.conn(), feed.id)
-            .unwrap()
+        repo.increment_error(feed.id, "Connection timeout")
+            .await
             .unwrap();
+        let updated = repo.get_by_id(feed.id).await.unwrap().unwrap();
         assert_eq!(updated.error_count, 1);
         assert_eq!(updated.last_error, Some("Connection timeout".to_string()));
 
         // Clear error
-        RssFeedRepository::clear_error(db.conn(), feed.id).unwrap();
-        let cleared = RssFeedRepository::get_by_id(db.conn(), feed.id)
-            .unwrap()
-            .unwrap();
+        repo.clear_error(feed.id).await.unwrap();
+        let cleared = repo.get_by_id(feed.id).await.unwrap().unwrap();
         assert_eq!(cleared.error_count, 0);
         assert!(cleared.last_error.is_none());
     }
 
-    #[test]
-    fn test_delete_feed() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_delete_feed() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let repo = RssFeedRepository::new(db.pool());
 
         let new_feed = NewRssFeed::new("https://example.com/feed.xml", "Test Feed", user_id);
-        let feed = RssFeedRepository::create(db.conn(), &new_feed).unwrap();
+        let feed = repo.create(&new_feed).await.unwrap();
 
-        RssFeedRepository::delete(db.conn(), feed.id).unwrap();
+        repo.delete(feed.id).await.unwrap();
 
-        let result = RssFeedRepository::get_by_id(db.conn(), feed.id).unwrap();
+        let result = repo.get_by_id(feed.id).await.unwrap();
         assert!(result.is_none());
     }
 
-    #[test]
-    fn test_create_item() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_create_item() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let feed_repo = RssFeedRepository::new(db.pool());
+        let item_repo = RssItemRepository::new(db.pool());
 
         let new_feed = NewRssFeed::new("https://example.com/feed.xml", "Test Feed", user_id);
-        let feed = RssFeedRepository::create(db.conn(), &new_feed).unwrap();
+        let feed = feed_repo.create(&new_feed).await.unwrap();
 
         let new_item = NewRssItem::new(feed.id, "guid-123", "Test Article")
             .with_link("https://example.com/article")
             .with_description("Article summary");
 
-        let item_id = RssItemRepository::create_or_ignore(db.conn(), &new_item)
+        let item_id = item_repo
+            .create_or_ignore(&new_item)
+            .await
             .unwrap()
             .unwrap();
 
-        let item = RssItemRepository::get_by_id(db.conn(), item_id)
-            .unwrap()
-            .unwrap();
+        let item = item_repo.get_by_id(item_id).await.unwrap().unwrap();
         assert_eq!(item.guid, "guid-123");
         assert_eq!(item.title, "Test Article");
         assert_eq!(item.link, Some("https://example.com/article".to_string()));
     }
 
-    #[test]
-    fn test_create_item_ignores_duplicate() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_create_item_ignores_duplicate() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let feed_repo = RssFeedRepository::new(db.pool());
+        let item_repo = RssItemRepository::new(db.pool());
 
         let new_feed = NewRssFeed::new("https://example.com/feed.xml", "Test Feed", user_id);
-        let feed = RssFeedRepository::create(db.conn(), &new_feed).unwrap();
+        let feed = feed_repo.create(&new_feed).await.unwrap();
 
         let new_item = NewRssItem::new(feed.id, "guid-123", "Test Article");
 
         // First insert
-        let id1 = RssItemRepository::create_or_ignore(db.conn(), &new_item).unwrap();
+        let id1 = item_repo.create_or_ignore(&new_item).await.unwrap();
         assert!(id1.is_some());
 
         // Second insert (duplicate) should be ignored
-        let id2 = RssItemRepository::create_or_ignore(db.conn(), &new_item).unwrap();
+        let id2 = item_repo.create_or_ignore(&new_item).await.unwrap();
         assert!(id2.is_none());
 
         // Should still have only one item
-        assert_eq!(
-            RssItemRepository::count_by_feed(db.conn(), feed.id).unwrap(),
-            1
-        );
+        assert_eq!(item_repo.count_by_feed(feed.id).await.unwrap(), 1);
     }
 
-    #[test]
-    fn test_list_items_by_feed() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_list_items_by_feed() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let feed_repo = RssFeedRepository::new(db.pool());
+        let item_repo = RssItemRepository::new(db.pool());
 
         let new_feed = NewRssFeed::new("https://example.com/feed.xml", "Test Feed", user_id);
-        let feed = RssFeedRepository::create(db.conn(), &new_feed).unwrap();
+        let feed = feed_repo.create(&new_feed).await.unwrap();
 
         // Create items
         for i in 1..=5 {
             let item = NewRssItem::new(feed.id, format!("guid-{}", i), format!("Article {}", i));
-            RssItemRepository::create_or_ignore(db.conn(), &item).unwrap();
+            item_repo.create_or_ignore(&item).await.unwrap();
         }
 
-        let items = RssItemRepository::list_by_feed(db.conn(), feed.id, 3, 0).unwrap();
+        let items = item_repo.list_by_feed(feed.id, 3, 0).await.unwrap();
         assert_eq!(items.len(), 3);
 
-        let items_page2 = RssItemRepository::list_by_feed(db.conn(), feed.id, 3, 3).unwrap();
+        let items_page2 = item_repo.list_by_feed(feed.id, 3, 3).await.unwrap();
         assert_eq!(items_page2.len(), 2);
     }
 
-    #[test]
-    fn test_prune_old_items() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_prune_old_items() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let feed_repo = RssFeedRepository::new(db.pool());
+        let item_repo = RssItemRepository::new(db.pool());
 
         let new_feed = NewRssFeed::new("https://example.com/feed.xml", "Test Feed", user_id);
-        let feed = RssFeedRepository::create(db.conn(), &new_feed).unwrap();
+        let feed = feed_repo.create(&new_feed).await.unwrap();
 
         // Create more items than MAX_ITEMS_PER_FEED
         for i in 1..=150 {
             let item = NewRssItem::new(feed.id, format!("guid-{}", i), format!("Article {}", i));
-            RssItemRepository::create_or_ignore(db.conn(), &item).unwrap();
+            item_repo.create_or_ignore(&item).await.unwrap();
         }
 
-        assert_eq!(
-            RssItemRepository::count_by_feed(db.conn(), feed.id).unwrap(),
-            150
-        );
+        assert_eq!(item_repo.count_by_feed(feed.id).await.unwrap(), 150);
 
-        RssItemRepository::prune_old_items(db.conn(), feed.id).unwrap();
+        item_repo.prune_old_items(feed.id).await.unwrap();
 
         assert_eq!(
-            RssItemRepository::count_by_feed(db.conn(), feed.id).unwrap(),
+            item_repo.count_by_feed(feed.id).await.unwrap(),
             MAX_ITEMS_PER_FEED as i64
         );
     }
 
-    #[test]
-    fn test_read_position_upsert() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_read_position_upsert() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let feed_repo = RssFeedRepository::new(db.pool());
+        let item_repo = RssItemRepository::new(db.pool());
+        let pos_repo = RssReadPositionRepository::new(db.pool());
 
         let new_feed = NewRssFeed::new("https://example.com/feed.xml", "Test Feed", user_id);
-        let feed = RssFeedRepository::create(db.conn(), &new_feed).unwrap();
+        let feed = feed_repo.create(&new_feed).await.unwrap();
 
         let item = NewRssItem::new(feed.id, "guid-1", "Article 1");
-        let item_id = RssItemRepository::create_or_ignore(db.conn(), &item)
-            .unwrap()
-            .unwrap();
+        let item_id = item_repo.create_or_ignore(&item).await.unwrap().unwrap();
 
         // Insert
-        RssReadPositionRepository::upsert(db.conn(), user_id, feed.id, item_id).unwrap();
+        pos_repo.upsert(user_id, feed.id, item_id).await.unwrap();
 
-        let pos = RssReadPositionRepository::get(db.conn(), user_id, feed.id)
-            .unwrap()
-            .unwrap();
+        let pos = pos_repo.get(user_id, feed.id).await.unwrap().unwrap();
         assert_eq!(pos.last_read_item_id, Some(item_id));
 
         // Update
         let item2 = NewRssItem::new(feed.id, "guid-2", "Article 2");
-        let item_id2 = RssItemRepository::create_or_ignore(db.conn(), &item2)
-            .unwrap()
-            .unwrap();
+        let item_id2 = item_repo.create_or_ignore(&item2).await.unwrap().unwrap();
 
-        RssReadPositionRepository::upsert(db.conn(), user_id, feed.id, item_id2).unwrap();
+        pos_repo.upsert(user_id, feed.id, item_id2).await.unwrap();
 
-        let pos2 = RssReadPositionRepository::get(db.conn(), user_id, feed.id)
-            .unwrap()
-            .unwrap();
+        let pos2 = pos_repo.get(user_id, feed.id).await.unwrap().unwrap();
         assert_eq!(pos2.last_read_item_id, Some(item_id2));
     }
 
-    #[test]
-    fn test_count_unread() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_count_unread() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let feed_repo = RssFeedRepository::new(db.pool());
+        let item_repo = RssItemRepository::new(db.pool());
+        let pos_repo = RssReadPositionRepository::new(db.pool());
 
         let new_feed = NewRssFeed::new("https://example.com/feed.xml", "Test Feed", user_id);
-        let feed = RssFeedRepository::create(db.conn(), &new_feed).unwrap();
+        let feed = feed_repo.create(&new_feed).await.unwrap();
 
         // Create 5 items
         for i in 1..=5 {
             let item = NewRssItem::new(feed.id, format!("guid-{}", i), format!("Article {}", i));
-            RssItemRepository::create_or_ignore(db.conn(), &item).unwrap();
+            item_repo.create_or_ignore(&item).await.unwrap();
         }
 
         // All should be unread
-        assert_eq!(
-            RssItemRepository::count_unread(db.conn(), feed.id, user_id).unwrap(),
-            5
-        );
+        assert_eq!(item_repo.count_unread(feed.id, user_id).await.unwrap(), 5);
 
         // Mark item 3 as read
-        let item3 = RssItemRepository::get_by_guid(db.conn(), feed.id, "guid-3")
+        let item3 = item_repo
+            .get_by_guid(feed.id, "guid-3")
+            .await
             .unwrap()
             .unwrap();
-        RssReadPositionRepository::upsert(db.conn(), user_id, feed.id, item3.id).unwrap();
+        pos_repo.upsert(user_id, feed.id, item3.id).await.unwrap();
 
         // Items 4, 5 should be unread
-        assert_eq!(
-            RssItemRepository::count_unread(db.conn(), feed.id, user_id).unwrap(),
-            2
-        );
+        assert_eq!(item_repo.count_unread(feed.id, user_id).await.unwrap(), 2);
     }
 
-    #[test]
-    fn test_mark_all_as_read() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_mark_all_as_read() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let feed_repo = RssFeedRepository::new(db.pool());
+        let item_repo = RssItemRepository::new(db.pool());
+        let pos_repo = RssReadPositionRepository::new(db.pool());
 
         let new_feed = NewRssFeed::new("https://example.com/feed.xml", "Test Feed", user_id);
-        let feed = RssFeedRepository::create(db.conn(), &new_feed).unwrap();
+        let feed = feed_repo.create(&new_feed).await.unwrap();
 
         // Create items
         for i in 1..=5 {
             let item = NewRssItem::new(feed.id, format!("guid-{}", i), format!("Article {}", i));
-            RssItemRepository::create_or_ignore(db.conn(), &item).unwrap();
+            item_repo.create_or_ignore(&item).await.unwrap();
         }
 
-        RssReadPositionRepository::mark_all_as_read(db.conn(), user_id, feed.id).unwrap();
+        pos_repo.mark_all_as_read(user_id, feed.id).await.unwrap();
 
-        assert_eq!(
-            RssItemRepository::count_unread(db.conn(), feed.id, user_id).unwrap(),
-            0
-        );
+        assert_eq!(item_repo.count_unread(feed.id, user_id).await.unwrap(), 0);
     }
 
-    #[test]
-    fn test_list_with_unread() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_list_with_unread() {
+        let db = setup_db().await;
+        let user_id = create_test_user(&db).await;
+        let feed_repo = RssFeedRepository::new(db.pool());
+        let item_repo = RssItemRepository::new(db.pool());
 
         let new_feed = NewRssFeed::new("https://example.com/feed.xml", "Test Feed", user_id);
-        let feed = RssFeedRepository::create(db.conn(), &new_feed).unwrap();
+        let feed = feed_repo.create(&new_feed).await.unwrap();
 
         // Create items
         for i in 1..=3 {
             let item = NewRssItem::new(feed.id, format!("guid-{}", i), format!("Article {}", i));
-            RssItemRepository::create_or_ignore(db.conn(), &item).unwrap();
+            item_repo.create_or_ignore(&item).await.unwrap();
         }
 
-        let feeds_with_unread =
-            RssFeedRepository::list_with_unread(db.conn(), Some(user_id)).unwrap();
+        let feeds_with_unread = feed_repo.list_with_unread(Some(user_id)).await.unwrap();
         assert_eq!(feeds_with_unread.len(), 1);
         assert_eq!(feeds_with_unread[0].unread_count, 3);
     }

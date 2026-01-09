@@ -1,3 +1,4 @@
+#![cfg(feature = "sqlite")]
 //! E2E Admin tests for HOBBS.
 //!
 //! Tests admin panel access and functionality.
@@ -11,7 +12,7 @@ use std::time::Duration;
 #[tokio::test]
 async fn test_admin_requires_admin_role() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "member", "password123", "member").unwrap();
+    create_test_user(server.db(), "member", "password123", "member").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -45,7 +46,7 @@ async fn test_admin_requires_admin_role() {
 #[tokio::test]
 async fn test_admin_access_subop() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "subop", "password123", "subop").unwrap();
+    create_test_user(server.db(), "subop", "password123", "subop").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -75,7 +76,7 @@ async fn test_admin_access_subop() {
 #[tokio::test]
 async fn test_admin_access_sysop() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "sysop", "password123", "sysop").unwrap();
+    create_test_user(server.db(), "sysop", "password123", "sysop").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -106,7 +107,7 @@ async fn test_admin_access_sysop() {
 #[tokio::test]
 async fn test_admin_back_to_menu() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "sysop", "password123", "sysop").unwrap();
+    create_test_user(server.db(), "sysop", "password123", "sysop").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();

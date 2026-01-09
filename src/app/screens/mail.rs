@@ -4,6 +4,7 @@ use tracing::error;
 
 use super::common::ScreenContext;
 use super::ScreenResult;
+use crate::datetime::format_utc_datetime;
 use crate::db::UserRepository;
 use crate::error::Result;
 use crate::mail::{MailRepository, NewMail};
@@ -30,7 +31,8 @@ impl MailScreen {
 
         loop {
             // Get mail list (no pagination in repository)
-            let mails = MailRepository::list_inbox(ctx.db.conn(), user_id)?;
+            let mail_repo = MailRepository::new(ctx.db.pool());
+            let mails = mail_repo.list_inbox(user_id).await?;
             let total = mails.len();
 
             // Display mail list
@@ -42,7 +44,7 @@ impl MailScreen {
             if mails.is_empty() {
                 ctx.send_line(session, ctx.i18n.t("mail.no_mail")).await?;
             } else {
-                let user_repo = UserRepository::new(&ctx.db);
+                let user_repo = UserRepository::new(ctx.db.pool());
                 ctx.send_line(
                     session,
                     &format!(
@@ -60,7 +62,8 @@ impl MailScreen {
                     let num = i + 1;
                     let unread = if mail.is_read { " " } else { "*" };
                     let from = user_repo
-                        .get_by_id(mail.sender_id)?
+                        .get_by_id(mail.sender_id)
+                        .await?
                         .map(|u| u.nickname)
                         .unwrap_or_else(|| "Unknown".to_string());
                     let from = if from.chars().count() > 10 {
@@ -126,32 +129,39 @@ impl MailScreen {
         mail_id: i64,
         user_id: i64,
     ) -> Result<()> {
-        // Get mail
-        let mail = match MailRepository::get_by_id(ctx.db.conn(), mail_id)? {
-            Some(m) => m,
-            None => return Ok(()),
+        // Get mail and prepare data in a separate scope
+        let (mail, from_name, to_name) = {
+            let mail_repo = MailRepository::new(ctx.db.pool());
+            let mail = match mail_repo.get_by_id(mail_id).await? {
+                Some(m) => m,
+                None => return Ok(()),
+            };
+
+            // Check ownership
+            if mail.recipient_id != user_id && mail.sender_id != user_id {
+                return Ok(());
+            }
+
+            // Mark as read
+            if !mail.is_read && mail.recipient_id == user_id {
+                mail_repo.mark_as_read(mail_id).await?;
+            }
+
+            // Get sender/recipient names
+            let user_repo = UserRepository::new(ctx.db.pool());
+            let from_name = user_repo
+                .get_by_id(mail.sender_id)
+                .await?
+                .map(|u| u.nickname)
+                .unwrap_or_else(|| "Unknown".to_string());
+            let to_name = user_repo
+                .get_by_id(mail.recipient_id)
+                .await?
+                .map(|u| u.nickname)
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            (mail, from_name, to_name)
         };
-
-        // Check ownership
-        if mail.recipient_id != user_id && mail.sender_id != user_id {
-            return Ok(());
-        }
-
-        // Mark as read
-        if !mail.is_read && mail.recipient_id == user_id {
-            MailRepository::mark_as_read(ctx.db.conn(), mail_id)?;
-        }
-
-        // Get sender/recipient names
-        let user_repo = UserRepository::new(&ctx.db);
-        let from_name = user_repo
-            .get_by_id(mail.sender_id)?
-            .map(|u| u.nickname)
-            .unwrap_or_else(|| "Unknown".to_string());
-        let to_name = user_repo
-            .get_by_id(mail.recipient_id)?
-            .map(|u| u.nickname)
-            .unwrap_or_else(|| "Unknown".to_string());
 
         // Display mail
         ctx.send_line(session, "").await?;
@@ -174,12 +184,13 @@ impl MailScreen {
             &format!(
                 "{}: {}",
                 ctx.i18n.t("mail.date"),
-                mail.created_at.format("%Y/%m/%d %H:%M")
+                format_utc_datetime(&mail.created_at, &ctx.config.server.timezone, "%Y/%m/%d %H:%M")
             ),
         )
         .await?;
         ctx.send_line(session, &"-".repeat(40)).await?;
-        ctx.send_line(session, &convert_caret_escape(&mail.body)).await?;
+        ctx.send_line(session, &convert_caret_escape(&mail.body))
+            .await?;
         ctx.send_line(session, &"-".repeat(40)).await?;
 
         // Options
@@ -205,7 +216,8 @@ impl MailScreen {
                     return Ok(());
                 }
                 "d" => {
-                    MailRepository::delete_by_user(ctx.db.conn(), mail_id, user_id)?;
+                    let mail_repo = MailRepository::new(ctx.db.pool());
+                    mail_repo.delete_by_user(mail_id, user_id).await?;
                     ctx.send_line(session, ctx.i18n.t("mail.mail_deleted"))
                         .await?;
                     return Ok(());
@@ -249,8 +261,8 @@ impl MailScreen {
         }
 
         // Find recipient
-        let user_repo = UserRepository::new(&ctx.db);
-        let to_user = match user_repo.get_by_username(to_name)? {
+        let user_repo = UserRepository::new(ctx.db.pool());
+        let to_user = match user_repo.get_by_username(to_name).await? {
             Some(u) => u,
             None => {
                 ctx.send_line(session, ctx.i18n.t("mail.recipient_not_found"))
@@ -290,8 +302,9 @@ impl MailScreen {
 
         // Send mail
         let new_mail = NewMail::new(from_id, to_user.id, subject, &body);
+        let mail_repo = MailRepository::new(ctx.db.pool());
 
-        match MailRepository::create(ctx.db.conn(), &new_mail) {
+        match mail_repo.create(&new_mail).await {
             Ok(_) => {
                 // Record successful action for rate limiting
                 ctx.rate_limiters.mail.record(from_id);
@@ -366,8 +379,9 @@ impl MailScreen {
 
         // Send reply (reply to sender)
         let new_mail = NewMail::new(from_id, original.sender_id, &subject, &body);
+        let mail_repo = MailRepository::new(ctx.db.pool());
 
-        match MailRepository::create(ctx.db.conn(), &new_mail) {
+        match mail_repo.create(&new_mail).await {
             Ok(_) => {
                 // Record successful action for rate limiting
                 ctx.rate_limiters.mail.record(from_id);

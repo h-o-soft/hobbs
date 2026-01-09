@@ -2,286 +2,285 @@
 //!
 //! This module provides CRUD operations for users in the database.
 
-use rusqlite::{params, Row};
+use sqlx::QueryBuilder;
 
 use super::user::{NewUser, Role, User, UserUpdate};
-use super::Database;
-use crate::server::CharacterEncoding;
+use super::{DbPool, SQL_TRUE};
 use crate::{HobbsError, Result};
+
+// SQL datetime function for current timestamp
+#[cfg(feature = "sqlite")]
+const SQL_NOW: &str = "datetime('now')";
+#[cfg(feature = "postgres")]
+const SQL_NOW: &str = "NOW()";
 
 /// Repository for user CRUD operations.
 pub struct UserRepository<'a> {
-    db: &'a Database,
+    pool: &'a DbPool,
 }
 
 impl<'a> UserRepository<'a> {
-    /// Create a new UserRepository with the given database reference.
-    pub fn new(db: &'a Database) -> Self {
-        Self { db }
+    /// Create a new UserRepository with the given database pool reference.
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
     }
 
     /// Create a new user in the database.
     ///
     /// Returns the created user with the assigned ID.
-    pub fn create(&self, new_user: &NewUser) -> Result<User> {
-        self.db.conn().execute(
+    pub async fn create(&self, new_user: &NewUser) -> Result<User> {
+        let id: i64 = sqlx::query_scalar(
             "INSERT INTO users (username, password, nickname, email, role, terminal, encoding, language, auto_paging)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            params![
-                &new_user.username,
-                &new_user.password,
-                &new_user.nickname,
-                &new_user.email,
-                new_user.role.as_str(),
-                &new_user.terminal,
-                new_user.encoding.as_str(),
-                &new_user.language,
-                if new_user.auto_paging { 1i64 } else { 0i64 },
-            ],
-        )?;
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             RETURNING id",
+        )
+        .bind(&new_user.username)
+        .bind(&new_user.password)
+        .bind(&new_user.nickname)
+        .bind(&new_user.email)
+        .bind(new_user.role.as_str())
+        .bind(&new_user.terminal)
+        .bind(new_user.encoding.as_str())
+        .bind(&new_user.language)
+        .bind(new_user.auto_paging)
+        .fetch_one(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = self.db.conn().last_insert_rowid();
-        self.get_by_id(id)?
+        self.get_by_id(id)
+            .await?
             .ok_or_else(|| HobbsError::NotFound("user".to_string()))
     }
 
     /// Get a user by ID.
-    pub fn get_by_id(&self, id: i64) -> Result<Option<User>> {
-        let result = self.db.conn().query_row(
+    pub async fn get_by_id(&self, id: i64) -> Result<Option<User>> {
+        let result = sqlx::query_as::<_, User>(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
                     encoding, language, auto_paging, created_at, last_login, is_active
-             FROM users WHERE id = ?",
-            [id],
-            Self::row_to_user,
-        );
+             FROM users WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        match result {
-            Ok(user) => Ok(Some(user)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        Ok(result)
     }
 
     /// Get a user by username (case-insensitive).
-    pub fn get_by_username(&self, username: &str) -> Result<Option<User>> {
-        let result = self.db.conn().query_row(
-            "SELECT id, username, password, nickname, email, role, profile, terminal,
+    pub async fn get_by_username(&self, username: &str) -> Result<Option<User>> {
+        #[cfg(feature = "sqlite")]
+        let query = "SELECT id, username, password, nickname, email, role, profile, terminal,
                     encoding, language, auto_paging, created_at, last_login, is_active
-             FROM users WHERE username = ? COLLATE NOCASE",
-            [username],
-            Self::row_to_user,
-        );
+             FROM users WHERE username = $1 COLLATE NOCASE";
+        #[cfg(feature = "postgres")]
+        let query = "SELECT id, username, password, nickname, email, role, profile, terminal,
+                    encoding, language, auto_paging, created_at, last_login, is_active
+             FROM users WHERE LOWER(username) = LOWER($1)";
 
-        match result {
-            Ok(user) => Ok(Some(user)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        let result = sqlx::query_as::<_, User>(query)
+            .bind(username)
+            .fetch_optional(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result)
     }
 
     /// Update a user by ID.
     ///
     /// Only fields that are set in the update will be modified.
     /// Returns the updated user, or None if not found.
-    pub fn update(&self, id: i64, update: &UserUpdate) -> Result<Option<User>> {
+    pub async fn update(&self, id: i64, update: &UserUpdate) -> Result<Option<User>> {
         if update.is_empty() {
-            return self.get_by_id(id);
+            return self.get_by_id(id).await;
         }
 
-        let mut fields = Vec::new();
-        let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        #[cfg(feature = "sqlite")]
+        let mut query: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new("UPDATE users SET ");
+        #[cfg(feature = "postgres")]
+        let mut query: QueryBuilder<sqlx::Postgres> = QueryBuilder::new("UPDATE users SET ");
+        let mut separated = query.separated(", ");
 
         if let Some(ref password) = update.password {
-            fields.push("password = ?");
-            values.push(Box::new(password.clone()));
+            separated.push("password = ");
+            separated.push_bind_unseparated(password);
         }
         if let Some(ref nickname) = update.nickname {
-            fields.push("nickname = ?");
-            values.push(Box::new(nickname.clone()));
+            separated.push("nickname = ");
+            separated.push_bind_unseparated(nickname);
         }
         if let Some(ref email) = update.email {
-            fields.push("email = ?");
-            values.push(Box::new(email.clone()));
+            separated.push("email = ");
+            separated.push_bind_unseparated(email.clone());
         }
         if let Some(role) = update.role {
-            fields.push("role = ?");
-            values.push(Box::new(role.as_str().to_string()));
+            separated.push("role = ");
+            separated.push_bind_unseparated(role.as_str().to_string());
         }
         if let Some(ref profile) = update.profile {
-            fields.push("profile = ?");
-            values.push(Box::new(profile.clone()));
+            separated.push("profile = ");
+            separated.push_bind_unseparated(profile.clone());
         }
         if let Some(ref terminal) = update.terminal {
-            fields.push("terminal = ?");
-            values.push(Box::new(terminal.clone()));
+            separated.push("terminal = ");
+            separated.push_bind_unseparated(terminal);
         }
         if let Some(encoding) = update.encoding {
-            fields.push("encoding = ?");
-            values.push(Box::new(encoding.as_str().to_string()));
+            separated.push("encoding = ");
+            separated.push_bind_unseparated(encoding.as_str().to_string());
         }
         if let Some(ref language) = update.language {
-            fields.push("language = ?");
-            values.push(Box::new(language.clone()));
+            separated.push("language = ");
+            separated.push_bind_unseparated(language);
         }
         if let Some(is_active) = update.is_active {
-            fields.push("is_active = ?");
-            values.push(Box::new(if is_active { 1i64 } else { 0i64 }));
+            separated.push("is_active = ");
+            separated.push_bind_unseparated(is_active);
         }
         if let Some(auto_paging) = update.auto_paging {
-            fields.push("auto_paging = ?");
-            values.push(Box::new(if auto_paging { 1i64 } else { 0i64 }));
+            separated.push("auto_paging = ");
+            separated.push_bind_unseparated(auto_paging);
         }
 
-        let sql = format!("UPDATE users SET {} WHERE id = ?", fields.join(", "));
-        values.push(Box::new(id));
+        query.push(" WHERE id = ");
+        query.push_bind(id);
 
-        let params: Vec<&dyn rusqlite::ToSql> = values.iter().map(|v| v.as_ref()).collect();
-        let affected = self.db.conn().execute(&sql, params.as_slice())?;
+        let result = query
+            .build()
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        if affected == 0 {
+        if result.rows_affected() == 0 {
             return Ok(None);
         }
 
-        self.get_by_id(id)
+        self.get_by_id(id).await
     }
 
     /// Update the last login timestamp for a user.
-    pub fn update_last_login(&self, id: i64) -> Result<()> {
-        self.db.conn().execute(
-            "UPDATE users SET last_login = datetime('now') WHERE id = ?",
-            [id],
-        )?;
+    pub async fn update_last_login(&self, id: i64) -> Result<()> {
+        let query = format!("UPDATE users SET last_login = {} WHERE id = $1", SQL_NOW);
+        sqlx::query(&query)
+            .bind(id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
         Ok(())
     }
 
     /// Delete a user by ID.
     ///
     /// Returns true if a user was deleted, false if not found.
-    pub fn delete(&self, id: i64) -> Result<bool> {
-        let affected = self
-            .db
-            .conn()
-            .execute("DELETE FROM users WHERE id = ?", [id])?;
-        Ok(affected > 0)
+    pub async fn delete(&self, id: i64) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+        Ok(result.rows_affected() > 0)
     }
 
     /// List all active users.
-    pub fn list_active(&self) -> Result<Vec<User>> {
-        let mut stmt = self.db.conn().prepare(
+    pub async fn list_active(&self) -> Result<Vec<User>> {
+        let query = format!(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
                     encoding, language, auto_paging, created_at, last_login, is_active
-             FROM users WHERE is_active = 1 ORDER BY username",
-        )?;
-
-        let users = stmt
-            .query_map([], Self::row_to_user)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+             FROM users WHERE is_active = {} ORDER BY username",
+            SQL_TRUE
+        );
+        let users = sqlx::query_as::<_, User>(&query)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(users)
     }
 
     /// List all users (including inactive).
-    pub fn list_all(&self) -> Result<Vec<User>> {
-        let mut stmt = self.db.conn().prepare(
+    pub async fn list_all(&self) -> Result<Vec<User>> {
+        let users = sqlx::query_as::<_, User>(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
                     encoding, language, auto_paging, created_at, last_login, is_active
              FROM users ORDER BY username",
-        )?;
-
-        let users = stmt
-            .query_map([], Self::row_to_user)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        )
+        .fetch_all(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(users)
     }
 
     /// List users by role.
-    pub fn list_by_role(&self, role: Role) -> Result<Vec<User>> {
-        let mut stmt = self.db.conn().prepare(
+    pub async fn list_by_role(&self, role: Role) -> Result<Vec<User>> {
+        let query = format!(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
                     encoding, language, auto_paging, created_at, last_login, is_active
-             FROM users WHERE role = ? AND is_active = 1 ORDER BY username",
-        )?;
-
-        let users = stmt
-            .query_map([role.as_str()], Self::row_to_user)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+             FROM users WHERE role = $1 AND is_active = {} ORDER BY username",
+            SQL_TRUE
+        );
+        let users = sqlx::query_as::<_, User>(&query)
+            .bind(role.as_str())
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(users)
     }
 
     /// Count all users.
-    pub fn count(&self) -> Result<i64> {
-        let count: i64 = self
-            .db
-            .conn()
-            .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))?;
-        Ok(count)
+    pub async fn count(&self) -> Result<i64> {
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+            .fetch_one(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+        Ok(count.0)
     }
 
     /// Count active users.
-    pub fn count_active(&self) -> Result<i64> {
-        let count: i64 = self.db.conn().query_row(
-            "SELECT COUNT(*) FROM users WHERE is_active = 1",
-            [],
-            |row| row.get(0),
-        )?;
-        Ok(count)
+    pub async fn count_active(&self) -> Result<i64> {
+        let query = format!("SELECT COUNT(*) FROM users WHERE is_active = {}", SQL_TRUE);
+        let count: (i64,) = sqlx::query_as(&query)
+            .fetch_one(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+        Ok(count.0)
     }
 
     /// Check if a username is already taken (case-insensitive).
-    pub fn username_exists(&self, username: &str) -> Result<bool> {
-        let exists: bool = self.db.conn().query_row(
-            "SELECT EXISTS(SELECT 1 FROM users WHERE username = ? COLLATE NOCASE)",
-            [username],
-            |row| row.get(0),
-        )?;
-        Ok(exists)
-    }
+    pub async fn username_exists(&self, username: &str) -> Result<bool> {
+        #[cfg(feature = "sqlite")]
+        let query = "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1 COLLATE NOCASE)";
+        #[cfg(feature = "postgres")]
+        let query = "SELECT EXISTS(SELECT 1 FROM users WHERE LOWER(username) = LOWER($1))";
 
-    /// Convert a database row to a User struct.
-    fn row_to_user(row: &Row<'_>) -> rusqlite::Result<User> {
-        let role_str: String = row.get(5)?;
-        let role = role_str.parse().unwrap_or(Role::Member);
-        let encoding_str: String = row.get(8)?;
-        let encoding = encoding_str.parse().unwrap_or(CharacterEncoding::default());
-        let auto_paging: i64 = row.get(10)?;
-        let is_active: i64 = row.get(13)?;
-
-        Ok(User {
-            id: row.get(0)?,
-            username: row.get(1)?,
-            password: row.get(2)?,
-            nickname: row.get(3)?,
-            email: row.get(4)?,
-            role,
-            profile: row.get(6)?,
-            terminal: row.get(7)?,
-            encoding,
-            language: row.get(9)?,
-            auto_paging: auto_paging != 0,
-            created_at: row.get(11)?,
-            last_login: row.get(12)?,
-            is_active: is_active != 0,
-        })
+        let exists: (bool,) = sqlx::query_as(query)
+            .bind(username)
+            .fetch_one(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+        Ok(exists.0)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::CharacterEncoding;
+    use crate::Database;
 
-    fn setup_db() -> Database {
-        Database::open_in_memory().unwrap()
+    async fn setup_db() -> Database {
+        Database::open_in_memory().await.unwrap()
     }
 
-    #[test]
-    fn test_create_user() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_create_user() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("testuser", "hashedpw", "Test User");
-        let user = repo.create(&new_user).unwrap();
+        let user = repo.create(&new_user).await.unwrap();
 
         assert_eq!(user.id, 1);
         assert_eq!(user.username, "testuser");
@@ -290,17 +289,17 @@ mod tests {
         assert!(user.is_active);
     }
 
-    #[test]
-    fn test_create_user_with_options() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_create_user_with_options() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("admin", "hashedpw", "Administrator")
             .with_email("admin@example.com")
             .with_role(Role::SysOp)
             .with_terminal("c64");
 
-        let user = repo.create(&new_user).unwrap();
+        let user = repo.create(&new_user).await.unwrap();
 
         assert_eq!(user.username, "admin");
         assert_eq!(user.email, Some("admin@example.com".to_string()));
@@ -308,66 +307,66 @@ mod tests {
         assert_eq!(user.terminal, "c64");
     }
 
-    #[test]
-    fn test_create_duplicate_username() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_create_duplicate_username() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("testuser", "hashedpw", "Test User");
-        repo.create(&new_user).unwrap();
+        repo.create(&new_user).await.unwrap();
 
         let duplicate = NewUser::new("testuser", "otherpw", "Other User");
-        let result = repo.create(&duplicate);
+        let result = repo.create(&duplicate).await;
 
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_get_by_id() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_get_by_id() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("testuser", "hashedpw", "Test User");
-        let created = repo.create(&new_user).unwrap();
+        let created = repo.create(&new_user).await.unwrap();
 
-        let found = repo.get_by_id(created.id).unwrap();
+        let found = repo.get_by_id(created.id).await.unwrap();
         assert!(found.is_some());
         assert_eq!(found.unwrap().username, "testuser");
 
-        let not_found = repo.get_by_id(999).unwrap();
+        let not_found = repo.get_by_id(999).await.unwrap();
         assert!(not_found.is_none());
     }
 
-    #[test]
-    fn test_get_by_username() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_get_by_username() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("testuser", "hashedpw", "Test User");
-        repo.create(&new_user).unwrap();
+        repo.create(&new_user).await.unwrap();
 
-        let found = repo.get_by_username("testuser").unwrap();
+        let found = repo.get_by_username("testuser").await.unwrap();
         assert!(found.is_some());
         assert_eq!(found.unwrap().nickname, "Test User");
 
-        let not_found = repo.get_by_username("nonexistent").unwrap();
+        let not_found = repo.get_by_username("nonexistent").await.unwrap();
         assert!(not_found.is_none());
     }
 
-    #[test]
-    fn test_update_user() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_update_user() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("testuser", "hashedpw", "Test User");
-        let user = repo.create(&new_user).unwrap();
+        let user = repo.create(&new_user).await.unwrap();
 
         let update = UserUpdate::new()
             .nickname("Updated Name")
             .email(Some("new@example.com".to_string()))
             .role(Role::SubOp);
 
-        let updated = repo.update(user.id, &update).unwrap().unwrap();
+        let updated = repo.update(user.id, &update).await.unwrap().unwrap();
 
         assert_eq!(updated.nickname, "Updated Name");
         assert_eq!(updated.email, Some("new@example.com".to_string()));
@@ -377,310 +376,338 @@ mod tests {
         assert_eq!(updated.password, "hashedpw");
     }
 
-    #[test]
-    fn test_update_nonexistent_user() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_update_nonexistent_user() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let update = UserUpdate::new().nickname("New Name");
-        let result = repo.update(999, &update).unwrap();
+        let result = repo.update(999, &update).await.unwrap();
 
         assert!(result.is_none());
     }
 
-    #[test]
-    fn test_update_empty() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_update_empty() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("testuser", "hashedpw", "Test User");
-        let user = repo.create(&new_user).unwrap();
+        let user = repo.create(&new_user).await.unwrap();
 
         let update = UserUpdate::new();
-        let result = repo.update(user.id, &update).unwrap();
+        let result = repo.update(user.id, &update).await.unwrap();
 
         assert!(result.is_some());
         assert_eq!(result.unwrap().nickname, "Test User");
     }
 
-    #[test]
-    fn test_update_is_active() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_update_is_active() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("testuser", "hashedpw", "Test User");
-        let user = repo.create(&new_user).unwrap();
+        let user = repo.create(&new_user).await.unwrap();
         assert!(user.is_active);
 
         let update = UserUpdate::new().is_active(false);
-        let updated = repo.update(user.id, &update).unwrap().unwrap();
+        let updated = repo.update(user.id, &update).await.unwrap().unwrap();
 
         assert!(!updated.is_active);
     }
 
-    #[test]
-    fn test_update_last_login() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_update_last_login() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("testuser", "hashedpw", "Test User");
-        let user = repo.create(&new_user).unwrap();
+        let user = repo.create(&new_user).await.unwrap();
         assert!(user.last_login.is_none());
 
-        repo.update_last_login(user.id).unwrap();
+        repo.update_last_login(user.id).await.unwrap();
 
-        let updated = repo.get_by_id(user.id).unwrap().unwrap();
+        let updated = repo.get_by_id(user.id).await.unwrap().unwrap();
         assert!(updated.last_login.is_some());
     }
 
-    #[test]
-    fn test_delete_user() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_delete_user() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("testuser", "hashedpw", "Test User");
-        let user = repo.create(&new_user).unwrap();
+        let user = repo.create(&new_user).await.unwrap();
 
-        let deleted = repo.delete(user.id).unwrap();
+        let deleted = repo.delete(user.id).await.unwrap();
         assert!(deleted);
 
-        let found = repo.get_by_id(user.id).unwrap();
+        let found = repo.get_by_id(user.id).await.unwrap();
         assert!(found.is_none());
 
         // Deleting again should return false
-        let deleted_again = repo.delete(user.id).unwrap();
+        let deleted_again = repo.delete(user.id).await.unwrap();
         assert!(!deleted_again);
     }
 
-    #[test]
-    fn test_list_active() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_list_active() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         // Create some users
-        repo.create(&NewUser::new("user1", "pw", "User 1")).unwrap();
-        let user2 = repo.create(&NewUser::new("user2", "pw", "User 2")).unwrap();
-        repo.create(&NewUser::new("user3", "pw", "User 3")).unwrap();
+        repo.create(&NewUser::new("user1", "pw", "User 1"))
+            .await
+            .unwrap();
+        let user2 = repo
+            .create(&NewUser::new("user2", "pw", "User 2"))
+            .await
+            .unwrap();
+        repo.create(&NewUser::new("user3", "pw", "User 3"))
+            .await
+            .unwrap();
 
         // Deactivate user2
         repo.update(user2.id, &UserUpdate::new().is_active(false))
+            .await
             .unwrap();
 
-        let active = repo.list_active().unwrap();
+        let active = repo.list_active().await.unwrap();
         assert_eq!(active.len(), 2);
         assert!(active.iter().all(|u| u.username != "user2"));
     }
 
-    #[test]
-    fn test_list_all() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_list_all() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
-        repo.create(&NewUser::new("user1", "pw", "User 1")).unwrap();
-        let user2 = repo.create(&NewUser::new("user2", "pw", "User 2")).unwrap();
-        repo.create(&NewUser::new("user3", "pw", "User 3")).unwrap();
+        repo.create(&NewUser::new("user1", "pw", "User 1"))
+            .await
+            .unwrap();
+        let user2 = repo
+            .create(&NewUser::new("user2", "pw", "User 2"))
+            .await
+            .unwrap();
+        repo.create(&NewUser::new("user3", "pw", "User 3"))
+            .await
+            .unwrap();
 
         // Deactivate user2
         repo.update(user2.id, &UserUpdate::new().is_active(false))
+            .await
             .unwrap();
 
-        let all = repo.list_all().unwrap();
+        let all = repo.list_all().await.unwrap();
         assert_eq!(all.len(), 3);
     }
 
-    #[test]
-    fn test_list_by_role() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_list_by_role() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         repo.create(&NewUser::new("member1", "pw", "Member 1"))
+            .await
             .unwrap();
         repo.create(&NewUser::new("member2", "pw", "Member 2"))
+            .await
             .unwrap();
         repo.create(&NewUser::new("subop", "pw", "SubOp").with_role(Role::SubOp))
+            .await
             .unwrap();
         repo.create(&NewUser::new("sysop", "pw", "SysOp").with_role(Role::SysOp))
+            .await
             .unwrap();
 
-        let members = repo.list_by_role(Role::Member).unwrap();
+        let members = repo.list_by_role(Role::Member).await.unwrap();
         assert_eq!(members.len(), 2);
 
-        let subops = repo.list_by_role(Role::SubOp).unwrap();
+        let subops = repo.list_by_role(Role::SubOp).await.unwrap();
         assert_eq!(subops.len(), 1);
 
-        let sysops = repo.list_by_role(Role::SysOp).unwrap();
+        let sysops = repo.list_by_role(Role::SysOp).await.unwrap();
         assert_eq!(sysops.len(), 1);
     }
 
-    #[test]
-    fn test_count() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_count() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
-        assert_eq!(repo.count().unwrap(), 0);
-        assert_eq!(repo.count_active().unwrap(), 0);
+        assert_eq!(repo.count().await.unwrap(), 0);
+        assert_eq!(repo.count_active().await.unwrap(), 0);
 
-        repo.create(&NewUser::new("user1", "pw", "User 1")).unwrap();
-        let user2 = repo.create(&NewUser::new("user2", "pw", "User 2")).unwrap();
+        repo.create(&NewUser::new("user1", "pw", "User 1"))
+            .await
+            .unwrap();
+        let user2 = repo
+            .create(&NewUser::new("user2", "pw", "User 2"))
+            .await
+            .unwrap();
 
-        assert_eq!(repo.count().unwrap(), 2);
-        assert_eq!(repo.count_active().unwrap(), 2);
+        assert_eq!(repo.count().await.unwrap(), 2);
+        assert_eq!(repo.count_active().await.unwrap(), 2);
 
         repo.update(user2.id, &UserUpdate::new().is_active(false))
+            .await
             .unwrap();
 
-        assert_eq!(repo.count().unwrap(), 2);
-        assert_eq!(repo.count_active().unwrap(), 1);
+        assert_eq!(repo.count().await.unwrap(), 2);
+        assert_eq!(repo.count_active().await.unwrap(), 1);
     }
 
-    #[test]
-    fn test_username_exists() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_username_exists() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
-        assert!(!repo.username_exists("testuser").unwrap());
+        assert!(!repo.username_exists("testuser").await.unwrap());
 
         repo.create(&NewUser::new("testuser", "pw", "Test"))
+            .await
             .unwrap();
 
-        assert!(repo.username_exists("testuser").unwrap());
-        assert!(!repo.username_exists("other").unwrap());
+        assert!(repo.username_exists("testuser").await.unwrap());
+        assert!(!repo.username_exists("other").await.unwrap());
     }
 
-    #[test]
-    fn test_get_by_username_case_insensitive() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_get_by_username_case_insensitive() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("TestUser", "hashedpw", "Test User");
-        repo.create(&new_user).unwrap();
+        repo.create(&new_user).await.unwrap();
 
         // Should find with exact case
-        let found = repo.get_by_username("TestUser").unwrap();
+        let found = repo.get_by_username("TestUser").await.unwrap();
         assert!(found.is_some());
         assert_eq!(found.unwrap().username, "TestUser");
 
         // Should find with lowercase
-        let found_lower = repo.get_by_username("testuser").unwrap();
+        let found_lower = repo.get_by_username("testuser").await.unwrap();
         assert!(found_lower.is_some());
         assert_eq!(found_lower.unwrap().username, "TestUser");
 
         // Should find with uppercase
-        let found_upper = repo.get_by_username("TESTUSER").unwrap();
+        let found_upper = repo.get_by_username("TESTUSER").await.unwrap();
         assert!(found_upper.is_some());
         assert_eq!(found_upper.unwrap().username, "TestUser");
 
         // Should find with mixed case
-        let found_mixed = repo.get_by_username("tEsTuSeR").unwrap();
+        let found_mixed = repo.get_by_username("tEsTuSeR").await.unwrap();
         assert!(found_mixed.is_some());
         assert_eq!(found_mixed.unwrap().username, "TestUser");
     }
 
-    #[test]
-    fn test_username_exists_case_insensitive() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_username_exists_case_insensitive() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         repo.create(&NewUser::new("TestUser", "pw", "Test"))
+            .await
             .unwrap();
 
         // Should detect existence regardless of case
-        assert!(repo.username_exists("TestUser").unwrap());
-        assert!(repo.username_exists("testuser").unwrap());
-        assert!(repo.username_exists("TESTUSER").unwrap());
-        assert!(repo.username_exists("tEsTuSeR").unwrap());
-        assert!(!repo.username_exists("other").unwrap());
+        assert!(repo.username_exists("TestUser").await.unwrap());
+        assert!(repo.username_exists("testuser").await.unwrap());
+        assert!(repo.username_exists("TESTUSER").await.unwrap());
+        assert!(repo.username_exists("tEsTuSeR").await.unwrap());
+        assert!(!repo.username_exists("other").await.unwrap());
     }
 
-    #[test]
-    fn test_create_duplicate_username_different_case() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_create_duplicate_username_different_case() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("TestUser", "hashedpw", "Test User");
-        repo.create(&new_user).unwrap();
+        repo.create(&new_user).await.unwrap();
 
         // Attempting to create user with same name but different case should fail
         let duplicate_lower = NewUser::new("testuser", "otherpw", "Other User");
-        let result = repo.create(&duplicate_lower);
+        let result = repo.create(&duplicate_lower).await;
         assert!(result.is_err());
 
         let duplicate_upper = NewUser::new("TESTUSER", "otherpw", "Other User");
-        let result = repo.create(&duplicate_upper);
+        let result = repo.create(&duplicate_upper).await;
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_create_user_with_encoding() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_create_user_with_encoding() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user =
             NewUser::new("testuser", "hash", "Test").with_encoding(CharacterEncoding::Utf8);
-        let user = repo.create(&new_user).unwrap();
+        let user = repo.create(&new_user).await.unwrap();
 
         assert_eq!(user.encoding, CharacterEncoding::Utf8);
     }
 
-    #[test]
-    fn test_create_user_default_encoding() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_create_user_default_encoding() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("testuser", "hash", "Test");
-        let user = repo.create(&new_user).unwrap();
+        let user = repo.create(&new_user).await.unwrap();
 
         assert_eq!(user.encoding, CharacterEncoding::ShiftJIS);
     }
 
-    #[test]
-    fn test_update_encoding() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_update_encoding() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("testuser", "hash", "Test");
-        let user = repo.create(&new_user).unwrap();
+        let user = repo.create(&new_user).await.unwrap();
         assert_eq!(user.encoding, CharacterEncoding::ShiftJIS);
 
         let update = UserUpdate::new().encoding(CharacterEncoding::Utf8);
-        let updated = repo.update(user.id, &update).unwrap().unwrap();
+        let updated = repo.update(user.id, &update).await.unwrap().unwrap();
 
         assert_eq!(updated.encoding, CharacterEncoding::Utf8);
     }
 
-    #[test]
-    fn test_create_user_with_language() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_create_user_with_language() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("testuser", "hash", "Test").with_language("ja");
-        let user = repo.create(&new_user).unwrap();
+        let user = repo.create(&new_user).await.unwrap();
 
         assert_eq!(user.language, "ja");
     }
 
-    #[test]
-    fn test_create_user_default_language() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_create_user_default_language() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("testuser", "hash", "Test");
-        let user = repo.create(&new_user).unwrap();
+        let user = repo.create(&new_user).await.unwrap();
 
         assert_eq!(user.language, "en");
     }
 
-    #[test]
-    fn test_update_language() {
-        let db = setup_db();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_update_language() {
+        let db = setup_db().await;
+        let repo = UserRepository::new(db.pool());
 
         let new_user = NewUser::new("testuser", "hash", "Test");
-        let user = repo.create(&new_user).unwrap();
+        let user = repo.create(&new_user).await.unwrap();
         assert_eq!(user.language, "en");
 
         let update = UserUpdate::new().language("ja");
-        let updated = repo.update(user.id, &update).unwrap().unwrap();
+        let updated = repo.update(user.id, &update).await.unwrap().unwrap();
 
         assert_eq!(updated.language, "ja");
     }

@@ -13,7 +13,6 @@ use hobbs::web::router::create_router;
 use hobbs::Database;
 use serde_json::{json, Value};
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 /// Create a test configuration.
 fn create_test_config() -> WebConfig {
@@ -33,12 +32,14 @@ fn create_test_config() -> WebConfig {
 }
 
 /// Create a test server with an in-memory database.
-async fn create_test_server() -> (TestServer, Arc<Mutex<Database>>) {
+async fn create_test_server() -> (TestServer, Arc<Database>) {
     let config = create_test_config();
 
     // Create in-memory database
-    let db = Database::open_in_memory().expect("Failed to create test database");
-    let shared_db = Arc::new(Mutex::new(db));
+    let db = Database::open_in_memory()
+        .await
+        .expect("Failed to create test database");
+    let shared_db = Arc::new(db);
 
     // Create app state
     let app_state = Arc::new(AppState::new(
@@ -143,14 +144,13 @@ async fn test_e2e_board_thread_post_flow() {
 
     // Setup: Create a board
     {
-        let db = db.lock().await;
-        let repo = BoardRepository::new(&*db);
+        let repo = BoardRepository::new(db.pool());
         let new_board = NewBoard::new("General Discussion")
             .with_description("Talk about anything")
             .with_board_type(BoardType::Thread)
             .with_min_read_role(Role::Member)
             .with_min_write_role(Role::Member);
-        repo.create(&new_board).expect("Failed to create board");
+        repo.create(&new_board).await.expect("Failed to create board");
     }
 
     // Step 1: Register user
@@ -477,13 +477,12 @@ async fn test_e2e_admin_user_management_flow() {
 
     // Promote to SysOp
     {
-        let db = db.lock().await;
-        let repo = UserRepository::new(&*db);
+        let repo = UserRepository::new(db.pool());
         let update = UserUpdate {
             role: Some(Role::SysOp),
             ..Default::default()
         };
-        repo.update(admin_id, &update).unwrap();
+        repo.update(admin_id, &update).await.unwrap();
     }
 
     // Re-login as admin
@@ -554,14 +553,13 @@ async fn test_e2e_multi_user_board_interaction() {
 
     // Setup: Create a board
     {
-        let db = db.lock().await;
-        let repo = BoardRepository::new(&*db);
+        let repo = BoardRepository::new(db.pool());
         let new_board = NewBoard::new("Discussion Forum")
             .with_description("A place for discussions")
             .with_board_type(BoardType::Thread)
             .with_min_read_role(Role::Member)
             .with_min_write_role(Role::Member);
-        repo.create(&new_board).expect("Failed to create board");
+        repo.create(&new_board).await.expect("Failed to create board");
     }
 
     // Step 1: Register User A

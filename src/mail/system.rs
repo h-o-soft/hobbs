@@ -56,9 +56,9 @@ impl<'a> SystemMailService<'a> {
     /// Get the first active SysOp user.
     ///
     /// Returns the first user with SysOp role, or None if no SysOp exists.
-    pub fn get_sysop_user(&self) -> Result<Option<User>> {
-        let repo = UserRepository::new(self.db);
-        let sysops = repo.list_by_role(Role::SysOp)?;
+    pub async fn get_sysop_user(&self) -> Result<Option<User>> {
+        let repo = UserRepository::new(self.db.pool());
+        let sysops = repo.list_by_role(Role::SysOp).await?;
         Ok(sysops.into_iter().next())
     }
 
@@ -75,14 +75,14 @@ impl<'a> SystemMailService<'a> {
     ///
     /// Returns `Ok(true)` if the mail was sent, `Ok(false)` if skipped
     /// (no SysOp available or recipient is a SysOp).
-    pub fn send_welcome_mail(&self, recipient: &User) -> Result<bool> {
+    pub async fn send_welcome_mail(&self, recipient: &User) -> Result<bool> {
         // Don't send welcome mail to SysOp (they're the sender)
         if recipient.role == Role::SysOp {
             return Ok(false);
         }
 
         // Get the SysOp to use as sender
-        let sysop = match self.get_sysop_user()? {
+        let sysop = match self.get_sysop_user().await? {
             Some(u) => u,
             None => return Ok(false), // No SysOp, skip welcome mail
         };
@@ -92,7 +92,8 @@ impl<'a> SystemMailService<'a> {
 
         // Create and send the mail
         let new_mail = NewMail::new(sysop.id, recipient.id, WELCOME_MAIL_SUBJECT, body);
-        MailRepository::create(self.db.conn(), &new_mail)?;
+        let mail_repo = MailRepository::new(self.db.pool());
+        mail_repo.create(&new_mail).await?;
 
         Ok(true)
     }
@@ -100,13 +101,14 @@ impl<'a> SystemMailService<'a> {
     /// Send a welcome mail to a user by ID.
     ///
     /// Convenience method that fetches the user and sends the welcome mail.
-    pub fn send_welcome_mail_by_id(&self, user_id: i64) -> Result<bool> {
-        let repo = UserRepository::new(self.db);
+    pub async fn send_welcome_mail_by_id(&self, user_id: i64) -> Result<bool> {
+        let repo = UserRepository::new(self.db.pool());
         let user = repo
-            .get_by_id(user_id)?
+            .get_by_id(user_id)
+            .await?
             .ok_or_else(|| HobbsError::NotFound("user".to_string()))?;
 
-        self.send_welcome_mail(&user)
+        self.send_welcome_mail(&user).await
     }
 
     /// Generate the welcome mail body with the user's nickname.
@@ -130,9 +132,9 @@ impl<'a> SystemMailService<'a> {
     /// # Returns
     ///
     /// Returns `Ok(true)` if the mail was sent, `Ok(false)` if no SysOp available.
-    pub fn send_notification(&self, recipient_id: i64, subject: &str, body: &str) -> Result<bool> {
+    pub async fn send_notification(&self, recipient_id: i64, subject: &str, body: &str) -> Result<bool> {
         // Get the SysOp to use as sender
-        let sysop = match self.get_sysop_user()? {
+        let sysop = match self.get_sysop_user().await? {
             Some(u) => u,
             None => return Ok(false),
         };
@@ -144,7 +146,8 @@ impl<'a> SystemMailService<'a> {
 
         // Create and send the mail
         let new_mail = NewMail::new(sysop.id, recipient_id, subject, body);
-        MailRepository::create(self.db.conn(), &new_mail)?;
+        let mail_repo = MailRepository::new(self.db.pool());
+        mail_repo.create(&new_mail).await?;
 
         Ok(true)
     }
@@ -159,15 +162,16 @@ impl<'a> SystemMailService<'a> {
     /// # Returns
     ///
     /// Returns the number of mails sent.
-    pub fn broadcast_notification(&self, subject: &str, body: &str) -> Result<usize> {
-        let sysop = match self.get_sysop_user()? {
+    pub async fn broadcast_notification(&self, subject: &str, body: &str) -> Result<usize> {
+        let sysop = match self.get_sysop_user().await? {
             Some(u) => u,
             None => return Ok(0),
         };
 
-        let repo = UserRepository::new(self.db);
-        let users = repo.list_active()?;
+        let user_repo = UserRepository::new(self.db.pool());
+        let users = user_repo.list_active().await?;
 
+        let mail_repo = MailRepository::new(self.db.pool());
         let mut count = 0;
         for user in users {
             // Skip the sender (SysOp)
@@ -176,7 +180,7 @@ impl<'a> SystemMailService<'a> {
             }
 
             let new_mail = NewMail::new(sysop.id, user.id, subject, body);
-            MailRepository::create(self.db.conn(), &new_mail)?;
+            mail_repo.create(&new_mail).await?;
             count += 1;
         }
 
@@ -189,119 +193,122 @@ mod tests {
     use super::*;
     use crate::db::NewUser;
 
-    fn setup_db() -> Database {
-        Database::open_in_memory().unwrap()
+    async fn setup_db() -> Database {
+        Database::open_in_memory().await.unwrap()
     }
 
-    fn create_sysop(db: &Database) -> User {
-        let repo = UserRepository::new(db);
+    async fn create_sysop(db: &Database) -> User {
+        let repo = UserRepository::new(db.pool());
         let mut sysop = NewUser::new("sysop", "password123", "System Operator");
         sysop.role = Role::SysOp;
-        repo.create(&sysop).unwrap()
+        repo.create(&sysop).await.unwrap()
     }
 
-    fn create_member(db: &Database, username: &str, nickname: &str) -> User {
-        let repo = UserRepository::new(db);
+    async fn create_member(db: &Database, username: &str, nickname: &str) -> User {
+        let repo = UserRepository::new(db.pool());
         let user = NewUser::new(username, "password123", nickname);
-        repo.create(&user).unwrap()
+        repo.create(&user).await.unwrap()
     }
 
-    #[test]
-    fn test_get_sysop_user_exists() {
-        let db = setup_db();
-        let sysop = create_sysop(&db);
+    #[tokio::test]
+    async fn test_get_sysop_user_exists() {
+        let db = setup_db().await;
+        let sysop = create_sysop(&db).await;
 
         let service = SystemMailService::new(&db);
-        let result = service.get_sysop_user().unwrap();
+        let result = service.get_sysop_user().await.unwrap();
 
         assert!(result.is_some());
         assert_eq!(result.unwrap().id, sysop.id);
     }
 
-    #[test]
-    fn test_get_sysop_user_not_exists() {
-        let db = setup_db();
-        create_member(&db, "alice", "Alice");
+    #[tokio::test]
+    async fn test_get_sysop_user_not_exists() {
+        let db = setup_db().await;
+        create_member(&db, "alice", "Alice").await;
 
         let service = SystemMailService::new(&db);
-        let result = service.get_sysop_user().unwrap();
+        let result = service.get_sysop_user().await.unwrap();
 
         assert!(result.is_none());
     }
 
-    #[test]
-    fn test_send_welcome_mail_success() {
-        let db = setup_db();
-        let _sysop = create_sysop(&db);
-        let member = create_member(&db, "alice", "Alice");
+    #[tokio::test]
+    async fn test_send_welcome_mail_success() {
+        let db = setup_db().await;
+        let _sysop = create_sysop(&db).await;
+        let member = create_member(&db, "alice", "Alice").await;
 
         let service = SystemMailService::new(&db);
-        let sent = service.send_welcome_mail(&member).unwrap();
+        let sent = service.send_welcome_mail(&member).await.unwrap();
 
         assert!(sent);
 
         // Verify mail was created
-        let inbox = MailRepository::list_inbox(db.conn(), member.id).unwrap();
+        let mail_repo = MailRepository::new(db.pool());
+        let inbox = mail_repo.list_inbox(member.id).await.unwrap();
         assert_eq!(inbox.len(), 1);
         assert_eq!(inbox[0].subject, WELCOME_MAIL_SUBJECT);
         assert!(inbox[0].body.contains("Aliceさん"));
     }
 
-    #[test]
-    fn test_send_welcome_mail_no_sysop() {
-        let db = setup_db();
-        let member = create_member(&db, "alice", "Alice");
+    #[tokio::test]
+    async fn test_send_welcome_mail_no_sysop() {
+        let db = setup_db().await;
+        let member = create_member(&db, "alice", "Alice").await;
 
         let service = SystemMailService::new(&db);
-        let sent = service.send_welcome_mail(&member).unwrap();
+        let sent = service.send_welcome_mail(&member).await.unwrap();
 
         assert!(!sent);
 
         // No mail should be created
-        let inbox = MailRepository::list_inbox(db.conn(), member.id).unwrap();
+        let mail_repo = MailRepository::new(db.pool());
+        let inbox = mail_repo.list_inbox(member.id).await.unwrap();
         assert!(inbox.is_empty());
     }
 
-    #[test]
-    fn test_send_welcome_mail_to_sysop_skipped() {
-        let db = setup_db();
-        let sysop = create_sysop(&db);
+    #[tokio::test]
+    async fn test_send_welcome_mail_to_sysop_skipped() {
+        let db = setup_db().await;
+        let sysop = create_sysop(&db).await;
 
         let service = SystemMailService::new(&db);
-        let sent = service.send_welcome_mail(&sysop).unwrap();
+        let sent = service.send_welcome_mail(&sysop).await.unwrap();
 
         assert!(!sent);
     }
 
-    #[test]
-    fn test_send_welcome_mail_by_id() {
-        let db = setup_db();
-        let _sysop = create_sysop(&db);
-        let member = create_member(&db, "bob", "Bob");
+    #[tokio::test]
+    async fn test_send_welcome_mail_by_id() {
+        let db = setup_db().await;
+        let _sysop = create_sysop(&db).await;
+        let member = create_member(&db, "bob", "Bob").await;
 
         let service = SystemMailService::new(&db);
-        let sent = service.send_welcome_mail_by_id(member.id).unwrap();
+        let sent = service.send_welcome_mail_by_id(member.id).await.unwrap();
 
         assert!(sent);
 
-        let inbox = MailRepository::list_inbox(db.conn(), member.id).unwrap();
+        let mail_repo = MailRepository::new(db.pool());
+        let inbox = mail_repo.list_inbox(member.id).await.unwrap();
         assert_eq!(inbox.len(), 1);
     }
 
-    #[test]
-    fn test_send_welcome_mail_by_id_not_found() {
-        let db = setup_db();
-        let _sysop = create_sysop(&db);
+    #[tokio::test]
+    async fn test_send_welcome_mail_by_id_not_found() {
+        let db = setup_db().await;
+        let _sysop = create_sysop(&db).await;
 
         let service = SystemMailService::new(&db);
-        let result = service.send_welcome_mail_by_id(999);
+        let result = service.send_welcome_mail_by_id(999).await;
 
         assert!(matches!(result, Err(HobbsError::NotFound(_))));
     }
 
-    #[test]
-    fn test_generate_welcome_body() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_generate_welcome_body() {
+        let db = setup_db().await;
         let service = SystemMailService::new(&db);
 
         let body = service.generate_welcome_body("テストユーザー");
@@ -312,95 +319,103 @@ mod tests {
         assert!(body.contains("メール"));
     }
 
-    #[test]
-    fn test_send_notification_success() {
-        let db = setup_db();
-        let _sysop = create_sysop(&db);
-        let member = create_member(&db, "alice", "Alice");
+    #[tokio::test]
+    async fn test_send_notification_success() {
+        let db = setup_db().await;
+        let _sysop = create_sysop(&db).await;
+        let member = create_member(&db, "alice", "Alice").await;
 
         let service = SystemMailService::new(&db);
         let sent = service
             .send_notification(member.id, "お知らせ", "テスト通知です")
+            .await
             .unwrap();
 
         assert!(sent);
 
-        let inbox = MailRepository::list_inbox(db.conn(), member.id).unwrap();
+        let mail_repo = MailRepository::new(db.pool());
+        let inbox = mail_repo.list_inbox(member.id).await.unwrap();
         assert_eq!(inbox.len(), 1);
         assert_eq!(inbox[0].subject, "お知らせ");
         assert_eq!(inbox[0].body, "テスト通知です");
     }
 
-    #[test]
-    fn test_send_notification_no_sysop() {
-        let db = setup_db();
-        let member = create_member(&db, "alice", "Alice");
+    #[tokio::test]
+    async fn test_send_notification_no_sysop() {
+        let db = setup_db().await;
+        let member = create_member(&db, "alice", "Alice").await;
 
         let service = SystemMailService::new(&db);
         let sent = service
             .send_notification(member.id, "お知らせ", "テスト")
+            .await
             .unwrap();
 
         assert!(!sent);
     }
 
-    #[test]
-    fn test_send_notification_to_sysop_skipped() {
-        let db = setup_db();
-        let sysop = create_sysop(&db);
+    #[tokio::test]
+    async fn test_send_notification_to_sysop_skipped() {
+        let db = setup_db().await;
+        let sysop = create_sysop(&db).await;
 
         let service = SystemMailService::new(&db);
         let sent = service
             .send_notification(sysop.id, "お知らせ", "テスト")
+            .await
             .unwrap();
 
         assert!(!sent);
     }
 
-    #[test]
-    fn test_broadcast_notification() {
-        let db = setup_db();
-        let _sysop = create_sysop(&db);
-        let alice = create_member(&db, "alice", "Alice");
-        let bob = create_member(&db, "bob", "Bob");
+    #[tokio::test]
+    async fn test_broadcast_notification() {
+        let db = setup_db().await;
+        let _sysop = create_sysop(&db).await;
+        let alice = create_member(&db, "alice", "Alice").await;
+        let bob = create_member(&db, "bob", "Bob").await;
 
         let service = SystemMailService::new(&db);
         let count = service
             .broadcast_notification("重要なお知らせ", "全員へのメッセージ")
+            .await
             .unwrap();
 
         assert_eq!(count, 2);
 
         // Both users should have received the mail
-        let alice_inbox = MailRepository::list_inbox(db.conn(), alice.id).unwrap();
-        let bob_inbox = MailRepository::list_inbox(db.conn(), bob.id).unwrap();
+        let mail_repo = MailRepository::new(db.pool());
+        let alice_inbox = mail_repo.list_inbox(alice.id).await.unwrap();
+        let bob_inbox = mail_repo.list_inbox(bob.id).await.unwrap();
 
         assert_eq!(alice_inbox.len(), 1);
         assert_eq!(bob_inbox.len(), 1);
         assert_eq!(alice_inbox[0].subject, "重要なお知らせ");
     }
 
-    #[test]
-    fn test_broadcast_notification_no_sysop() {
-        let db = setup_db();
-        create_member(&db, "alice", "Alice");
+    #[tokio::test]
+    async fn test_broadcast_notification_no_sysop() {
+        let db = setup_db().await;
+        create_member(&db, "alice", "Alice").await;
 
         let service = SystemMailService::new(&db);
         let count = service
             .broadcast_notification("お知らせ", "テスト")
+            .await
             .unwrap();
 
         assert_eq!(count, 0);
     }
 
-    #[test]
-    fn test_broadcast_notification_only_sysop() {
-        let db = setup_db();
-        let _sysop = create_sysop(&db);
+    #[tokio::test]
+    async fn test_broadcast_notification_only_sysop() {
+        let db = setup_db().await;
+        let _sysop = create_sysop(&db).await;
 
         let service = SystemMailService::new(&db);
         let count = service
             .broadcast_notification("お知らせ", "テスト")
+            .await
             .unwrap();
 
         // SysOp is skipped, so no mails sent

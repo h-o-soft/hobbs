@@ -20,6 +20,8 @@ use crate::chat::ChatRoomManager;
 use crate::config::WebConfig;
 
 use super::handlers::{
+    // RSS handlers
+    add_feed,
     // Admin handlers
     admin_create_board,
     admin_create_folder,
@@ -40,30 +42,26 @@ use super::handlers::{
     create_flat_post,
     create_thread,
     create_thread_post,
-    // Config handlers
-    get_public_config,
+    delete_feed,
     // File handlers
     delete_file,
     // Mail handlers
     delete_mail,
     delete_post,
-    update_post,
-    update_thread,
     download_file,
     get_board,
-    // RSS handlers
-    add_feed,
-    delete_feed,
     get_feed,
     get_file,
     get_folder,
     get_item,
     get_mail,
     get_my_profile,
-    get_user_by_username,
+    // Config handlers
+    get_public_config,
     get_thread,
     get_unread_count,
     get_user,
+    get_user_by_username,
     list_boards,
     list_feeds,
     list_files,
@@ -84,6 +82,8 @@ use super::handlers::{
     register,
     send_mail,
     update_my_profile,
+    update_post,
+    update_thread,
     upload_file,
     // State
     AppState,

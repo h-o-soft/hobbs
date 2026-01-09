@@ -29,8 +29,8 @@
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │                    Data Layer                             │  │
 │  │  ┌─────────────────────┐  ┌─────────────────────────┐   │  │
-│  │  │   SQLite Database   │  │    File Storage         │   │  │
-│  │  │   (rusqlite)        │  │    (filesystem)         │   │  │
+│  │  │ SQLite / PostgreSQL │  │    File Storage         │   │  │
+│  │  │       (sqlx)        │  │    (filesystem)         │   │  │
 │  │  └─────────────────────┘  └─────────────────────────┘   │  │
 │  └──────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
@@ -60,8 +60,9 @@ tokio = { version = "1", features = ["full"] }
 # 文字コード変換
 encoding_rs = "0.8"
 
-# データベース
-rusqlite = { version = "0.31", features = ["bundled"] }
+# データベース（SQLite または PostgreSQL）
+sqlx = { version = "0.8", features = ["runtime-tokio", "chrono", "migrate"] }
+# ビルド時に --features sqlite または --features postgres で選択
 
 # パスワードハッシュ
 argon2 = "0.5"

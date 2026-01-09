@@ -20,7 +20,8 @@ impl RssScreen {
 
         loop {
             // Get feed list with unread counts
-            let feeds = RssFeedRepository::list_with_unread(ctx.db.conn(), user_id)?;
+            let feed_repo = RssFeedRepository::new(ctx.db.pool());
+            let feeds = feed_repo.list_with_unread(user_id).await?;
 
             // Calculate total unread
             let total_unread: i64 = feeds.iter().map(|f| f.unread_count).sum();
@@ -138,7 +139,8 @@ impl RssScreen {
     ) -> Result<()> {
         let user_id = session.user_id();
 
-        let feed = match RssFeedRepository::get_by_id(ctx.db.conn(), feed_id)? {
+        let feed_repo = RssFeedRepository::new(ctx.db.pool());
+        let feed = match feed_repo.get_by_id(feed_id).await? {
             Some(f) => f,
             None => return Ok(()),
         };
@@ -148,12 +150,13 @@ impl RssScreen {
 
         loop {
             // Get items
-            let items = RssItemRepository::list_by_feed(ctx.db.conn(), feed_id, page_size, offset)?;
-            let total = RssItemRepository::count_by_feed(ctx.db.conn(), feed_id)?;
-            let unread_count = user_id
-                .map(|uid| RssItemRepository::count_unread(ctx.db.conn(), feed_id, uid))
-                .transpose()?
-                .unwrap_or(0);
+            let item_repo = RssItemRepository::new(ctx.db.pool());
+            let items = item_repo.list_by_feed(feed_id, page_size, offset).await?;
+            let total = item_repo.count_by_feed(feed_id).await?;
+            let unread_count = match user_id {
+                Some(uid) => item_repo.count_unread(feed_id, uid).await?,
+                None => 0,
+            };
 
             // Display header
             ctx.send_line(session, "").await?;
@@ -174,13 +177,16 @@ impl RssScreen {
                 ctx.send_line(session, ctx.i18n.t("rss.no_items")).await?;
             } else {
                 // Get read position for this user
-                let last_read_id = user_id
-                    .and_then(|uid| {
-                        RssReadPositionRepository::get(ctx.db.conn(), uid, feed_id)
-                            .ok()
-                            .flatten()
-                    })
-                    .and_then(|pos| pos.last_read_item_id);
+                let read_pos_repo = RssReadPositionRepository::new(ctx.db.pool());
+                let last_read_id = match user_id {
+                    Some(uid) => read_pos_repo
+                        .get(uid, feed_id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .and_then(|pos| pos.last_read_item_id),
+                    None => None,
+                };
 
                 // Header
                 ctx.send_line(
@@ -311,14 +317,16 @@ impl RssScreen {
     ) -> Result<()> {
         let user_id = session.user_id();
 
-        let item = match RssItemRepository::get_by_id(ctx.db.conn(), item_id)? {
+        let item_repo = RssItemRepository::new(ctx.db.pool());
+        let item = match item_repo.get_by_id(item_id).await? {
             Some(i) => i,
             None => return Ok(()),
         };
 
         // Update read position if logged in
         if let Some(uid) = user_id {
-            let _ = RssReadPositionRepository::upsert(ctx.db.conn(), uid, item.feed_id, item_id);
+            let read_pos_repo = RssReadPositionRepository::new(ctx.db.pool());
+            let _ = read_pos_repo.upsert(uid, item.feed_id, item_id).await;
         }
 
         // Display article
@@ -411,7 +419,8 @@ impl RssScreen {
 
         loop {
             // Get current unread count
-            let unread_count = RssItemRepository::count_unread(ctx.db.conn(), feed_id, user_id)?;
+            let item_repo = RssItemRepository::new(ctx.db.pool());
+            let unread_count = item_repo.count_unread(feed_id, user_id).await?;
             if unread_count == 0 {
                 ctx.send_line(session, "").await?;
                 ctx.send_line(session, ctx.i18n.t("rss.reading_complete"))
@@ -422,11 +431,14 @@ impl RssScreen {
             }
 
             // Get the oldest unread item
-            let last_read_id = RssReadPositionRepository::get(ctx.db.conn(), user_id, feed_id)?
+            let read_pos_repo = RssReadPositionRepository::new(ctx.db.pool());
+            let last_read_id = read_pos_repo
+                .get(user_id, feed_id)
+                .await?
                 .and_then(|pos| pos.last_read_item_id);
 
             // Get items after last read
-            let items = RssItemRepository::list_by_feed(ctx.db.conn(), feed_id, 100, 0)?;
+            let items = item_repo.list_by_feed(feed_id, 100, 0).await?;
             let unread_item = items.into_iter().rev().find(|item| match last_read_id {
                 None => true,
                 Some(last_id) => item.id > last_id,
@@ -511,7 +523,7 @@ impl RssScreen {
             ctx.send_line(session, &"=".repeat(60)).await?;
 
             // Update read position
-            let _ = RssReadPositionRepository::upsert(ctx.db.conn(), user_id, feed_id, item.id);
+            let _ = read_pos_repo.upsert(user_id, feed_id, item.id).await;
 
             // Prompt for next
             ctx.send(session, ctx.i18n.t("rss.press_enter_next"))
@@ -542,7 +554,8 @@ impl RssScreen {
         let input = ctx.read_line(session).await?;
 
         if input.trim().eq_ignore_ascii_case("y") {
-            RssReadPositionRepository::mark_all_as_read(ctx.db.conn(), user_id, feed_id)?;
+            let read_pos_repo = RssReadPositionRepository::new(ctx.db.pool());
+            read_pos_repo.mark_all_as_read(user_id, feed_id).await?;
             ctx.send_line(session, ctx.i18n.t("rss.marked_all_read"))
                 .await?;
         }
@@ -558,11 +571,8 @@ impl RssScreen {
         };
 
         ctx.send_line(session, "").await?;
-        ctx.send_line(
-            session,
-            &format!("=== {} ===", ctx.i18n.t("rss.add_feed")),
-        )
-        .await?;
+        ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("rss.add_feed")))
+            .await?;
         ctx.send_line(session, "").await?;
 
         // Get URL
@@ -585,7 +595,8 @@ impl RssScreen {
         }
 
         // Check if already subscribed
-        if RssFeedRepository::get_by_user_url(ctx.db.conn(), user_id, url)?.is_some() {
+        let feed_repo = RssFeedRepository::new(ctx.db.pool());
+        if feed_repo.get_by_user_url(user_id, url).await?.is_some() {
             ctx.send_line(session, ctx.i18n.t("rss.already_subscribed"))
                 .await?;
             ctx.send(session, ctx.i18n.t("common.press_enter")).await?;
@@ -607,9 +618,10 @@ impl RssScreen {
                     new_feed = new_feed.with_site_url(site_url);
                 }
 
-                match RssFeedRepository::create(ctx.db.conn(), &new_feed) {
+                match feed_repo.create(&new_feed).await {
                     Ok(feed) => {
                         // Store initial items
+                        let item_repo = RssItemRepository::new(ctx.db.pool());
                         for item in parsed.items.into_iter().take(MAX_ITEMS_PER_FEED) {
                             let mut new_item = NewRssItem::new(feed.id, &item.guid, &item.title);
                             if let Some(link) = item.link {
@@ -624,29 +636,26 @@ impl RssScreen {
                             if let Some(pub_date) = item.published_at {
                                 new_item = new_item.with_published_at(pub_date);
                             }
-                            let _ = RssItemRepository::create_or_ignore(ctx.db.conn(), &new_item);
+                            let _ = item_repo.create_or_ignore(&new_item).await;
                         }
 
                         ctx.send_line(
                             session,
-                            &ctx.i18n
-                                .t_with("rss.feed_added", &[("title", &feed.title)]),
+                            &ctx.i18n.t_with("rss.feed_added", &[("title", &feed.title)]),
                         )
                         .await?;
                     }
                     Err(e) => {
-                        ctx.send_line(
-                            session,
-                            &format!("{}: {}", ctx.i18n.t("common.error"), e),
-                        )
-                        .await?;
+                        ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("common.error"), e))
+                            .await?;
                     }
                 }
             }
             Err(e) => {
                 ctx.send_line(
                     session,
-                    &ctx.i18n.t_with("rss.fetch_error", &[("error", &e.to_string())]),
+                    &ctx.i18n
+                        .t_with("rss.fetch_error", &[("error", &e.to_string())]),
                 )
                 .await?;
             }
@@ -722,13 +731,15 @@ impl RssScreen {
                 // Confirm
                 ctx.send(
                     session,
-                    &ctx.i18n.t_with("rss.confirm_delete", &[("title", &feed.title)]),
+                    &ctx.i18n
+                        .t_with("rss.confirm_delete", &[("title", &feed.title)]),
                 )
                 .await?;
                 let confirm = ctx.read_line(session).await?;
 
                 if confirm.trim().eq_ignore_ascii_case("y") {
-                    match RssFeedRepository::delete(ctx.db.conn(), feed.id) {
+                    let feed_repo = RssFeedRepository::new(ctx.db.pool());
+                    match feed_repo.delete(feed.id).await {
                         Ok(_) => {
                             ctx.send_line(
                                 session,

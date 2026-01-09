@@ -10,6 +10,7 @@ use axum::{
 use std::sync::Arc;
 use utoipa;
 
+use crate::datetime::to_rfc3339;
 use crate::db::{Role, UserRepository};
 use crate::file::{FileRepository, FolderRepository, NewFile};
 use crate::web::dto::{
@@ -39,37 +40,34 @@ pub async fn list_folders(
 ) -> Result<Json<ApiResponse<Vec<FolderResponse>>>, ApiError> {
     let user_role: Role = claims.role.parse().unwrap_or(Role::Guest);
 
-    let folders = {
-        let db = state.db.lock().await;
+    let folder_repo = FolderRepository::new(state.db.pool());
 
-        // Get folders accessible by the user's role
-        FolderRepository::list_accessible(db.conn(), user_role).map_err(|e| {
-            tracing::error!("Failed to list folders: {}", e);
-            ApiError::internal("Failed to list folders")
-        })?
-    };
+    // Get folders accessible by the user's role
+    let folders = folder_repo.list_accessible(user_role).await.map_err(|e| {
+        tracing::error!("Failed to list folders: {}", e);
+        ApiError::internal("Failed to list folders")
+    })?;
 
     let responses = {
-        let db = state.db.lock().await;
+        let file_repo = FileRepository::new(state.db.pool());
 
-        folders
-            .into_iter()
-            .map(|f| {
-                let file_count = FileRepository::count_by_folder(db.conn(), f.id).unwrap_or(0);
-                let can_upload = user_role >= f.upload_perm;
+        let mut result = Vec::new();
+        for f in folders {
+            let file_count = file_repo.count_by_folder(f.id).await.unwrap_or(0);
+            let can_upload = user_role >= f.upload_perm;
 
-                FolderResponse {
-                    id: f.id,
-                    name: f.name,
-                    description: f.description,
-                    parent_id: f.parent_id,
-                    can_read: true, // Already filtered
-                    can_upload,
-                    file_count,
-                    created_at: f.created_at.to_rfc3339(),
-                }
-            })
-            .collect()
+            result.push(FolderResponse {
+                id: f.id,
+                name: f.name,
+                description: f.description,
+                parent_id: f.parent_id,
+                can_read: true, // Already filtered
+                can_upload,
+                file_count,
+                created_at: to_rfc3339(&f.created_at),
+            });
+        }
+        result
     };
 
     Ok(Json(ApiResponse::new(responses)))
@@ -100,26 +98,23 @@ pub async fn get_folder(
 ) -> Result<Json<ApiResponse<FolderResponse>>, ApiError> {
     let user_role: Role = claims.role.parse().unwrap_or(Role::Guest);
 
-    let folder = {
-        let db = state.db.lock().await;
-
-        FolderRepository::get_by_id(db.conn(), folder_id)
-            .map_err(|e| {
-                tracing::error!("Failed to get folder: {}", e);
-                ApiError::internal("Failed to get folder")
-            })?
-            .ok_or_else(|| ApiError::not_found("Folder not found"))?
-    };
+    let folder_repo = FolderRepository::new(state.db.pool());
+    let folder = folder_repo
+        .get_by_id(folder_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get folder: {}", e);
+            ApiError::internal("Failed to get folder")
+        })?
+        .ok_or_else(|| ApiError::not_found("Folder not found"))?;
 
     // Check read permission
     if user_role < folder.permission {
         return Err(ApiError::forbidden("Access denied"));
     }
 
-    let file_count = {
-        let db = state.db.lock().await;
-        FileRepository::count_by_folder(db.conn(), folder_id).unwrap_or(0)
-    };
+    let file_repo = FileRepository::new(state.db.pool());
+    let file_count = file_repo.count_by_folder(folder_id).await.unwrap_or(0);
 
     let can_upload = user_role >= folder.upload_perm;
 
@@ -131,7 +126,7 @@ pub async fn get_folder(
         can_read: true,
         can_upload,
         file_count,
-        created_at: folder.created_at.to_rfc3339(),
+        created_at: to_rfc3339(&folder.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -167,9 +162,11 @@ pub async fn list_files(
     let (offset, limit) = pagination.to_offset_limit();
 
     let (files, total, folder) = {
-        let db = state.db.lock().await;
+        let folder_repo = FolderRepository::new(state.db.pool());
+        let file_repo = FileRepository::new(state.db.pool());
 
-        let folder = FolderRepository::get_by_id(db.conn(), folder_id)
+        let folder = folder_repo.get_by_id(folder_id)
+            .await
             .map_err(|e| {
                 tracing::error!("Failed to get folder: {}", e);
                 ApiError::internal("Failed to get folder")
@@ -181,7 +178,7 @@ pub async fn list_files(
             return Err(ApiError::forbidden("Access denied"));
         }
 
-        let all_files = FileRepository::list_by_folder(db.conn(), folder_id).map_err(|e| {
+        let all_files = file_repo.list_by_folder(folder_id).await.map_err(|e| {
             tracing::error!("Failed to list files: {}", e);
             ApiError::internal("Failed to list files")
         })?;
@@ -200,39 +197,38 @@ pub async fn list_files(
 
     // Get user info for uploaders
     let responses = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
+        let user_repo = UserRepository::new(state.db.pool());
 
-        files
-            .into_iter()
-            .map(|f| {
-                let uploader = user_repo
-                    .get_by_id(f.uploader_id)
-                    .ok()
-                    .flatten()
-                    .map(|u| AuthorInfo {
-                        id: u.id,
-                        username: u.username,
-                        nickname: u.nickname,
-                    })
-                    .unwrap_or_else(|| AuthorInfo {
-                        id: f.uploader_id,
-                        username: "unknown".to_string(),
-                        nickname: "Unknown".to_string(),
-                    });
+        let mut result = Vec::new();
+        for f in files {
+            let uploader = user_repo
+                .get_by_id(f.uploader_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|u| AuthorInfo {
+                    id: u.id,
+                    username: u.username,
+                    nickname: u.nickname,
+                })
+                .unwrap_or_else(|| AuthorInfo {
+                    id: f.uploader_id,
+                    username: "unknown".to_string(),
+                    nickname: "Unknown".to_string(),
+                });
 
-                FileResponse {
-                    id: f.id,
-                    folder_id: f.folder_id,
-                    filename: f.filename,
-                    size: f.size,
-                    description: f.description,
-                    uploader,
-                    downloads: f.downloads,
-                    created_at: f.created_at.to_rfc3339(),
-                }
-            })
-            .collect()
+            result.push(FileResponse {
+                id: f.id,
+                folder_id: f.folder_id,
+                filename: f.filename,
+                size: f.size,
+                description: f.description,
+                uploader,
+                downloads: f.downloads,
+                created_at: to_rfc3339(&f.created_at),
+            });
+        }
+        result
     };
 
     // Suppress unused variable warning
@@ -282,16 +278,15 @@ pub async fn upload_file(
         .ok_or_else(|| ApiError::internal("File storage not configured"))?;
 
     // Check folder and permissions
-    let folder = {
-        let db = state.db.lock().await;
-
-        FolderRepository::get_by_id(db.conn(), folder_id)
-            .map_err(|e| {
-                tracing::error!("Failed to get folder: {}", e);
-                ApiError::internal("Failed to get folder")
-            })?
-            .ok_or_else(|| ApiError::not_found("Folder not found"))?
-    };
+    let folder_repo = FolderRepository::new(state.db.pool());
+    let folder = folder_repo
+        .get_by_id(folder_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get folder: {}", e);
+            ApiError::internal("Failed to get folder")
+        })?
+        .ok_or_else(|| ApiError::not_found("Folder not found"))?;
 
     // Check upload permission
     if user_role < folder.upload_perm {
@@ -353,7 +348,7 @@ pub async fn upload_file(
 
     // Create file metadata
     let file = {
-        let db = state.db.lock().await;
+        let file_repo = FileRepository::new(state.db.pool());
 
         let mut new_file = NewFile::new(
             folder_id,
@@ -369,7 +364,7 @@ pub async fn upload_file(
             }
         }
 
-        FileRepository::create(db.conn(), &new_file).map_err(|e| {
+        file_repo.create(&new_file).await.map_err(|e| {
             tracing::error!("Failed to create file metadata: {}", e);
             // Try to clean up the stored file
             let _ = storage.delete(&stored_name);
@@ -379,11 +374,11 @@ pub async fn upload_file(
 
     // Get uploader info
     let uploader = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
+        let user_repo = UserRepository::new(state.db.pool());
 
         user_repo
             .get_by_id(claims.sub)
+            .await
             .ok()
             .flatten()
             .map(|u| AuthorInfo {
@@ -407,7 +402,7 @@ pub async fn upload_file(
             description: file.description,
             uploader,
             downloads: file.downloads,
-            created_at: file.created_at.to_rfc3339(),
+            created_at: to_rfc3339(&file.created_at),
         },
     };
 
@@ -439,25 +434,26 @@ pub async fn get_file(
 ) -> Result<Json<ApiResponse<FileResponse>>, ApiError> {
     let user_role: Role = claims.role.parse().unwrap_or(Role::Guest);
 
-    let (file, folder) = {
-        let db = state.db.lock().await;
+    let file_repo = FileRepository::new(state.db.pool());
+    let folder_repo = FolderRepository::new(state.db.pool());
 
-        let file = FileRepository::get_by_id(db.conn(), file_id)
-            .map_err(|e| {
-                tracing::error!("Failed to get file: {}", e);
-                ApiError::internal("Failed to get file")
-            })?
-            .ok_or_else(|| ApiError::not_found("File not found"))?;
+    let file = file_repo
+        .get_by_id(file_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get file: {}", e);
+            ApiError::internal("Failed to get file")
+        })?
+        .ok_or_else(|| ApiError::not_found("File not found"))?;
 
-        let folder = FolderRepository::get_by_id(db.conn(), file.folder_id)
-            .map_err(|e| {
-                tracing::error!("Failed to get folder: {}", e);
-                ApiError::internal("Failed to get folder")
-            })?
-            .ok_or_else(|| ApiError::not_found("Folder not found"))?;
-
-        (file, folder)
-    };
+    let folder = folder_repo
+        .get_by_id(file.folder_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get folder: {}", e);
+            ApiError::internal("Failed to get folder")
+        })?
+        .ok_or_else(|| ApiError::not_found("Folder not found"))?;
 
     // Check read permission
     if user_role < folder.permission {
@@ -466,11 +462,11 @@ pub async fn get_file(
 
     // Get uploader info
     let uploader = {
-        let db = state.db.lock().await;
-        let user_repo = UserRepository::new(&*db);
+        let user_repo = UserRepository::new(state.db.pool());
 
         user_repo
             .get_by_id(file.uploader_id)
+            .await
             .ok()
             .flatten()
             .map(|u| AuthorInfo {
@@ -493,7 +489,7 @@ pub async fn get_file(
         description: file.description,
         uploader,
         downloads: file.downloads,
-        created_at: file.created_at.to_rfc3339(),
+        created_at: to_rfc3339(&file.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -530,30 +526,31 @@ pub async fn download_file(
         .as_ref()
         .ok_or_else(|| ApiError::internal("File storage not configured"))?;
 
-    let file = {
-        let db = state.db.lock().await;
+    let file_repo = FileRepository::new(state.db.pool());
+    let folder_repo = FolderRepository::new(state.db.pool());
 
-        let file = FileRepository::get_by_id(db.conn(), file_id)
-            .map_err(|e| {
-                tracing::error!("Failed to get file: {}", e);
-                ApiError::internal("Failed to get file")
-            })?
-            .ok_or_else(|| ApiError::not_found("File not found"))?;
+    let file = file_repo
+        .get_by_id(file_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get file: {}", e);
+            ApiError::internal("Failed to get file")
+        })?
+        .ok_or_else(|| ApiError::not_found("File not found"))?;
 
-        let folder = FolderRepository::get_by_id(db.conn(), file.folder_id)
-            .map_err(|e| {
-                tracing::error!("Failed to get folder: {}", e);
-                ApiError::internal("Failed to get folder")
-            })?
-            .ok_or_else(|| ApiError::not_found("Folder not found"))?;
+    let folder = folder_repo
+        .get_by_id(file.folder_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get folder: {}", e);
+            ApiError::internal("Failed to get folder")
+        })?
+        .ok_or_else(|| ApiError::not_found("Folder not found"))?;
 
-        // Check read permission
-        if user_role < folder.permission {
-            return Err(ApiError::forbidden("Access denied"));
-        }
-
-        file
-    };
+    // Check read permission
+    if user_role < folder.permission {
+        return Err(ApiError::forbidden("Access denied"));
+    }
 
     // Load file content
     let content = storage.load(&file.stored_name).map_err(|e| {
@@ -562,10 +559,7 @@ pub async fn download_file(
     })?;
 
     // Increment download count
-    {
-        let db = state.db.lock().await;
-        let _ = FileRepository::increment_downloads(db.conn(), file_id);
-    }
+    let _ = file_repo.increment_downloads(file_id).await;
 
     // Determine content type
     let content_type = mime_guess::from_path(&file.filename)
@@ -620,37 +614,32 @@ pub async fn delete_file(
         .as_ref()
         .ok_or_else(|| ApiError::internal("File storage not configured"))?;
 
-    let file = {
-        let db = state.db.lock().await;
+    let file_repo = FileRepository::new(state.db.pool());
 
-        let file = FileRepository::get_by_id(db.conn(), file_id)
-            .map_err(|e| {
-                tracing::error!("Failed to get file: {}", e);
-                ApiError::internal("Failed to get file")
-            })?
-            .ok_or_else(|| ApiError::not_found("File not found"))?;
+    let file = file_repo
+        .get_by_id(file_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get file: {}", e);
+            ApiError::internal("Failed to get file")
+        })?
+        .ok_or_else(|| ApiError::not_found("File not found"))?;
 
-        // Check delete permission: uploader or SubOp+
-        let can_delete = file.uploader_id == claims.sub || user_role >= Role::SubOp;
+    // Check delete permission: uploader or SubOp+
+    let can_delete = file.uploader_id == claims.sub || user_role >= Role::SubOp;
 
-        if !can_delete {
-            return Err(ApiError::forbidden("Delete permission denied"));
-        }
-
-        file
-    };
+    if !can_delete {
+        return Err(ApiError::forbidden("Delete permission denied"));
+    }
 
     // Delete physical file
     let _ = storage.delete(&file.stored_name);
 
     // Delete metadata
-    {
-        let db = state.db.lock().await;
-        FileRepository::delete(db.conn(), file_id).map_err(|e| {
-            tracing::error!("Failed to delete file metadata: {}", e);
-            ApiError::internal("Failed to delete file")
-        })?;
-    }
+    file_repo.delete(file_id).await.map_err(|e| {
+        tracing::error!("Failed to delete file metadata: {}", e);
+        ApiError::internal("Failed to delete file")
+    })?;
 
     Ok(Json(ApiResponse::new(())))
 }

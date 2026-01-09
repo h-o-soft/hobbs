@@ -13,12 +13,12 @@ use super::menu::{MenuAction, MenuItems};
 use crate::auth::{verify_password, LimitResult, LoginLimiter, RegistrationRequest};
 use crate::chat::ChatRoomManager;
 use crate::config::Config;
-use crate::rate_limit::RateLimiters;
 use crate::datetime::format_datetime_default;
 use crate::db::{Database, Role, UserRepository};
 use crate::error::{HobbsError, Result};
 use crate::i18n::{I18n, I18nManager};
 use crate::mail::MailRepository;
+use crate::rate_limit::RateLimiters;
 use crate::screen::{create_screen_from_profile, Screen};
 use crate::server::{
     encode_for_client, initial_negotiation, process_output_mode, CharacterEncoding, EchoMode,
@@ -489,9 +489,9 @@ Select language / Gengo sentaku:
         self.send_line(session, "").await?; // New line after password
 
         // Verify credentials
-        let user_repo = UserRepository::new(&self.db);
+        let user_repo = UserRepository::new(self.db.pool());
 
-        match user_repo.get_by_username(username) {
+        match user_repo.get_by_username(username).await {
             Ok(Some(user)) => {
                 if verify_password(&password, &user.password).is_ok() {
                     // Check if user is active
@@ -518,7 +518,7 @@ Select language / Gengo sentaku:
                     let previous_login = user.last_login.clone();
 
                     // Update last login
-                    if let Err(e) = user_repo.update_last_login(user.id) {
+                    if let Err(e) = user_repo.update_last_login(user.id).await {
                         warn!("Failed to update last login: {}", e);
                     }
 
@@ -586,8 +586,8 @@ Select language / Gengo sentaku:
 
         // Check if username exists (scope to release borrow before read_line)
         {
-            let user_repo = UserRepository::new(&self.db);
-            if user_repo.get_by_username(&username)?.is_some() {
+            let user_repo = UserRepository::new(self.db.pool());
+            if user_repo.get_by_username(&username).await?.is_some() {
                 self.send_line(session, self.i18n.t("register.username_taken"))
                     .await?;
                 return Ok(false);
@@ -643,15 +643,15 @@ Select language / Gengo sentaku:
         let request = RegistrationRequest::new(username.clone(), password, nickname)
             .with_encoding(session.encoding())
             .with_language(self.i18n.locale());
-        let user_repo = UserRepository::new(&self.db);
+        let user_repo = UserRepository::new(self.db.pool());
 
         // Check if this is the first user - make them SysOp
-        let is_first_user = user_repo.count().unwrap_or(0) == 0;
+        let is_first_user = user_repo.count().await.unwrap_or(0) == 0;
 
         let result = if is_first_user {
-            crate::auth::register_with_role(&user_repo, request, Role::SysOp)
+            crate::auth::register_with_role(&user_repo, request, Role::SysOp).await
         } else {
-            crate::auth::register(&user_repo, request)
+            crate::auth::register(&user_repo, request).await
         };
 
         match result {
@@ -803,8 +803,8 @@ Select language / Gengo sentaku:
 
         // Set user info
         if let Some(user_id) = session.user_id() {
-            let user_repo = UserRepository::new(&self.db);
-            if let Ok(Some(user)) = user_repo.get_by_id(user_id) {
+            let user_repo = UserRepository::new(self.db.pool());
+            if let Ok(Some(user)) = user_repo.get_by_id(user_id).await {
                 context.set("user.name", Value::string(user.username.clone()));
                 context.set("user.nickname", Value::string(user.nickname.clone()));
                 context.set("user.logged_in", Value::bool(true));
@@ -820,8 +820,8 @@ Select language / Gengo sentaku:
                 context.set("user.role_name", Value::string(role_name.to_string()));
 
                 // Set unread mail count
-                let unread_count =
-                    MailRepository::count_unread(self.db.conn(), user_id).unwrap_or(0);
+                let mail_repo = MailRepository::new(self.db.pool());
+                let unread_count = mail_repo.count_unread(user_id).await.unwrap_or(0);
                 context.set("user.unread_mail", Value::number(unread_count));
             } else {
                 // Fallback if user not found
@@ -910,8 +910,8 @@ Select language / Gengo sentaku:
     /// Check if the user is an admin.
     async fn is_admin(&self, session: &TelnetSession) -> bool {
         if let Some(user_id) = session.user_id() {
-            let user_repo = UserRepository::new(&self.db);
-            if let Ok(Some(user)) = user_repo.get_by_id(user_id) {
+            let user_repo = UserRepository::new(self.db.pool());
+            if let Ok(Some(user)) = user_repo.get_by_id(user_id).await {
                 return user.role >= Role::SubOp;
             }
         }
@@ -1128,8 +1128,9 @@ mod tests {
         assert_ne!(MenuResult::Logout, MenuResult::Quit);
     }
 
-    #[test]
-    fn test_set_language_updates_i18n() {
+    #[cfg(feature = "sqlite")]
+    #[tokio::test]
+    async fn test_set_language_updates_i18n() {
         use crate::db::Database;
         use crate::template::TemplateLoader;
         use tempfile::TempDir;
@@ -1137,8 +1138,7 @@ mod tests {
         // Setup
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let mut db = Database::open(&db_path).unwrap();
-        db.migrate().unwrap();
+        let db = Database::open(&db_path).await.unwrap();
         let db = Arc::new(db);
 
         let config = Arc::new(Config::default());
@@ -1203,8 +1203,9 @@ main = "Main Menu""#,
         assert_eq!(handler.i18n.t("menu.main"), "menu.main"); // Fallback to key
     }
 
-    #[test]
-    fn test_set_language_affects_create_context() {
+    #[cfg(feature = "sqlite")]
+    #[tokio::test]
+    async fn test_set_language_affects_create_context() {
         use crate::db::Database;
         use crate::template::TemplateLoader;
         use tempfile::TempDir;
@@ -1212,8 +1213,7 @@ main = "Main Menu""#,
         // Setup
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let mut db = Database::open(&db_path).unwrap();
-        db.migrate().unwrap();
+        let db = Database::open(&db_path).await.unwrap();
         let db = Arc::new(db);
 
         let config = Arc::new(Config::default());
@@ -1270,8 +1270,9 @@ value = "English value""#,
         assert_eq!(handler.i18n.locale(), "en");
     }
 
-    #[test]
-    fn test_set_language_affects_screen_context() {
+    #[cfg(feature = "sqlite")]
+    #[tokio::test]
+    async fn test_set_language_affects_screen_context() {
         use crate::db::Database;
         use crate::template::TemplateLoader;
         use tempfile::TempDir;
@@ -1279,8 +1280,7 @@ value = "English value""#,
         // Setup
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let mut db = Database::open(&db_path).unwrap();
-        db.migrate().unwrap();
+        let db = Database::open(&db_path).await.unwrap();
         let db = Arc::new(db);
 
         let config = Arc::new(Config::default());

@@ -73,22 +73,110 @@ impl Default for ServerConfig {
     }
 }
 
+/// Database backend type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum DatabaseBackend {
+    /// SQLite database (default).
+    #[default]
+    Sqlite,
+    /// PostgreSQL database.
+    Postgres,
+    /// MySQL database.
+    Mysql,
+}
+
+impl DatabaseBackend {
+    /// Get the backend as a string.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DatabaseBackend::Sqlite => "sqlite",
+            DatabaseBackend::Postgres => "postgres",
+            DatabaseBackend::Mysql => "mysql",
+        }
+    }
+}
+
+impl std::fmt::Display for DatabaseBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// Database configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct DatabaseConfig {
-    /// Path to the SQLite database file.
+    /// Database backend type (sqlite, postgres, mysql).
+    #[serde(default)]
+    pub backend: DatabaseBackend,
+    /// Path to the SQLite database file (for SQLite backend).
+    /// For backwards compatibility, this is used when `url` is not set.
     #[serde(default = "default_db_path")]
     pub path: String,
+    /// Database connection URL.
+    /// For SQLite: "sqlite:data/hobbs.db" or just use `path` field.
+    /// For PostgreSQL: "postgres://user:password@localhost/hobbs"
+    /// For MySQL: "mysql://user:password@localhost/hobbs"
+    #[serde(default)]
+    pub url: String,
+    /// Maximum number of connections in the pool.
+    #[serde(default = "default_pool_size")]
+    pub pool_size: u32,
+    /// Minimum number of connections in the pool.
+    #[serde(default = "default_min_connections")]
+    pub min_connections: u32,
+    /// Connection timeout in seconds.
+    #[serde(default = "default_connect_timeout")]
+    pub connect_timeout_secs: u64,
+    /// Idle connection timeout in seconds.
+    #[serde(default = "default_idle_timeout_db")]
+    pub idle_timeout_secs: u64,
 }
 
 fn default_db_path() -> String {
     "data/hobbs.db".to_string()
 }
 
+fn default_pool_size() -> u32 {
+    5
+}
+
+fn default_min_connections() -> u32 {
+    1
+}
+
+fn default_connect_timeout() -> u64 {
+    30
+}
+
+fn default_idle_timeout_db() -> u64 {
+    600
+}
+
+impl DatabaseConfig {
+    /// Get the effective database URL.
+    ///
+    /// If `url` is set, returns it. Otherwise, constructs a SQLite URL from `path`.
+    pub fn effective_url(&self) -> String {
+        if !self.url.is_empty() {
+            self.url.clone()
+        } else {
+            // For backwards compatibility: use path for SQLite
+            format!("sqlite:{}", self.path)
+        }
+    }
+}
+
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
+            backend: DatabaseBackend::default(),
             path: default_db_path(),
+            url: String::new(),
+            pool_size: default_pool_size(),
+            min_connections: default_min_connections(),
+            connect_timeout_secs: default_connect_timeout(),
+            idle_timeout_secs: default_idle_timeout_db(),
         }
     }
 }
@@ -657,7 +745,14 @@ mod tests {
         assert_eq!(config.server.guest_timeout_secs, 120);
         assert_eq!(config.server.timezone, "Asia/Tokyo");
 
+        assert_eq!(config.database.backend, DatabaseBackend::Sqlite);
         assert_eq!(config.database.path, "data/hobbs.db");
+        assert!(config.database.url.is_empty());
+        assert_eq!(config.database.pool_size, 5);
+        assert_eq!(config.database.min_connections, 1);
+        assert_eq!(config.database.connect_timeout_secs, 30);
+        assert_eq!(config.database.idle_timeout_secs, 600);
+        assert_eq!(config.database.effective_url(), "sqlite:data/hobbs.db");
 
         assert_eq!(config.files.storage_path, "data/files");
         assert_eq!(config.files.max_upload_size_mb, 10);

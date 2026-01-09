@@ -11,7 +11,6 @@ use hobbs::web::router::create_router;
 use hobbs::Database;
 use serde_json::{json, Value};
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 /// Create a test configuration.
 fn create_test_config() -> WebConfig {
@@ -31,12 +30,14 @@ fn create_test_config() -> WebConfig {
 }
 
 /// Create a test server with an in-memory database.
-async fn create_test_server() -> (TestServer, Arc<Mutex<Database>>) {
+async fn create_test_server() -> (TestServer, Arc<Database>) {
     let config = create_test_config();
 
     // Create in-memory database
-    let db = Database::open_in_memory().expect("Failed to create test database");
-    let shared_db = Arc::new(Mutex::new(db));
+    let db = Database::open_in_memory()
+        .await
+        .expect("Failed to create test database");
+    let shared_db = Arc::new(db);
 
     // Create app state
     let app_state = Arc::new(AppState::new(
@@ -319,7 +320,9 @@ async fn test_get_mail_detail_success() {
         }))
         .await;
 
-    let mail_id = send_response.json::<Value>()["data"]["id"].as_i64().unwrap();
+    let mail_id = send_response.json::<Value>()["data"]["id"]
+        .as_i64()
+        .unwrap();
 
     // Get mail detail as recipient
     let response = server
@@ -373,7 +376,9 @@ async fn test_get_mail_detail_forbidden_for_other_user() {
         }))
         .await;
 
-    let mail_id = send_response.json::<Value>()["data"]["id"].as_i64().unwrap();
+    let mail_id = send_response.json::<Value>()["data"]["id"]
+        .as_i64()
+        .unwrap();
 
     // Try to access mail as other user
     let response = server
@@ -411,7 +416,9 @@ async fn test_delete_mail_success() {
         }))
         .await;
 
-    let mail_id = send_response.json::<Value>()["data"]["id"].as_i64().unwrap();
+    let mail_id = send_response.json::<Value>()["data"]["id"]
+        .as_i64()
+        .unwrap();
 
     // Delete mail as recipient
     let response = server
@@ -454,7 +461,9 @@ async fn test_delete_mail_forbidden_for_other_user() {
         }))
         .await;
 
-    let mail_id = send_response.json::<Value>()["data"]["id"].as_i64().unwrap();
+    let mail_id = send_response.json::<Value>()["data"]["id"]
+        .as_i64()
+        .unwrap();
 
     // Try to delete mail as other user
     let response = server
@@ -543,7 +552,9 @@ async fn test_reading_mail_marks_as_read() {
         }))
         .await;
 
-    let mail_id = send_response.json::<Value>()["data"]["id"].as_i64().unwrap();
+    let mail_id = send_response.json::<Value>()["data"]["id"]
+        .as_i64()
+        .unwrap();
 
     // Check unread count before reading
     let response = server
