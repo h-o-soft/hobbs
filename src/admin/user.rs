@@ -123,7 +123,7 @@ impl<'a> UserAdminService<'a> {
                     encoding, language, auto_paging, created_at, last_login, is_active
              FROM users
              ORDER BY created_at DESC
-             LIMIT ? OFFSET ?",
+             LIMIT $1 OFFSET $2",
         )
         .bind(limit)
         .bind(offset)
@@ -159,7 +159,7 @@ impl<'a> UserAdminService<'a> {
 
         // Count posts
         let post_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE author_id = ?")
+            sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE author_id = $1")
                 .bind(user_id)
                 .fetch_one(pool)
                 .await
@@ -167,7 +167,7 @@ impl<'a> UserAdminService<'a> {
 
         // Count files
         let file_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM files WHERE uploader_id = ?")
+            sqlx::query_scalar("SELECT COUNT(*) FROM files WHERE uploader_id = $1")
                 .bind(user_id)
                 .fetch_one(pool)
                 .await
@@ -175,7 +175,7 @@ impl<'a> UserAdminService<'a> {
 
         // Count sent mail
         let mail_sent_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM mail WHERE sender_id = ?")
+            sqlx::query_scalar("SELECT COUNT(*) FROM mail WHERE sender_id = $1")
                 .bind(user_id)
                 .fetch_one(pool)
                 .await
@@ -183,7 +183,7 @@ impl<'a> UserAdminService<'a> {
 
         // Count received mail
         let mail_received_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM mail WHERE recipient_id = ?")
+            sqlx::query_scalar("SELECT COUNT(*) FROM mail WHERE recipient_id = $1")
                 .bind(user_id)
                 .fetch_one(pool)
                 .await
@@ -384,7 +384,7 @@ impl<'a> UserAdminService<'a> {
 
         // Get total count
         let total: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM users WHERE username LIKE ? OR nickname LIKE ?",
+            "SELECT COUNT(*) FROM users WHERE username LIKE $1 OR nickname LIKE $2",
         )
         .bind(&search_pattern)
         .bind(&search_pattern)
@@ -396,9 +396,9 @@ impl<'a> UserAdminService<'a> {
             "SELECT id, username, password, nickname, email, role, profile, terminal,
                     encoding, language, auto_paging, created_at, last_login, is_active
              FROM users
-             WHERE username LIKE ? OR nickname LIKE ?
+             WHERE username LIKE $1 OR nickname LIKE $2
              ORDER BY username
-             LIMIT ? OFFSET ?",
+             LIMIT $3 OFFSET $4",
         )
         .bind(&search_pattern)
         .bind(&search_pattern)

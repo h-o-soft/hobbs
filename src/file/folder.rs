@@ -184,7 +184,7 @@ impl<'a> FolderRepository<'a> {
     pub async fn create(&self, folder: &NewFolder) -> Result<Folder> {
         let id: i64 = sqlx::query_scalar(
             "INSERT INTO folders (name, description, parent_id, permission, upload_perm, order_num)
-             VALUES (?, ?, ?, ?, ?, ?)
+             VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING id",
         )
         .bind(&folder.name)
@@ -206,7 +206,7 @@ impl<'a> FolderRepository<'a> {
     pub async fn get_by_id(&self, id: i64) -> Result<Option<Folder>> {
         let folder = sqlx::query_as::<_, Folder>(
             "SELECT id, name, description, parent_id, permission, upload_perm, order_num, created_at
-             FROM folders WHERE id = ?",
+             FROM folders WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(self.pool)
@@ -233,7 +233,7 @@ impl<'a> FolderRepository<'a> {
     pub async fn list_by_parent(&self, parent_id: i64) -> Result<Vec<Folder>> {
         let folders = sqlx::query_as::<_, Folder>(
             "SELECT id, name, description, parent_id, permission, upload_perm, order_num, created_at
-             FROM folders WHERE parent_id = ? ORDER BY order_num, id",
+             FROM folders WHERE parent_id = $1 ORDER BY order_num, id",
         )
         .bind(parent_id)
         .fetch_all(self.pool)
@@ -254,7 +254,8 @@ impl<'a> FolderRepository<'a> {
 
         let placeholders: String = accessible_roles
             .iter()
-            .map(|_| "?")
+            .enumerate()
+            .map(|(i, _)| format!("${}", i + 1))
             .collect::<Vec<_>>()
             .join(",");
         let query = format!(
@@ -335,7 +336,7 @@ impl<'a> FolderRepository<'a> {
 
     /// Delete a folder by ID.
     pub async fn delete(&self, id: i64) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM folders WHERE id = ?")
+        let result = sqlx::query("DELETE FROM folders WHERE id = $1")
             .bind(id)
             .execute(self.pool)
             .await
@@ -385,7 +386,7 @@ impl<'a> FolderRepository<'a> {
 
     /// Count files in a folder.
     pub async fn count_files(&self, folder_id: i64) -> Result<i64> {
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM files WHERE folder_id = ?")
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM files WHERE folder_id = $1")
             .bind(folder_id)
             .fetch_one(self.pool)
             .await

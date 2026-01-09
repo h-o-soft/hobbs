@@ -18,6 +18,18 @@ pub use user::{NewUser, Role, User, UserUpdate};
 
 use tracing::{debug, info};
 
+// SQL boolean literals for cross-database compatibility
+// SQLite uses INTEGER (0/1) for boolean, PostgreSQL uses BOOLEAN (TRUE/FALSE)
+#[cfg(feature = "sqlite")]
+pub const SQL_TRUE: &str = "1";
+#[cfg(feature = "sqlite")]
+pub const SQL_FALSE: &str = "0";
+
+#[cfg(feature = "postgres")]
+pub const SQL_TRUE: &str = "TRUE";
+#[cfg(feature = "postgres")]
+pub const SQL_FALSE: &str = "FALSE";
+
 use crate::Result;
 
 // Type aliases for database pool based on feature

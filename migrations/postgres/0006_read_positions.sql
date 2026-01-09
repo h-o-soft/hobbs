@@ -4,7 +4,7 @@ CREATE TABLE read_positions (
     user_id             BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     board_id            BIGINT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     last_read_post_id   BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-    last_read_at        TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_read_at        TEXT NOT NULL DEFAULT TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
     UNIQUE(user_id, board_id)
 );
 

@@ -2,9 +2,10 @@
 //!
 //! Provides logging for script executions.
 
-use crate::db::DbPool;
+use crate::db::{DbPool, SQL_TRUE};
 use crate::error::Result;
 use crate::HobbsError;
+use chrono::{Duration, Utc};
 
 /// A single script execution log entry.
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -70,9 +71,9 @@ impl<'a> ScriptLogRepository<'a> {
             r#"
             SELECT id, script_id, user_id, executed_at, execution_ms, success, error_message
             FROM script_logs
-            WHERE script_id = ?
+            WHERE script_id = $1
             ORDER BY id DESC
-            LIMIT ?
+            LIMIT $2
             "#,
         )
         .bind(script_id)
@@ -90,9 +91,9 @@ impl<'a> ScriptLogRepository<'a> {
             r#"
             SELECT id, script_id, user_id, executed_at, execution_ms, success, error_message
             FROM script_logs
-            WHERE user_id = ?
+            WHERE user_id = $1
             ORDER BY id DESC
-            LIMIT ?
+            LIMIT $2
             "#,
         )
         .bind(user_id)
@@ -106,7 +107,7 @@ impl<'a> ScriptLogRepository<'a> {
 
     /// Get execution count for a script.
     pub async fn get_execution_count(&self, script_id: i64) -> Result<i64> {
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM script_logs WHERE script_id = ?")
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM script_logs WHERE script_id = $1")
             .bind(script_id)
             .fetch_one(self.pool)
             .await
@@ -117,7 +118,7 @@ impl<'a> ScriptLogRepository<'a> {
 
     /// Get success rate for a script (as percentage 0-100).
     pub async fn get_success_rate(&self, script_id: i64) -> Result<Option<f64>> {
-        let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM script_logs WHERE script_id = ?")
+        let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM script_logs WHERE script_id = $1")
             .bind(script_id)
             .fetch_one(self.pool)
             .await
@@ -127,9 +128,11 @@ impl<'a> ScriptLogRepository<'a> {
             return Ok(None);
         }
 
-        let success: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM script_logs WHERE script_id = ? AND success = 1")
-                .bind(script_id)
+        let success: (i64,) = sqlx::query_as(&format!(
+            "SELECT COUNT(*) FROM script_logs WHERE script_id = $1 AND success = {}",
+            SQL_TRUE
+        ))
+        .bind(script_id)
                 .fetch_one(self.pool)
                 .await
                 .map_err(|e| HobbsError::Database(e.to_string()))?;
@@ -140,7 +143,7 @@ impl<'a> ScriptLogRepository<'a> {
     /// Get average execution time for a script (in milliseconds).
     pub async fn get_avg_execution_time(&self, script_id: i64) -> Result<Option<f64>> {
         let avg: (Option<f64>,) =
-            sqlx::query_as("SELECT AVG(execution_ms) FROM script_logs WHERE script_id = ?")
+            sqlx::query_as("SELECT AVG(execution_ms) FROM script_logs WHERE script_id = $1")
                 .bind(script_id)
                 .fetch_one(self.pool)
                 .await
@@ -151,8 +154,11 @@ impl<'a> ScriptLogRepository<'a> {
 
     /// Delete old logs (older than specified days).
     pub async fn delete_old_logs(&self, days: i32) -> Result<usize> {
-        let result = sqlx::query("DELETE FROM script_logs WHERE executed_at < datetime('now', ?)")
-            .bind(format!("-{} days", days))
+        let cutoff = Utc::now() - Duration::days(i64::from(days));
+        let cutoff_str = cutoff.format("%Y-%m-%d %H:%M:%S").to_string();
+
+        let result = sqlx::query("DELETE FROM script_logs WHERE executed_at < $1")
+            .bind(&cutoff_str)
             .execute(self.pool)
             .await
             .map_err(|e| HobbsError::Database(e.to_string()))?;
@@ -162,7 +168,7 @@ impl<'a> ScriptLogRepository<'a> {
 
     /// Delete all logs for a script.
     pub async fn delete_by_script(&self, script_id: i64) -> Result<usize> {
-        let result = sqlx::query("DELETE FROM script_logs WHERE script_id = ?")
+        let result = sqlx::query("DELETE FROM script_logs WHERE script_id = $1")
             .bind(script_id)
             .execute(self.pool)
             .await
@@ -172,7 +178,7 @@ impl<'a> ScriptLogRepository<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
     use crate::Database;

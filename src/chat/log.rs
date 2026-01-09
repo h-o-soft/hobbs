@@ -192,7 +192,7 @@ impl<'a> ChatLogRepository<'a> {
         let id: i64 = sqlx::query_scalar(
             r#"
             INSERT INTO chat_logs (room_id, user_id, sender_name, message_type, content)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING id
             "#,
         )
@@ -214,7 +214,7 @@ impl<'a> ChatLogRepository<'a> {
             r#"
             SELECT id, room_id, user_id, sender_name, message_type, content, created_at
             FROM chat_logs
-            WHERE id = ?
+            WHERE id = $1
             "#,
         )
         .bind(id)
@@ -233,9 +233,9 @@ impl<'a> ChatLogRepository<'a> {
             r#"
             SELECT id, room_id, user_id, sender_name, message_type, content, created_at
             FROM chat_logs
-            WHERE room_id = ?
+            WHERE room_id = $1
             ORDER BY created_at DESC, id DESC
-            LIMIT ?
+            LIMIT $2
             "#,
         )
         .bind(room_id)
@@ -257,7 +257,7 @@ impl<'a> ChatLogRepository<'a> {
             r#"
             SELECT id, room_id, user_id, sender_name, message_type, content, created_at
             FROM chat_logs
-            WHERE room_id = ? AND created_at > ?
+            WHERE room_id = $1 AND created_at > $2
             ORDER BY created_at ASC, id ASC
             "#,
         )
@@ -272,7 +272,7 @@ impl<'a> ChatLogRepository<'a> {
 
     /// Count logs for a room.
     pub async fn count(&self, room_id: &str) -> Result<i64> {
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM chat_logs WHERE room_id = ?")
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM chat_logs WHERE room_id = $1")
             .bind(room_id)
             .fetch_one(self.pool)
             .await
@@ -283,7 +283,7 @@ impl<'a> ChatLogRepository<'a> {
 
     /// Delete logs older than a specific timestamp.
     pub async fn delete_before(&self, before: DateTime<Utc>) -> Result<usize> {
-        let result = sqlx::query("DELETE FROM chat_logs WHERE created_at < ?")
+        let result = sqlx::query("DELETE FROM chat_logs WHERE created_at < $1")
             .bind(before.to_rfc3339())
             .execute(self.pool)
             .await
@@ -294,7 +294,7 @@ impl<'a> ChatLogRepository<'a> {
 
     /// Delete all logs for a room.
     pub async fn delete_room(&self, room_id: &str) -> Result<usize> {
-        let result = sqlx::query("DELETE FROM chat_logs WHERE room_id = ?")
+        let result = sqlx::query("DELETE FROM chat_logs WHERE room_id = $1")
             .bind(room_id)
             .execute(self.pool)
             .await

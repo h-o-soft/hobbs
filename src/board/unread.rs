@@ -3,9 +3,14 @@
 //! This module provides functionality to track and manage unread posts
 //! for each user per board.
 
-use crate::db::{DbPool, Role};
+use crate::db::{DbPool, Role, SQL_TRUE};
 use crate::HobbsError;
 use crate::Result;
+
+#[cfg(feature = "sqlite")]
+const SQL_NOW: &str = "datetime('now')";
+#[cfg(feature = "postgres")]
+const SQL_NOW: &str = "TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')";
 
 use super::Post;
 
@@ -52,7 +57,7 @@ impl<'a> UnreadRepository<'a> {
     ) -> Result<Option<ReadPosition>> {
         let result = sqlx::query_as::<_, ReadPosition>(
             "SELECT id, user_id, board_id, last_read_post_id, last_read_at
-             FROM read_positions WHERE user_id = ? AND board_id = ?",
+             FROM read_positions WHERE user_id = $1 AND board_id = $2",
         )
         .bind(user_id)
         .bind(board_id)
@@ -69,20 +74,22 @@ impl<'a> UnreadRepository<'a> {
     /// If no read position exists, one is created.
     /// Only updates if the new post_id is greater than the current last_read_post_id.
     pub async fn mark_as_read(&self, user_id: i64, board_id: i64, post_id: i64) -> Result<()> {
-        sqlx::query(
+        let query = format!(
             "INSERT INTO read_positions (user_id, board_id, last_read_post_id, last_read_at)
-             VALUES (?, ?, ?, datetime('now'))
+             VALUES ($1, $2, $3, {})
              ON CONFLICT(user_id, board_id) DO UPDATE SET
                  last_read_post_id = excluded.last_read_post_id,
-                 last_read_at = datetime('now')
+                 last_read_at = {}
              WHERE excluded.last_read_post_id > last_read_post_id",
-        )
-        .bind(user_id)
-        .bind(board_id)
-        .bind(post_id)
-        .execute(self.pool)
-        .await
-        .map_err(|e| HobbsError::Database(e.to_string()))?;
+            SQL_NOW, SQL_NOW
+        );
+        sqlx::query(&query)
+            .bind(user_id)
+            .bind(board_id)
+            .bind(post_id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(())
     }
@@ -96,14 +103,14 @@ impl<'a> UnreadRepository<'a> {
 
         let count: i64 = match read_position {
             Some(pos) => {
-                sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE board_id = ? AND id > ?")
+                sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE board_id = $1 AND id > $2")
                     .bind(board_id)
                     .bind(pos.last_read_post_id)
                     .fetch_one(self.pool)
                     .await
                     .map_err(|e| HobbsError::Database(e.to_string()))?
             }
-            None => sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE board_id = ?")
+            None => sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE board_id = $1")
                 .bind(board_id)
                 .fetch_one(self.pool)
                 .await
@@ -117,18 +124,20 @@ impl<'a> UnreadRepository<'a> {
     ///
     /// Returns a list of (board_id, unread_count) tuples.
     pub async fn get_all_unread_counts(&self, user_id: i64) -> Result<Vec<(i64, i64)>> {
-        let counts: Vec<(i64, i64)> = sqlx::query_as(
+        let query = format!(
             "SELECT b.id,
                     (SELECT COUNT(*) FROM posts p WHERE p.board_id = b.id
                      AND p.id > COALESCE(
                          (SELECT last_read_post_id FROM read_positions
-                          WHERE user_id = ? AND board_id = b.id),
+                          WHERE user_id = $1 AND board_id = b.id),
                          0
                      )) as unread_count
              FROM boards b
-             WHERE b.is_active = 1
+             WHERE b.is_active = {}
              ORDER BY b.sort_order, b.id",
-        )
+            SQL_TRUE
+        );
+        let counts: Vec<(i64, i64)> = sqlx::query_as(&query)
         .bind(user_id)
         .fetch_all(self.pool)
         .await
@@ -147,7 +156,7 @@ impl<'a> UnreadRepository<'a> {
         let posts = match read_position {
             Some(pos) => sqlx::query_as::<_, PostRow>(
                 "SELECT id, board_id, thread_id, author_id, title, body, created_at
-                     FROM posts WHERE board_id = ? AND id > ?
+                     FROM posts WHERE board_id = $1 AND id > $2
                      ORDER BY id ASC",
             )
             .bind(board_id)
@@ -157,7 +166,7 @@ impl<'a> UnreadRepository<'a> {
             .map_err(|e| HobbsError::Database(e.to_string()))?,
             None => sqlx::query_as::<_, PostRow>(
                 "SELECT id, board_id, thread_id, author_id, title, body, created_at
-                     FROM posts WHERE board_id = ?
+                     FROM posts WHERE board_id = $1
                      ORDER BY id ASC",
             )
             .bind(board_id)
@@ -182,8 +191,8 @@ impl<'a> UnreadRepository<'a> {
         let posts = match read_position {
             Some(pos) => sqlx::query_as::<_, PostRow>(
                 "SELECT id, board_id, thread_id, author_id, title, body, created_at
-                     FROM posts WHERE board_id = ? AND id > ?
-                     ORDER BY id ASC LIMIT ? OFFSET ?",
+                     FROM posts WHERE board_id = $1 AND id > $2
+                     ORDER BY id ASC LIMIT $3 OFFSET $4",
             )
             .bind(board_id)
             .bind(pos.last_read_post_id)
@@ -194,8 +203,8 @@ impl<'a> UnreadRepository<'a> {
             .map_err(|e| HobbsError::Database(e.to_string()))?,
             None => sqlx::query_as::<_, PostRow>(
                 "SELECT id, board_id, thread_id, author_id, title, body, created_at
-                     FROM posts WHERE board_id = ?
-                     ORDER BY id ASC LIMIT ? OFFSET ?",
+                     FROM posts WHERE board_id = $1
+                     ORDER BY id ASC LIMIT $2 OFFSET $3",
             )
             .bind(board_id)
             .bind(limit)
@@ -214,7 +223,7 @@ impl<'a> UnreadRepository<'a> {
     pub async fn mark_all_as_read(&self, user_id: i64, board_id: i64) -> Result<bool> {
         // Get the latest post ID in the board
         let latest_post_id: Option<i64> =
-            sqlx::query_scalar("SELECT MAX(id) FROM posts WHERE board_id = ?")
+            sqlx::query_scalar("SELECT MAX(id) FROM posts WHERE board_id = $1")
                 .bind(board_id)
                 .fetch_one(self.pool)
                 .await
@@ -233,7 +242,7 @@ impl<'a> UnreadRepository<'a> {
     ///
     /// This effectively marks all posts as unread.
     pub async fn delete_read_position(&self, user_id: i64, board_id: i64) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM read_positions WHERE user_id = ? AND board_id = ?")
+        let result = sqlx::query("DELETE FROM read_positions WHERE user_id = $1 AND board_id = $2")
             .bind(user_id)
             .bind(board_id)
             .execute(self.pool)
@@ -245,7 +254,7 @@ impl<'a> UnreadRepository<'a> {
 
     /// Delete all read positions for a user.
     pub async fn delete_all_read_positions(&self, user_id: i64) -> Result<i64> {
-        let result = sqlx::query("DELETE FROM read_positions WHERE user_id = ?")
+        let result = sqlx::query("DELETE FROM read_positions WHERE user_id = $1")
             .bind(user_id)
             .execute(self.pool)
             .await
@@ -272,11 +281,14 @@ impl<'a> UnreadRepository<'a> {
         let last_read_id = read_position.map(|p| p.last_read_post_id).unwrap_or(0);
 
         // Build query with placeholders for thread IDs
-        let placeholders: Vec<String> = thread_ids.iter().map(|_| "?".to_string()).collect();
+        let placeholders: Vec<String> = (1..=thread_ids.len())
+            .map(|i| format!("${}", i))
+            .collect();
         let query = format!(
             "SELECT DISTINCT thread_id FROM posts
-             WHERE thread_id IN ({}) AND id > ?",
-            placeholders.join(",")
+             WHERE thread_id IN ({}) AND id > ${}",
+            placeholders.join(","),
+            thread_ids.len() + 1
         );
 
         let mut query_builder = sqlx::query_scalar::<_, i64>(&query);
@@ -312,17 +324,19 @@ impl<'a> UnreadRepository<'a> {
         user_role: Role,
     ) -> Result<Vec<UnreadPostWithBoard>> {
         // Get all active boards with their read positions
-        let boards: Vec<(i64, String, String, i64)> = sqlx::query_as(
+        let query = format!(
             "SELECT b.id, b.name, b.min_read_role,
                     COALESCE(
                         (SELECT last_read_post_id FROM read_positions
-                         WHERE user_id = ? AND board_id = b.id),
+                         WHERE user_id = $1 AND board_id = b.id),
                         0
                     ) as last_read
              FROM boards b
-             WHERE b.is_active = 1
+             WHERE b.is_active = {}
              ORDER BY b.sort_order, b.id",
-        )
+            SQL_TRUE
+        );
+        let boards: Vec<(i64, String, String, i64)> = sqlx::query_as(&query)
         .bind(user_id)
         .fetch_all(self.pool)
         .await
@@ -340,7 +354,7 @@ impl<'a> UnreadRepository<'a> {
 
             let posts: Vec<PostRow> = sqlx::query_as(
                 "SELECT id, board_id, thread_id, author_id, title, body, created_at
-                 FROM posts WHERE board_id = ? AND id > ?
+                 FROM posts WHERE board_id = $1 AND id > $2
                  ORDER BY id ASC",
             )
             .bind(board_id)
@@ -363,16 +377,18 @@ impl<'a> UnreadRepository<'a> {
     /// Get total unread count across all boards for a user.
     pub async fn get_total_unread_count(&self, user_id: i64, user_role: Role) -> Result<i64> {
         // Get all active boards with their read positions
-        let boards: Vec<(i64, String, i64)> = sqlx::query_as(
+        let query = format!(
             "SELECT b.id, b.min_read_role,
                     COALESCE(
                         (SELECT last_read_post_id FROM read_positions
-                         WHERE user_id = ? AND board_id = b.id),
+                         WHERE user_id = $1 AND board_id = b.id),
                         0
                     ) as last_read
              FROM boards b
-             WHERE b.is_active = 1",
-        )
+             WHERE b.is_active = {}",
+            SQL_TRUE
+        );
+        let boards: Vec<(i64, String, i64)> = sqlx::query_as(&query)
         .bind(user_id)
         .fetch_all(self.pool)
         .await
@@ -388,7 +404,7 @@ impl<'a> UnreadRepository<'a> {
             }
 
             let count: i64 =
-                sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE board_id = ? AND id > ?")
+                sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE board_id = $1 AND id > $2")
                     .bind(board_id)
                     .bind(last_read_post_id)
                     .fetch_one(self.pool)
@@ -428,7 +444,7 @@ impl From<PostRow> for Post {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
     use crate::Database;

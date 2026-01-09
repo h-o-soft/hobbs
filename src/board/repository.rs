@@ -5,7 +5,7 @@
 use sqlx::QueryBuilder;
 
 use super::types::{Board, BoardType, BoardUpdate, NewBoard};
-use crate::db::{DbPool, Role};
+use crate::db::{DbPool, Role, SQL_TRUE};
 use crate::{HobbsError, Result};
 
 /// Repository for board CRUD operations.
@@ -72,7 +72,7 @@ impl<'a> BoardRepository<'a> {
         let result: Option<BoardRow> = sqlx::query_as(
             "SELECT id, name, description, board_type, min_read_role, min_write_role,
                     sort_order, is_active, created_at
-             FROM boards WHERE id = ?",
+             FROM boards WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(self.pool)
@@ -87,7 +87,7 @@ impl<'a> BoardRepository<'a> {
         let result: Option<BoardRow> = sqlx::query_as(
             "SELECT id, name, description, board_type, min_read_role, min_write_role,
                     sort_order, is_active, created_at
-             FROM boards WHERE name = ?",
+             FROM boards WHERE name = $1",
         )
         .bind(name)
         .fetch_optional(self.pool)
@@ -217,7 +217,7 @@ impl<'a> BoardRepository<'a> {
     ///
     /// Returns true if a board was deleted, false if not found.
     pub async fn delete(&self, id: i64) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM boards WHERE id = ?")
+        let result = sqlx::query("DELETE FROM boards WHERE id = $1")
             .bind(id)
             .execute(self.pool)
             .await
@@ -227,14 +227,16 @@ impl<'a> BoardRepository<'a> {
 
     /// List all active boards, ordered by sort_order then created_at.
     pub async fn list_active(&self) -> Result<Vec<Board>> {
-        let rows: Vec<BoardRow> = sqlx::query_as(
+        let query = format!(
             "SELECT id, name, description, board_type, min_read_role, min_write_role,
                     sort_order, is_active, created_at
-             FROM boards WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC, id ASC",
-        )
-        .fetch_all(self.pool)
-        .await
-        .map_err(|e| HobbsError::Database(e.to_string()))?;
+             FROM boards WHERE is_active = {} ORDER BY sort_order ASC, created_at ASC, id ASC",
+            SQL_TRUE
+        );
+        let rows: Vec<BoardRow> = sqlx::query_as(&query)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(rows.into_iter().map(|row| row.into_board()).collect())
     }
@@ -288,7 +290,8 @@ impl<'a> BoardRepository<'a> {
 
     /// Count active boards.
     pub async fn count_active(&self) -> Result<i64> {
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM boards WHERE is_active = 1")
+        let query = format!("SELECT COUNT(*) FROM boards WHERE is_active = {}", SQL_TRUE);
+        let count: (i64,) = sqlx::query_as(&query)
             .fetch_one(self.pool)
             .await
             .map_err(|e| HobbsError::Database(e.to_string()))?;
@@ -297,7 +300,7 @@ impl<'a> BoardRepository<'a> {
 
     /// Check if a board name is already taken.
     pub async fn name_exists(&self, name: &str) -> Result<bool> {
-        let exists: (bool,) = sqlx::query_as("SELECT EXISTS(SELECT 1 FROM boards WHERE name = ?)")
+        let exists: (bool,) = sqlx::query_as("SELECT EXISTS(SELECT 1 FROM boards WHERE name = $1)")
             .bind(name)
             .fetch_one(self.pool)
             .await

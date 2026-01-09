@@ -8,7 +8,7 @@ CREATE TABLE mails (
     is_read                 BOOLEAN NOT NULL DEFAULT FALSE,
     is_deleted_by_sender    BOOLEAN NOT NULL DEFAULT FALSE,
     is_deleted_by_recipient BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at              TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at              TEXT NOT NULL DEFAULT TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')
 );
 
 CREATE INDEX idx_mails_sender_id ON mails(sender_id);

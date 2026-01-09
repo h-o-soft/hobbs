@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use sqlx::{QueryBuilder, Row};
 
 use super::types::{Mail, MailUpdate, NewMail};
-use crate::db::DbPool;
+use crate::db::{DbPool, SQL_FALSE, SQL_TRUE};
 use crate::{HobbsError, Result};
 
 /// Repository for mail operations.
@@ -23,7 +23,7 @@ impl<'a> MailRepository<'a> {
         let id: i64 = sqlx::query_scalar(
             r#"
             INSERT INTO mails (sender_id, recipient_id, subject, body)
-            VALUES (?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4)
             RETURNING id
             "#,
         )
@@ -47,7 +47,7 @@ impl<'a> MailRepository<'a> {
             SELECT id, sender_id, recipient_id, subject, body,
                    is_read, is_deleted_by_sender, is_deleted_by_recipient, created_at
             FROM mails
-            WHERE id = ?
+            WHERE id = $1
             "#,
         )
         .bind(id)
@@ -63,55 +63,62 @@ impl<'a> MailRepository<'a> {
 
     /// List inbox mails for a user (received mails, not deleted by recipient).
     pub async fn list_inbox(&self, user_id: i64) -> Result<Vec<Mail>> {
-        let rows = sqlx::query(
+        let query = format!(
             r#"
             SELECT id, sender_id, recipient_id, subject, body,
                    is_read, is_deleted_by_sender, is_deleted_by_recipient, created_at
             FROM mails
-            WHERE recipient_id = ? AND is_deleted_by_recipient = 0
+            WHERE recipient_id = $1 AND is_deleted_by_recipient = {}
             ORDER BY created_at DESC, id DESC
             "#,
-        )
-        .bind(user_id)
-        .fetch_all(self.pool)
-        .await
-        .map_err(|e| HobbsError::Database(e.to_string()))?;
+            SQL_FALSE
+        );
+        let rows = sqlx::query(&query)
+            .bind(user_id)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         rows.iter().map(Self::row_to_mail).collect()
     }
 
     /// List sent mails for a user (not deleted by sender).
     pub async fn list_sent(&self, user_id: i64) -> Result<Vec<Mail>> {
-        let rows = sqlx::query(
+        let query = format!(
             r#"
             SELECT id, sender_id, recipient_id, subject, body,
                    is_read, is_deleted_by_sender, is_deleted_by_recipient, created_at
             FROM mails
-            WHERE sender_id = ? AND is_deleted_by_sender = 0
+            WHERE sender_id = $1 AND is_deleted_by_sender = {}
             ORDER BY created_at DESC, id DESC
             "#,
-        )
-        .bind(user_id)
-        .fetch_all(self.pool)
-        .await
-        .map_err(|e| HobbsError::Database(e.to_string()))?;
+            SQL_FALSE
+        );
+        let rows = sqlx::query(&query)
+            .bind(user_id)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         rows.iter().map(Self::row_to_mail).collect()
     }
 
     /// Count unread mails for a user.
     pub async fn count_unread(&self, user_id: i64) -> Result<i64> {
-        let count: (i64,) = sqlx::query_as(
+        let query = format!(
             r#"
             SELECT COUNT(*)
             FROM mails
-            WHERE recipient_id = ? AND is_read = 0 AND is_deleted_by_recipient = 0
+            WHERE recipient_id = $1 AND is_read = {} AND is_deleted_by_recipient = {}
             "#,
-        )
-        .bind(user_id)
-        .fetch_one(self.pool)
-        .await
-        .map_err(|e| HobbsError::Database(e.to_string()))?;
+            SQL_FALSE,
+            SQL_FALSE
+        );
+        let count: (i64,) = sqlx::query_as(&query)
+            .bind(user_id)
+            .fetch_one(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(count.0)
     }
@@ -130,17 +137,26 @@ impl<'a> MailRepository<'a> {
 
         if let Some(is_read) = update.is_read {
             separated.push("is_read = ");
+            #[cfg(feature = "sqlite")]
             separated.push_bind_unseparated(is_read as i32);
+            #[cfg(feature = "postgres")]
+            separated.push_bind_unseparated(is_read);
         }
 
         if let Some(deleted) = update.is_deleted_by_sender {
             separated.push("is_deleted_by_sender = ");
+            #[cfg(feature = "sqlite")]
             separated.push_bind_unseparated(deleted as i32);
+            #[cfg(feature = "postgres")]
+            separated.push_bind_unseparated(deleted);
         }
 
         if let Some(deleted) = update.is_deleted_by_recipient {
             separated.push("is_deleted_by_recipient = ");
+            #[cfg(feature = "sqlite")]
             separated.push_bind_unseparated(deleted as i32);
+            #[cfg(feature = "postgres")]
+            separated.push_bind_unseparated(deleted);
         }
 
         query.push(" WHERE id = ");
@@ -184,7 +200,7 @@ impl<'a> MailRepository<'a> {
     /// Physically delete a mail.
     /// Should only be used for mails that have been deleted by both sender and recipient.
     pub async fn purge(&self, id: i64) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM mails WHERE id = ?")
+        let result = sqlx::query("DELETE FROM mails WHERE id = $1")
             .bind(id)
             .execute(self.pool)
             .await
@@ -195,12 +211,14 @@ impl<'a> MailRepository<'a> {
 
     /// Purge all mails that have been deleted by both sender and recipient.
     pub async fn purge_all_deleted(&self) -> Result<u64> {
-        let result = sqlx::query(
-            "DELETE FROM mails WHERE is_deleted_by_sender = 1 AND is_deleted_by_recipient = 1",
-        )
-        .execute(self.pool)
-        .await
-        .map_err(|e| HobbsError::Database(e.to_string()))?;
+        let query = format!(
+            "DELETE FROM mails WHERE is_deleted_by_sender = {} AND is_deleted_by_recipient = {}",
+            SQL_TRUE, SQL_TRUE
+        );
+        let result = sqlx::query(&query)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(result.rows_affected())
     }

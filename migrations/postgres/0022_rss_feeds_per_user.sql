@@ -13,15 +13,15 @@ CREATE TABLE rss_feeds_new (
     title           TEXT NOT NULL,
     description     TEXT,
     site_url        TEXT,
-    last_fetched_at TIMESTAMP,
-    last_item_at    TIMESTAMP,
-    fetch_interval  INTEGER NOT NULL DEFAULT 3600,
+    last_fetched_at TEXT,
+    last_item_at    TEXT,
+    fetch_interval  BIGINT NOT NULL DEFAULT 3600,
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
     error_count     INTEGER NOT NULL DEFAULT 0,
     last_error      TEXT,
     created_by      BIGINT NOT NULL REFERENCES users(id),
-    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at      TEXT NOT NULL DEFAULT TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
+    updated_at      TEXT NOT NULL DEFAULT TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
     UNIQUE(created_by, url)
 );
 

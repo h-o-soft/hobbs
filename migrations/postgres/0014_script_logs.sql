@@ -3,8 +3,8 @@ CREATE TABLE script_logs (
     id              BIGSERIAL PRIMARY KEY,
     script_id       BIGINT NOT NULL REFERENCES scripts(id) ON DELETE CASCADE,
     user_id         BIGINT REFERENCES users(id) ON DELETE SET NULL,
-    executed_at     TIMESTAMP NOT NULL DEFAULT NOW(),
-    execution_ms    INTEGER NOT NULL,       -- Execution time in milliseconds
+    executed_at     TEXT NOT NULL DEFAULT TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
+    execution_ms    BIGINT NOT NULL,       -- Execution time in milliseconds
     success         BOOLEAN NOT NULL,       -- TRUE = success, FALSE = error
     error_message   TEXT                    -- Error message if success = FALSE
 );

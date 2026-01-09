@@ -8,8 +8,8 @@ CREATE TABLE users (
     role        TEXT NOT NULL DEFAULT 'member',  -- 'sysop', 'subop', 'member'
     profile     TEXT,                    -- Self-introduction
     terminal    TEXT NOT NULL DEFAULT 'standard',  -- 'standard', 'c64', 'c64_ansi'
-    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
-    last_login  TIMESTAMP,
+    created_at  TEXT NOT NULL DEFAULT TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
+    last_login  TEXT,
     is_active   BOOLEAN NOT NULL DEFAULT TRUE
 );
 

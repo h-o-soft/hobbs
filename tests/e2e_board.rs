@@ -1,3 +1,4 @@
+#![cfg(feature = "sqlite")]
 //! E2E Board tests for HOBBS.
 //!
 //! Tests board listing, thread creation, and posting.

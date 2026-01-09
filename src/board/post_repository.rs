@@ -103,7 +103,7 @@ impl<'a> PostRepository<'a> {
     pub async fn get_by_id(&self, id: i64) -> Result<Option<Post>> {
         let post = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE id = ?",
+             FROM posts WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(self.pool)
@@ -124,15 +124,18 @@ impl<'a> PostRepository<'a> {
 
         // Build dynamic query based on what fields are set
         let mut set_clauses = Vec::new();
+        let mut param_num = 1;
 
         if update.title.is_some() {
-            set_clauses.push("title = ?");
+            set_clauses.push(format!("title = ${}", param_num));
+            param_num += 1;
         }
         if update.body.is_some() {
-            set_clauses.push("body = ?");
+            set_clauses.push(format!("body = ${}", param_num));
+            param_num += 1;
         }
 
-        let sql = format!("UPDATE posts SET {} WHERE id = ?", set_clauses.join(", "));
+        let sql = format!("UPDATE posts SET {} WHERE id = ${}", set_clauses.join(", "), param_num);
 
         // Build the query dynamically
         let mut query = sqlx::query(&sql);
@@ -162,7 +165,7 @@ impl<'a> PostRepository<'a> {
     ///
     /// Returns true if a post was deleted, false if not found.
     pub async fn delete(&self, id: i64) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM posts WHERE id = ?")
+        let result = sqlx::query("DELETE FROM posts WHERE id = $1")
             .bind(id)
             .execute(self.pool)
             .await
@@ -175,7 +178,7 @@ impl<'a> PostRepository<'a> {
     pub async fn list_by_thread(&self, thread_id: i64) -> Result<Vec<Post>> {
         let posts = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE thread_id = ? ORDER BY created_at ASC",
+             FROM posts WHERE thread_id = $1 ORDER BY created_at ASC",
         )
         .bind(thread_id)
         .fetch_all(self.pool)
@@ -194,7 +197,7 @@ impl<'a> PostRepository<'a> {
     ) -> Result<Vec<Post>> {
         let posts = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE thread_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
+             FROM posts WHERE thread_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3",
         )
         .bind(thread_id)
         .bind(limit)
@@ -210,7 +213,7 @@ impl<'a> PostRepository<'a> {
     pub async fn list_by_flat_board(&self, board_id: i64) -> Result<Vec<Post>> {
         let posts = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE board_id = ? AND thread_id IS NULL ORDER BY created_at DESC, id DESC",
+             FROM posts WHERE board_id = $1 AND thread_id IS NULL ORDER BY created_at DESC, id DESC",
         )
         .bind(board_id)
         .fetch_all(self.pool)
@@ -229,8 +232,8 @@ impl<'a> PostRepository<'a> {
     ) -> Result<Vec<Post>> {
         let posts = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE board_id = ? AND thread_id IS NULL
-             ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
+             FROM posts WHERE board_id = $1 AND thread_id IS NULL
+             ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3",
         )
         .bind(board_id)
         .bind(limit)
@@ -246,7 +249,7 @@ impl<'a> PostRepository<'a> {
     pub async fn list_by_author(&self, author_id: i64) -> Result<Vec<Post>> {
         let posts = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE author_id = ? ORDER BY created_at DESC",
+             FROM posts WHERE author_id = $1 ORDER BY created_at DESC",
         )
         .bind(author_id)
         .fetch_all(self.pool)
@@ -258,7 +261,7 @@ impl<'a> PostRepository<'a> {
 
     /// Count posts in a thread.
     pub async fn count_by_thread(&self, thread_id: i64) -> Result<i64> {
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE thread_id = ?")
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE thread_id = $1")
             .bind(thread_id)
             .fetch_one(self.pool)
             .await
@@ -270,7 +273,7 @@ impl<'a> PostRepository<'a> {
     /// Count posts in a flat board.
     pub async fn count_by_flat_board(&self, board_id: i64) -> Result<i64> {
         let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM posts WHERE board_id = ? AND thread_id IS NULL",
+            "SELECT COUNT(*) FROM posts WHERE board_id = $1 AND thread_id IS NULL",
         )
         .bind(board_id)
         .fetch_one(self.pool)
@@ -282,7 +285,7 @@ impl<'a> PostRepository<'a> {
 
     /// Count all posts in a board (both flat and thread posts).
     pub async fn count_by_board(&self, board_id: i64) -> Result<i64> {
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE board_id = ?")
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE board_id = $1")
             .bind(board_id)
             .fetch_one(self.pool)
             .await
@@ -295,7 +298,7 @@ impl<'a> PostRepository<'a> {
     pub async fn get_latest_in_thread(&self, thread_id: i64) -> Result<Option<Post>> {
         let post = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE thread_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+             FROM posts WHERE thread_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1",
         )
         .bind(thread_id)
         .fetch_optional(self.pool)
@@ -306,7 +309,7 @@ impl<'a> PostRepository<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
     use crate::board::{BoardRepository, BoardType, NewBoard, NewThread, ThreadRepository};

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use super::types::Script;
-use crate::db::DbPool;
+use crate::db::{DbPool, SQL_TRUE};
 use crate::{HobbsError, Result};
 
 /// Database row for Script.
@@ -78,14 +78,15 @@ impl<'a> ScriptRepository<'a> {
 
     /// List all enabled scripts that the given role can execute.
     pub async fn list(&self, user_role: i32) -> Result<Vec<Script>> {
-        let rows = sqlx::query_as::<_, ScriptRow>(
+        let rows = sqlx::query_as::<_, ScriptRow>(&format!(
             "SELECT id, file_path, name, slug, description, author, file_hash,
                     synced_at, min_role, enabled, max_instructions, max_memory_mb,
                     max_execution_seconds, name_i18n, description_i18n
              FROM scripts
-             WHERE enabled = 1 AND min_role <= ?
+             WHERE enabled = {} AND min_role <= $1
              ORDER BY name",
-        )
+            SQL_TRUE
+        ))
         .bind(user_role)
         .fetch_all(self.pool)
         .await
@@ -116,7 +117,7 @@ impl<'a> ScriptRepository<'a> {
             "SELECT id, file_path, name, slug, description, author, file_hash,
                     synced_at, min_role, enabled, max_instructions, max_memory_mb,
                     max_execution_seconds, name_i18n, description_i18n
-             FROM scripts WHERE id = ?",
+             FROM scripts WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(self.pool)
@@ -132,7 +133,7 @@ impl<'a> ScriptRepository<'a> {
             "SELECT id, file_path, name, slug, description, author, file_hash,
                     synced_at, min_role, enabled, max_instructions, max_memory_mb,
                     max_execution_seconds, name_i18n, description_i18n
-             FROM scripts WHERE slug = ?",
+             FROM scripts WHERE slug = $1",
         )
         .bind(slug)
         .fetch_optional(self.pool)
@@ -148,7 +149,7 @@ impl<'a> ScriptRepository<'a> {
             "SELECT id, file_path, name, slug, description, author, file_hash,
                     synced_at, min_role, enabled, max_instructions, max_memory_mb,
                     max_execution_seconds, name_i18n, description_i18n
-             FROM scripts WHERE file_path = ?",
+             FROM scripts WHERE file_path = $1",
         )
         .bind(file_path)
         .fetch_optional(self.pool)
@@ -181,20 +182,20 @@ impl<'a> ScriptRepository<'a> {
             "INSERT INTO scripts (file_path, name, slug, description, author, file_hash,
                                   synced_at, min_role, enabled, max_instructions,
                                   max_memory_mb, max_execution_seconds, name_i18n, description_i18n)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
              ON CONFLICT(file_path) DO UPDATE SET
-                name = ?2,
-                slug = ?3,
-                description = ?4,
-                author = ?5,
-                file_hash = ?6,
-                synced_at = ?7,
-                min_role = ?8,
-                max_instructions = ?10,
-                max_memory_mb = ?11,
-                max_execution_seconds = ?12,
-                name_i18n = ?13,
-                description_i18n = ?14",
+                name = EXCLUDED.name,
+                slug = EXCLUDED.slug,
+                description = EXCLUDED.description,
+                author = EXCLUDED.author,
+                file_hash = EXCLUDED.file_hash,
+                synced_at = EXCLUDED.synced_at,
+                min_role = EXCLUDED.min_role,
+                max_instructions = EXCLUDED.max_instructions,
+                max_memory_mb = EXCLUDED.max_memory_mb,
+                max_execution_seconds = EXCLUDED.max_execution_seconds,
+                name_i18n = EXCLUDED.name_i18n,
+                description_i18n = EXCLUDED.description_i18n",
         )
         .bind(&script.file_path)
         .bind(&script.name)
@@ -221,7 +222,7 @@ impl<'a> ScriptRepository<'a> {
 
     /// Update the enabled status of a script.
     pub async fn update_enabled(&self, id: i64, enabled: bool) -> Result<()> {
-        let result = sqlx::query("UPDATE scripts SET enabled = ? WHERE id = ?")
+        let result = sqlx::query("UPDATE scripts SET enabled = $1 WHERE id = $2")
             .bind(enabled)
             .bind(id)
             .execute(self.pool)
@@ -237,7 +238,7 @@ impl<'a> ScriptRepository<'a> {
 
     /// Delete a script by ID.
     pub async fn delete(&self, id: i64) -> Result<()> {
-        let result = sqlx::query("DELETE FROM scripts WHERE id = ?")
+        let result = sqlx::query("DELETE FROM scripts WHERE id = $1")
             .bind(id)
             .execute(self.pool)
             .await
@@ -252,7 +253,7 @@ impl<'a> ScriptRepository<'a> {
 
     /// Delete a script by file path.
     pub async fn delete_by_file_path(&self, file_path: &str) -> Result<()> {
-        let result = sqlx::query("DELETE FROM scripts WHERE file_path = ?")
+        let result = sqlx::query("DELETE FROM scripts WHERE file_path = $1")
             .bind(file_path)
             .execute(self.pool)
             .await

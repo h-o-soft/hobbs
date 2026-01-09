@@ -7,10 +7,10 @@ CREATE TABLE scripts (
     description             TEXT,                       -- Description (from metadata)
     author                  TEXT,                       -- Author name (from metadata)
     file_hash               TEXT,                       -- File hash for change detection
-    synced_at               TIMESTAMP,                  -- Last sync timestamp
+    synced_at               TEXT,                       -- Last sync timestamp
     min_role                INTEGER NOT NULL DEFAULT 0, -- Minimum role to execute (0=Guest)
     enabled                 BOOLEAN NOT NULL DEFAULT TRUE, -- Whether the script is enabled
-    max_instructions        INTEGER NOT NULL DEFAULT 1000000,
+    max_instructions        BIGINT NOT NULL DEFAULT 1000000,
     max_memory_mb           INTEGER NOT NULL DEFAULT 10,
     max_execution_seconds   INTEGER NOT NULL DEFAULT 30
 );

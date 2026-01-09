@@ -1,3 +1,4 @@
+#![cfg(feature = "sqlite")]
 //! E2E tests for login settings application.
 //!
 //! Tests that user's language/encoding settings are applied on login.

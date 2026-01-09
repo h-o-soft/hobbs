@@ -203,7 +203,7 @@ impl<'a> ContentAdminService<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
     use crate::board::{BoardRepository, BoardType, NewBoard, NewThread, NewThreadPost};

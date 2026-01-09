@@ -1,3 +1,4 @@
+#![cfg(feature = "sqlite")]
 //! E2E Admin tests for HOBBS.
 //!
 //! Tests admin panel access and functionality.

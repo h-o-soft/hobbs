@@ -3,6 +3,11 @@
 use super::DbPool;
 use crate::Result;
 
+#[cfg(feature = "sqlite")]
+const SQL_NOW: &str = "datetime('now')";
+#[cfg(feature = "postgres")]
+const SQL_NOW: &str = "TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')";
+
 /// Refresh token entity.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct RefreshToken {
@@ -44,7 +49,7 @@ impl<'a> RefreshTokenRepository<'a> {
     /// Create a new refresh token.
     pub async fn create(&self, new_token: &NewRefreshToken) -> Result<RefreshToken> {
         let id: i64 = sqlx::query_scalar(
-            "INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?) RETURNING id",
+            "INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3) RETURNING id",
         )
         .bind(new_token.user_id)
         .bind(&new_token.token)
@@ -62,7 +67,7 @@ impl<'a> RefreshTokenRepository<'a> {
     pub async fn get_by_id(&self, id: i64) -> Result<Option<RefreshToken>> {
         let token = sqlx::query_as::<_, RefreshToken>(
             "SELECT id, user_id, token, expires_at, created_at, revoked_at
-             FROM refresh_tokens WHERE id = ?",
+             FROM refresh_tokens WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(self.pool)
@@ -76,7 +81,7 @@ impl<'a> RefreshTokenRepository<'a> {
     pub async fn get_by_token(&self, token: &str) -> Result<Option<RefreshToken>> {
         let result = sqlx::query_as::<_, RefreshToken>(
             "SELECT id, user_id, token, expires_at, created_at, revoked_at
-             FROM refresh_tokens WHERE token = ?",
+             FROM refresh_tokens WHERE token = $1",
         )
         .bind(token)
         .fetch_optional(self.pool)
@@ -88,55 +93,63 @@ impl<'a> RefreshTokenRepository<'a> {
 
     /// Get a valid (not expired, not revoked) refresh token.
     pub async fn get_valid_token(&self, token: &str) -> Result<Option<RefreshToken>> {
-        let result = sqlx::query_as::<_, RefreshToken>(
+        let sql = format!(
             "SELECT id, user_id, token, expires_at, created_at, revoked_at
              FROM refresh_tokens
-             WHERE token = ?
+             WHERE token = $1
                AND revoked_at IS NULL
-               AND datetime(expires_at) > datetime('now')",
-        )
-        .bind(token)
-        .fetch_optional(self.pool)
-        .await
-        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+               AND expires_at > {}",
+            SQL_NOW
+        );
+        let result = sqlx::query_as::<_, RefreshToken>(&sql)
+            .bind(token)
+            .fetch_optional(self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
         Ok(result)
     }
 
     /// Revoke a refresh token.
     pub async fn revoke(&self, token: &str) -> Result<bool> {
-        let result = sqlx::query(
-            "UPDATE refresh_tokens SET revoked_at = datetime('now') WHERE token = ? AND revoked_at IS NULL",
-        )
-        .bind(token)
-        .execute(self.pool)
-        .await
-        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+        let sql = format!(
+            "UPDATE refresh_tokens SET revoked_at = {} WHERE token = $1 AND revoked_at IS NULL",
+            SQL_NOW
+        );
+        let result = sqlx::query(&sql)
+            .bind(token)
+            .execute(self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
         Ok(result.rows_affected() > 0)
     }
 
     /// Revoke all tokens for a user.
     pub async fn revoke_all_for_user(&self, user_id: i64) -> Result<u64> {
-        let result = sqlx::query(
-            "UPDATE refresh_tokens SET revoked_at = datetime('now') WHERE user_id = ? AND revoked_at IS NULL",
-        )
-        .bind(user_id)
-        .execute(self.pool)
-        .await
-        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+        let sql = format!(
+            "UPDATE refresh_tokens SET revoked_at = {} WHERE user_id = $1 AND revoked_at IS NULL",
+            SQL_NOW
+        );
+        let result = sqlx::query(&sql)
+            .bind(user_id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
         Ok(result.rows_affected())
     }
 
     /// Delete expired and revoked tokens (cleanup).
     pub async fn cleanup_expired(&self) -> Result<u64> {
-        let result = sqlx::query(
-            "DELETE FROM refresh_tokens WHERE datetime(expires_at) < datetime('now') OR revoked_at IS NOT NULL",
-        )
-        .execute(self.pool)
-        .await
-        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+        let sql = format!(
+            "DELETE FROM refresh_tokens WHERE expires_at < {} OR revoked_at IS NOT NULL",
+            SQL_NOW
+        );
+        let result = sqlx::query(&sql)
+            .execute(self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
         Ok(result.rows_affected())
     }
@@ -150,7 +163,7 @@ mod tests {
     async fn setup_db() -> Database {
         let db = Database::open_in_memory().await.unwrap();
         // Create a test user
-        sqlx::query("INSERT INTO users (username, password, nickname, role) VALUES (?, ?, ?, ?)")
+        sqlx::query("INSERT INTO users (username, password, nickname, role) VALUES ($1, $2, $3, $4)")
             .bind("testuser")
             .bind("hashedpassword")
             .bind("Test User")

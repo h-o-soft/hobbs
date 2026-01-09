@@ -6,7 +6,7 @@ CREATE TABLE posts (
     author_id   BIGINT NOT NULL REFERENCES users(id),
     title       TEXT,                                               -- Used for flat boards
     body        TEXT NOT NULL,
-    created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at  TEXT NOT NULL DEFAULT TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')
 );
 
 CREATE INDEX idx_posts_board_id ON posts(board_id);

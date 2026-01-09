@@ -1,3 +1,4 @@
+#![cfg(feature = "sqlite")]
 //! E2E tests for profile settings screen.
 //!
 //! Tests that users can change language/encoding settings from profile screen.
