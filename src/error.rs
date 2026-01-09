@@ -5,9 +5,17 @@ use thiserror::Error;
 /// Common error type for HOBBS.
 #[derive(Error, Debug)]
 pub enum HobbsError {
-    /// Database error from rusqlite.
+    /// Database error.
+    ///
+    /// This is a generic database error that wraps errors from any database backend.
+    /// For backwards compatibility, rusqlite errors are automatically converted.
+    /// In the future, this will also handle sqlx and other database errors.
     #[error("database error: {0}")]
-    Database(#[from] rusqlite::Error),
+    Database(String),
+
+    /// Database connection error.
+    #[error("database connection error: {0}")]
+    DatabaseConnection(String),
 
     /// I/O error.
     #[error("I/O error: {0}")]
@@ -40,6 +48,13 @@ pub enum HobbsError {
     /// RSS feed error.
     #[error("RSS error: {0}")]
     Rss(String),
+}
+
+// Conversion from rusqlite errors
+impl From<rusqlite::Error> for HobbsError {
+    fn from(e: rusqlite::Error) -> Self {
+        HobbsError::Database(e.to_string())
+    }
 }
 
 /// Result type alias for HOBBS operations.

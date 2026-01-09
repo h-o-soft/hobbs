@@ -171,7 +171,7 @@ impl FolderRepository {
 
         let id = conn.last_insert_rowid();
         Self::get_by_id(conn, id)?
-            .ok_or_else(|| crate::HobbsError::Database(rusqlite::Error::QueryReturnedNoRows))
+            .ok_or_else(|| crate::HobbsError::NotFound("folder".to_string()))
     }
 
     /// Get a folder by ID.

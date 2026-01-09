@@ -526,6 +526,7 @@ pub fn test_config() -> Config {
         },
         database: DatabaseConfig {
             path: ":memory:".to_string(),
+            ..Default::default()
         },
         bbs: BbsConfig {
             name: "Test BBS".to_string(),
