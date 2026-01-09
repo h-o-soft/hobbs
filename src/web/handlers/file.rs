@@ -10,6 +10,7 @@ use axum::{
 use std::sync::Arc;
 use utoipa;
 
+use crate::datetime::to_rfc3339;
 use crate::db::{Role, UserRepository};
 use crate::file::{FileRepository, FolderRepository, NewFile};
 use crate::web::dto::{
@@ -63,7 +64,7 @@ pub async fn list_folders(
                 can_read: true, // Already filtered
                 can_upload,
                 file_count,
-                created_at: f.created_at.clone(),
+                created_at: to_rfc3339(&f.created_at),
             });
         }
         result
@@ -125,7 +126,7 @@ pub async fn get_folder(
         can_read: true,
         can_upload,
         file_count,
-        created_at: folder.created_at.clone(),
+        created_at: to_rfc3339(&folder.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -224,7 +225,7 @@ pub async fn list_files(
                 description: f.description,
                 uploader,
                 downloads: f.downloads,
-                created_at: f.created_at.clone(),
+                created_at: to_rfc3339(&f.created_at),
             });
         }
         result
@@ -401,7 +402,7 @@ pub async fn upload_file(
             description: file.description,
             uploader,
             downloads: file.downloads,
-            created_at: file.created_at.clone(),
+            created_at: to_rfc3339(&file.created_at),
         },
     };
 
@@ -488,7 +489,7 @@ pub async fn get_file(
         description: file.description,
         uploader,
         downloads: file.downloads,
-        created_at: file.created_at.clone(),
+        created_at: to_rfc3339(&file.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))

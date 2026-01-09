@@ -5,6 +5,7 @@ use tracing::error;
 use super::common::ScreenContext;
 use super::ScreenResult;
 use crate::auth::{change_password, update_profile, ProfileUpdateRequest};
+use crate::datetime::format_datetime;
 use crate::db::{Role, UserRepository, UserUpdate};
 use crate::error::Result;
 use crate::server::{EchoMode, TelnetSession};
@@ -46,10 +47,22 @@ impl ProfileScreen {
                 "user.role_name",
                 Value::string(Self::role_name(ctx, user.role)),
             );
-            context.set("user.created_at", Value::string(user.created_at.clone()));
+            context.set(
+                "user.created_at",
+                Value::string(format_datetime(
+                    &user.created_at,
+                    &ctx.config.server.timezone,
+                    "%Y/%m/%d %H:%M",
+                )),
+            );
             context.set(
                 "user.last_login",
-                Value::string(user.last_login.as_deref().unwrap_or("-").to_string()),
+                Value::string(
+                    user.last_login
+                        .as_deref()
+                        .map(|dt| format_datetime(dt, &ctx.config.server.timezone, "%Y/%m/%d %H:%M"))
+                        .unwrap_or_else(|| "-".to_string()),
+                ),
             );
             if let Some(ref bio) = user.profile {
                 context.set("user.bio", Value::string(bio.clone()));

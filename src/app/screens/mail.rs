@@ -4,6 +4,7 @@ use tracing::error;
 
 use super::common::ScreenContext;
 use super::ScreenResult;
+use crate::datetime::format_utc_datetime;
 use crate::db::UserRepository;
 use crate::error::Result;
 use crate::mail::{MailRepository, NewMail};
@@ -183,7 +184,7 @@ impl MailScreen {
             &format!(
                 "{}: {}",
                 ctx.i18n.t("mail.date"),
-                mail.created_at.format("%Y/%m/%d %H:%M")
+                format_utc_datetime(&mail.created_at, &ctx.config.server.timezone, "%Y/%m/%d %H:%M")
             ),
         )
         .await?;

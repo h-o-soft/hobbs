@@ -11,6 +11,7 @@ use crate::board::{
     BoardRepository, BoardService, BoardType, NewFlatPost, NewThread, NewThreadPost,
     PostRepository, ThreadRepository,
 };
+use crate::datetime::to_rfc3339;
 use crate::db::{Role, UserRepository};
 use crate::web::dto::{
     ApiResponse, AuthorInfo, BoardResponse, CreateFlatPostRequest, CreatePostRequest,
@@ -63,7 +64,7 @@ pub async fn list_boards(
                 post_count,
                 can_read,
                 can_write,
-                created_at: b.created_at,
+                created_at: to_rfc3339(&b.created_at),
             });
         }
         responses
@@ -127,7 +128,7 @@ pub async fn get_board(
         post_count,
         can_read,
         can_write,
-        created_at: board.created_at,
+        created_at: to_rfc3339(&board.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -226,8 +227,8 @@ pub async fn list_threads(
                 title: t.title,
                 author,
                 post_count: t.post_count,
-                created_at: t.created_at,
-                updated_at: t.updated_at,
+                created_at: to_rfc3339(&t.created_at),
+                updated_at: to_rfc3339(&t.updated_at),
             });
         }
         responses
@@ -350,8 +351,8 @@ pub async fn create_thread(
         title: thread.title,
         author,
         post_count: thread.post_count,
-        created_at: thread.created_at,
-        updated_at: thread.updated_at,
+        created_at: to_rfc3339(&thread.created_at),
+        updated_at: to_rfc3339(&thread.updated_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -454,7 +455,7 @@ pub async fn list_flat_posts(
                 author,
                 title: p.title,
                 body: p.body,
-                created_at: p.created_at,
+                created_at: to_rfc3339(&p.created_at),
             });
         }
         responses
@@ -562,7 +563,7 @@ pub async fn create_flat_post(
         author,
         title: post.title,
         body: post.body,
-        created_at: post.created_at,
+        created_at: to_rfc3339(&post.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -644,8 +645,8 @@ pub async fn get_thread(
         title: thread.title,
         author,
         post_count: thread.post_count,
-        created_at: thread.created_at,
-        updated_at: thread.updated_at,
+        created_at: to_rfc3339(&thread.created_at),
+        updated_at: to_rfc3339(&thread.updated_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -752,7 +753,7 @@ pub async fn list_thread_posts(
                 author,
                 title: p.title,
                 body: p.body,
-                created_at: p.created_at,
+                created_at: to_rfc3339(&p.created_at),
             });
         }
         responses
@@ -868,7 +869,7 @@ pub async fn create_thread_post(
         author,
         title: post.title,
         body: post.body,
-        created_at: post.created_at,
+        created_at: to_rfc3339(&post.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -1010,7 +1011,7 @@ pub async fn update_post(
                 username: "unknown".to_string(),
                 nickname: "Unknown".to_string(),
             }),
-        created_at: post.created_at,
+        created_at: to_rfc3339(&post.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -1084,8 +1085,8 @@ pub async fn update_thread(
                 nickname: "Unknown".to_string(),
             }),
         post_count: thread.post_count,
-        created_at: thread.created_at,
-        updated_at: thread.updated_at,
+        created_at: to_rfc3339(&thread.created_at),
+        updated_at: to_rfc3339(&thread.updated_at),
     };
 
     Ok(Json(ApiResponse::new(response)))

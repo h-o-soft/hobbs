@@ -8,6 +8,7 @@ use std::sync::Arc;
 use utoipa;
 
 use crate::auth::{hash_password, verify_password};
+use crate::datetime::to_rfc3339;
 use crate::db::{UserRepository, UserUpdate};
 use crate::web::dto::{
     ApiResponse, ChangePasswordRequest, PaginatedResponse, PaginationQuery, UpdateProfileRequest,
@@ -126,7 +127,7 @@ pub async fn get_user(
         nickname: user.nickname,
         role: user.role.as_str().to_string(),
         profile: user.profile,
-        created_at: user.created_at,
+        created_at: to_rfc3339(&user.created_at),
         last_login_at: user.last_login,
     };
 
@@ -169,7 +170,7 @@ pub async fn get_my_profile(
         nickname: user.nickname,
         role: user.role.as_str().to_string(),
         profile: user.profile,
-        created_at: user.created_at,
+        created_at: to_rfc3339(&user.created_at),
         last_login_at: user.last_login,
     };
 
@@ -248,7 +249,7 @@ pub async fn update_my_profile(
         nickname: user.nickname,
         role: user.role.as_str().to_string(),
         profile: user.profile,
-        created_at: user.created_at,
+        created_at: to_rfc3339(&user.created_at),
         last_login_at: user.last_login,
     };
 
@@ -301,7 +302,7 @@ pub async fn get_user_by_username(
         nickname: user.nickname,
         role: user.role.as_str().to_string(),
         profile: user.profile,
-        created_at: user.created_at,
+        created_at: to_rfc3339(&user.created_at),
         last_login_at: user.last_login,
     };
 

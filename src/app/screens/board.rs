@@ -3,6 +3,7 @@
 use tracing::error;
 
 use super::common::{Pagination, ScreenContext};
+use crate::datetime::format_datetime;
 use super::ScreenResult;
 use crate::board::{
     BoardService, BoardType, Pagination as BoardPagination, PostRepository, ThreadRepository,
@@ -563,9 +564,14 @@ impl BoardScreen {
                         .map(|u| u.nickname)
                         .unwrap_or_else(|| "Unknown".to_string());
 
+                    let formatted_time = format_datetime(
+                        &post.created_at,
+                        &ctx.config.server.timezone,
+                        "%Y-%m-%d %H:%M",
+                    );
                     ctx.send_line(
                         session,
-                        &format!("--- {} ({}) ---", author, post.created_at),
+                        &format!("--- {} ({}) ---", author, formatted_time),
                     )
                     .await?;
                     ctx.send_line(session, &convert_caret_escape(&post.body))
@@ -651,13 +657,18 @@ impl BoardScreen {
             &format!("=== {} ===", post.title.as_deref().unwrap_or("(no title)")),
         )
         .await?;
+        let formatted_time = format_datetime(
+            &post.created_at,
+            &ctx.config.server.timezone,
+            "%Y-%m-%d %H:%M",
+        );
         ctx.send_line(
             session,
             &format!(
                 "{}: {} ({})",
                 ctx.i18n.t("board.author"),
                 author,
-                post.created_at
+                formatted_time
             ),
         )
         .await?;
@@ -938,13 +949,18 @@ impl BoardScreen {
                 &format!("=== [{}/{}] {} ===", index + 1, total, title),
             )
             .await?;
+            let formatted_time = format_datetime(
+                &post.created_at,
+                &ctx.config.server.timezone,
+                "%Y-%m-%d %H:%M",
+            );
             ctx.send_line(
                 session,
                 &format!(
                     "{}: {} ({})",
                     ctx.i18n.t("board.author"),
                     author,
-                    post.created_at
+                    formatted_time
                 ),
             )
             .await?;
@@ -1105,13 +1121,18 @@ impl BoardScreen {
                 ),
             )
             .await?;
+            let formatted_time = format_datetime(
+                &post.created_at,
+                &ctx.config.server.timezone,
+                "%Y-%m-%d %H:%M",
+            );
             ctx.send_line(
                 session,
                 &format!(
                     "{}: {} ({})",
                     ctx.i18n.t("board.author"),
                     author,
-                    post.created_at
+                    formatted_time
                 ),
             )
             .await?;

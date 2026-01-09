@@ -6,6 +6,7 @@ use std::sync::Arc;
 use utoipa;
 
 use crate::chat::ChatRoomManager;
+use crate::datetime::to_rfc3339;
 use crate::db::{NewRefreshToken, NewUser, RefreshTokenRepository, UserRepository};
 use crate::file::FileStorage;
 use crate::mail::MailRepository;
@@ -416,8 +417,8 @@ pub async fn me(
         role: format!("{:?}", user.role).to_lowercase(),
         email: user.email,
         unread_mail_count: unread_count as u64,
-        created_at: user.created_at.clone(),
-        last_login_at: user.last_login.clone(),
+        created_at: to_rfc3339(&user.created_at),
+        last_login_at: user.last_login.as_ref().map(|dt| to_rfc3339(dt)),
     };
 
     Ok(Json(ApiResponse::new(response)))

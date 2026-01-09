@@ -9,6 +9,7 @@ use utoipa;
 
 use crate::auth::hash_password;
 use crate::board::{BoardRepository, BoardType, BoardUpdate, NewBoard};
+use crate::datetime::to_rfc3339;
 use crate::db::{Role, UserRepository, UserUpdate};
 use crate::file::{FileRepository, FolderRepository, FolderUpdate, NewFolder};
 use crate::web::dto::{
@@ -94,7 +95,7 @@ pub async fn admin_list_users(
             role: u.role.as_str().to_string(),
             email: u.email,
             is_active: u.is_active,
-            created_at: u.created_at,
+            created_at: to_rfc3339(&u.created_at),
             last_login_at: u.last_login,
         })
         .collect();
@@ -180,7 +181,7 @@ pub async fn admin_update_user(
         role: user.role.as_str().to_string(),
         email: user.email,
         is_active: user.is_active,
-        created_at: user.created_at,
+        created_at: to_rfc3339(&user.created_at),
         last_login_at: user.last_login,
     };
 
@@ -244,7 +245,7 @@ pub async fn admin_update_role(
         role: user.role.as_str().to_string(),
         email: user.email,
         is_active: user.is_active,
-        created_at: user.created_at,
+        created_at: to_rfc3339(&user.created_at),
         last_login_at: user.last_login,
     };
 
@@ -303,7 +304,7 @@ pub async fn admin_update_status(
         role: user.role.as_str().to_string(),
         email: user.email,
         is_active: user.is_active,
-        created_at: user.created_at,
+        created_at: to_rfc3339(&user.created_at),
         last_login_at: user.last_login,
     };
 
@@ -406,7 +407,7 @@ pub async fn admin_list_boards(
             min_write_role: b.min_write_role.as_str().to_string(),
             sort_order: b.sort_order,
             is_active: b.is_active,
-            created_at: b.created_at,
+            created_at: to_rfc3339(&b.created_at),
         })
         .collect();
 
@@ -481,7 +482,7 @@ pub async fn admin_create_board(
         min_write_role: board.min_write_role.as_str().to_string(),
         sort_order: board.sort_order,
         is_active: board.is_active,
-        created_at: board.created_at,
+        created_at: to_rfc3339(&board.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -576,7 +577,7 @@ pub async fn admin_update_board(
         min_write_role: board.min_write_role.as_str().to_string(),
         sort_order: board.sort_order,
         is_active: board.is_active,
-        created_at: board.created_at,
+        created_at: to_rfc3339(&board.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -666,7 +667,7 @@ pub async fn admin_list_folders(
             upload_perm: f.upload_perm.as_str().to_string(),
             order_num: f.order_num,
             file_count,
-            created_at: f.created_at.clone(),
+            created_at: to_rfc3339(&f.created_at),
         });
     }
 
@@ -739,7 +740,7 @@ pub async fn admin_create_folder(
         upload_perm: folder.upload_perm.as_str().to_string(),
         order_num: folder.order_num,
         file_count: 0,
-        created_at: folder.created_at.clone(),
+        created_at: to_rfc3339(&folder.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))
@@ -831,7 +832,7 @@ pub async fn admin_update_folder(
         upload_perm: folder.upload_perm.as_str().to_string(),
         order_num: folder.order_num,
         file_count,
-        created_at: folder.created_at.clone(),
+        created_at: to_rfc3339(&folder.created_at),
     };
 
     Ok(Json(ApiResponse::new(response)))

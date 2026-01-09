@@ -2,6 +2,7 @@
 
 use super::common::{Pagination, ScreenContext};
 use super::ScreenResult;
+use crate::datetime::format_utc_datetime;
 use crate::db::UserRepository;
 use crate::error::Result;
 use crate::file::UploadRequest;
@@ -249,7 +250,7 @@ impl FileScreen {
             &format!(
                 "{}: {}",
                 ctx.i18n.t("file.uploaded_at"),
-                file.created_at_datetime().format("%Y/%m/%d %H:%M")
+                format_utc_datetime(&file.created_at_datetime(), &ctx.config.server.timezone, "%Y/%m/%d %H:%M")
             ),
         )
         .await?;
