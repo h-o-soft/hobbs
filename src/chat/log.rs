@@ -67,8 +67,13 @@ impl From<ChatLogRow> for ChatLog {
             _ => MessageType::Chat, // Default fallback
         };
 
+        // Try RFC3339 first, then database format (YYYY-MM-DD HH:MM:SS)
         let created_at = DateTime::parse_from_rfc3339(&row.created_at)
             .map(|dt| dt.with_timezone(&Utc))
+            .or_else(|_| {
+                chrono::NaiveDateTime::parse_from_str(&row.created_at, "%Y-%m-%d %H:%M:%S")
+                    .map(|naive| naive.and_utc())
+            })
             .unwrap_or_else(|_| Utc::now());
 
         Self {

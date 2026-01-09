@@ -236,11 +236,18 @@ impl<'a> MailRepository<'a> {
     /// Convert a database row to a Mail.
     #[cfg(feature = "sqlite")]
     fn row_to_mail(row: &sqlx::sqlite::SqliteRow) -> Result<Mail> {
+        use chrono::NaiveDateTime;
+
         let created_at_str: String = row
             .try_get("created_at")
             .map_err(|e| HobbsError::Database(e.to_string()))?;
+        // Try RFC3339 first, then SQLite format (YYYY-MM-DD HH:MM:SS)
         let created_at = DateTime::parse_from_rfc3339(&created_at_str)
             .map(|dt| dt.with_timezone(&Utc))
+            .or_else(|_| {
+                NaiveDateTime::parse_from_str(&created_at_str, "%Y-%m-%d %H:%M:%S")
+                    .map(|naive| naive.and_utc())
+            })
             .unwrap_or_else(|_| Utc::now());
 
         Ok(Mail {
@@ -278,11 +285,18 @@ impl<'a> MailRepository<'a> {
     /// Convert a database row to a Mail.
     #[cfg(feature = "postgres")]
     fn row_to_mail(row: &sqlx::postgres::PgRow) -> Result<Mail> {
+        use chrono::NaiveDateTime;
+
         let created_at_str: String = row
             .try_get("created_at")
             .map_err(|e| HobbsError::Database(e.to_string()))?;
+        // Try RFC3339 first, then PostgreSQL/SQLite format (YYYY-MM-DD HH:MM:SS)
         let created_at = DateTime::parse_from_rfc3339(&created_at_str)
             .map(|dt| dt.with_timezone(&Utc))
+            .or_else(|_| {
+                NaiveDateTime::parse_from_str(&created_at_str, "%Y-%m-%d %H:%M:%S")
+                    .map(|naive| naive.and_utc())
+            })
             .unwrap_or_else(|_| Utc::now());
 
         Ok(Mail {

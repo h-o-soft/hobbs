@@ -32,8 +32,15 @@ pub struct FileMetadata {
 impl FileMetadata {
     /// Get the created_at as DateTime<Utc>.
     pub fn created_at_datetime(&self) -> DateTime<Utc> {
-        DateTime::parse_from_rfc3339(&format!("{}Z", self.created_at))
+        use chrono::NaiveDateTime;
+
+        // Try RFC3339 first, then SQLite format (YYYY-MM-DD HH:MM:SS)
+        DateTime::parse_from_rfc3339(&self.created_at)
             .map(|dt| dt.with_timezone(&Utc))
+            .or_else(|_| {
+                NaiveDateTime::parse_from_str(&self.created_at, "%Y-%m-%d %H:%M:%S")
+                    .map(|naive| naive.and_utc())
+            })
             .unwrap_or_else(|_| Utc::now())
     }
 }
