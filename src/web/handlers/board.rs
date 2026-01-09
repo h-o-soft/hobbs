@@ -15,7 +15,7 @@ use crate::db::{Role, UserRepository};
 use crate::web::dto::{
     ApiResponse, AuthorInfo, BoardResponse, CreateFlatPostRequest, CreatePostRequest,
     CreateThreadRequest, PaginatedResponse, PaginationQuery, PostResponse, ThreadResponse,
-    UpdatePostRequest,
+    UpdatePostRequest, UpdateThreadRequest,
 };
 use crate::web::error::ApiError;
 use crate::web::handlers::AppState;
@@ -1013,6 +1013,82 @@ pub async fn update_post(
                 nickname: "Unknown".to_string(),
             }),
         created_at: post.created_at,
+    };
+
+    Ok(Json(ApiResponse::new(response)))
+}
+
+/// PATCH /api/threads/:id - Update a thread title.
+#[utoipa::path(
+    patch,
+    path = "/threads/{id}",
+    tag = "threads",
+    params(
+        ("id" = i64, Path, description = "Thread ID")
+    ),
+    request_body = UpdateThreadRequest,
+    responses(
+        (status = 200, description = "Updated thread", body = ThreadResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - not owner or admin"),
+        (status = 404, description = "Thread not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn update_thread(
+    State(state): State<Arc<AppState>>,
+    AuthUser(claims): AuthUser,
+    Path(thread_id): Path<i64>,
+    Json(request): Json<UpdateThreadRequest>,
+) -> Result<Json<ApiResponse<ThreadResponse>>, ApiError> {
+    let user_role = Role::from_str(&claims.role).unwrap_or(Role::Guest);
+
+    let thread = {
+        let db = state.db.lock().await;
+        let service = BoardService::new(&*db);
+
+        service
+            .update_thread(thread_id, Some(claims.sub), user_role, request.title)
+            .map_err(|e| {
+                tracing::error!("Failed to update thread: {}", e);
+                match e {
+                    crate::HobbsError::NotFound(_) => ApiError::not_found("Thread not found"),
+                    crate::HobbsError::Permission(_) => {
+                        ApiError::forbidden("You can only edit your own threads")
+                    }
+                    crate::HobbsError::Validation(msg) => ApiError::unprocessable(msg),
+                    _ => ApiError::internal("Failed to update thread"),
+                }
+            })?
+    };
+
+    // Fetch author info
+    let author = {
+        let db = state.db.lock().await;
+        let user_repo = UserRepository::new(&*db);
+        user_repo.get_by_id(thread.author_id).ok().flatten()
+    };
+
+    let response = ThreadResponse {
+        id: thread.id,
+        board_id: thread.board_id,
+        title: thread.title,
+        author: author
+            .map(|u| AuthorInfo {
+                id: u.id,
+                username: u.username,
+                nickname: u.nickname,
+            })
+            .unwrap_or_else(|| AuthorInfo {
+                id: thread.author_id,
+                username: "unknown".to_string(),
+                nickname: "Unknown".to_string(),
+            }),
+        post_count: thread.post_count,
+        created_at: thread.created_at,
+        updated_at: thread.updated_at,
     };
 
     Ok(Json(ApiResponse::new(response)))

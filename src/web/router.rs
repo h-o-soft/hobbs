@@ -48,6 +48,7 @@ use super::handlers::{
     delete_mail,
     delete_post,
     update_post,
+    update_thread,
     download_file,
     get_board,
     // RSS handlers
@@ -148,6 +149,7 @@ pub fn create_router(
     // Thread routes
     let thread_routes = Router::new()
         .route("/:id", get(get_thread))
+        .route("/:id", patch(update_thread))
         .route("/:id/posts", get(list_thread_posts))
         .route("/:id/posts", post(create_thread_post));
 

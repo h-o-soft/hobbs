@@ -60,7 +60,7 @@ export const dict = {
     registerHere: 'Register',
     hasAccount: 'Already have an account?',
     loginHere: 'Login',
-    subtitle: 'Hobbyist Bulletin Board System',
+    subtitle: 'Powered by HOBBS',
   },
 
   // Home
@@ -102,6 +102,10 @@ export const dict = {
     confirmDeletePost: 'Are you sure you want to delete this post?',
     deletePostFailed: 'Failed to delete post',
     editPostFailed: 'Failed to edit post',
+    editThread: 'Edit Thread',
+    editThreadFailed: 'Failed to edit thread',
+    confirmDeleteThread: 'Are you sure you want to delete this thread?',
+    deleteThreadFailed: 'Failed to delete thread',
   },
 
   // Mail

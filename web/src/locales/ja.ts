@@ -60,7 +60,7 @@ export const dict = {
     registerHere: '新規登録',
     hasAccount: 'すでにアカウントをお持ちの方は',
     loginHere: 'ログイン',
-    subtitle: 'Hobbyist Bulletin Board System',
+    subtitle: 'Powered by HOBBS',
   },
 
   // Home
@@ -102,6 +102,10 @@ export const dict = {
     confirmDeletePost: 'この投稿を削除しますか？',
     deletePostFailed: '投稿の削除に失敗しました',
     editPostFailed: '投稿の編集に失敗しました',
+    editThread: 'スレッドを編集',
+    editThreadFailed: 'スレッドの編集に失敗しました',
+    confirmDeleteThread: 'このスレッドを削除しますか？',
+    deleteThreadFailed: 'スレッドの削除に失敗しました',
   },
 
   // Mail
