@@ -5,10 +5,8 @@
 //! - Delete files (SubOp and above)
 //! - Soft delete posts (replace body with deletion message)
 
-use sqlx::SqlitePool;
-
 use crate::board::{Post, PostRepository, PostUpdate, ThreadRepository};
-use crate::db::User;
+use crate::db::{DbPool, User};
 use crate::file::{FileMetadata, FileRepository, FileStorage};
 
 use super::{require_admin, AdminError};
@@ -27,18 +25,18 @@ pub const DELETED_POST_MESSAGE: &str = "この投稿は削除されました";
 
 /// Admin service for content management.
 pub struct ContentAdminService<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
     storage: Option<&'a FileStorage>,
 }
 
 impl<'a> ContentAdminService<'a> {
     /// Create a new ContentAdminService.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool, storage: None }
     }
 
     /// Create a new ContentAdminService with file storage.
-    pub fn with_storage(pool: &'a SqlitePool, storage: &'a FileStorage) -> Self {
+    pub fn with_storage(pool: &'a DbPool, storage: &'a FileStorage) -> Self {
         Self {
             pool,
             storage: Some(storage),
@@ -205,13 +203,14 @@ impl<'a> ContentAdminService<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
     use crate::board::{BoardRepository, BoardType, NewBoard, NewThread, NewThreadPost};
     use crate::db::{Database, NewUser, Role, UserRepository};
     use crate::file::{FolderRepository, NewFile, NewFolder};
     use crate::server::CharacterEncoding;
+    use sqlx::SqlitePool;
 
     async fn setup_db() -> Database {
         Database::open_in_memory().await.unwrap()

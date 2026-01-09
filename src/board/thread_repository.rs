@@ -2,9 +2,16 @@
 //!
 //! This module provides CRUD operations for threads in the database.
 
-use sqlx::{FromRow, QueryBuilder, SqlitePool};
+use sqlx::{FromRow, QueryBuilder};
 
 use super::thread::{NewThread, ThreadUpdate};
+
+// SQL datetime function for current timestamp
+#[cfg(feature = "sqlite")]
+const SQL_NOW: &str = "datetime('now')";
+#[cfg(feature = "postgres")]
+const SQL_NOW: &str = "TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')";
+use crate::db::DbPool;
 use crate::{HobbsError, Result};
 
 /// Thread entity representing a discussion thread in a board.
@@ -44,29 +51,48 @@ impl From<ThreadRow> for super::thread::Thread {
 
 /// Repository for thread CRUD operations.
 pub struct ThreadRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> ThreadRepository<'a> {
     /// Create a new ThreadRepository with the given database pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Create a new thread in the database.
     ///
     /// Returns the created thread with the assigned ID.
+    #[cfg(feature = "sqlite")]
     pub async fn create(&self, new_thread: &NewThread) -> Result<super::thread::Thread> {
-        let result =
-            sqlx::query("INSERT INTO threads (board_id, title, author_id) VALUES (?, ?, ?)")
+        let id: i64 =
+            sqlx::query_scalar("INSERT INTO threads (board_id, title, author_id) VALUES (?, ?, ?) RETURNING id")
                 .bind(new_thread.board_id)
                 .bind(&new_thread.title)
                 .bind(new_thread.author_id)
-                .execute(self.pool)
+                .fetch_one(self.pool)
                 .await
                 .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
+        self.get_by_id(id)
+            .await?
+            .ok_or_else(|| HobbsError::NotFound("thread".to_string()))
+    }
+
+    /// Create a new thread in the database.
+    ///
+    /// Returns the created thread with the assigned ID.
+    #[cfg(feature = "postgres")]
+    pub async fn create(&self, new_thread: &NewThread) -> Result<super::thread::Thread> {
+        let id: i64 =
+            sqlx::query_scalar("INSERT INTO threads (board_id, title, author_id) VALUES ($1, $2, $3) RETURNING id")
+                .bind(new_thread.board_id)
+                .bind(&new_thread.title)
+                .bind(new_thread.author_id)
+                .fetch_one(self.pool)
+                .await
+                .map_err(|e| HobbsError::Database(e.to_string()))?;
+
         self.get_by_id(id)
             .await?
             .ok_or_else(|| HobbsError::NotFound("thread".to_string()))
@@ -76,7 +102,7 @@ impl<'a> ThreadRepository<'a> {
     pub async fn get_by_id(&self, id: i64) -> Result<Option<super::thread::Thread>> {
         let result = sqlx::query_as::<_, ThreadRow>(
             "SELECT id, board_id, title, author_id, post_count, created_at, updated_at
-             FROM threads WHERE id = ?",
+             FROM threads WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(self.pool)
@@ -90,6 +116,7 @@ impl<'a> ThreadRepository<'a> {
     ///
     /// Only fields that are set in the update will be modified.
     /// Returns the updated thread, or None if not found.
+    #[cfg(feature = "sqlite")]
     pub async fn update(
         &self,
         id: i64,
@@ -111,7 +138,52 @@ impl<'a> ThreadRepository<'a> {
             separated.push_bind_unseparated(delta);
         }
         if update.touch {
-            separated.push("updated_at = datetime('now')");
+            separated.push(format!("updated_at = {SQL_NOW}"));
+        }
+
+        query.push(" WHERE id = ");
+        query.push_bind(id);
+
+        let result = query
+            .build()
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        if result.rows_affected() == 0 {
+            return Ok(None);
+        }
+
+        self.get_by_id(id).await
+    }
+
+    /// Update a thread by ID.
+    ///
+    /// Only fields that are set in the update will be modified.
+    /// Returns the updated thread, or None if not found.
+    #[cfg(feature = "postgres")]
+    pub async fn update(
+        &self,
+        id: i64,
+        update: &ThreadUpdate,
+    ) -> Result<Option<super::thread::Thread>> {
+        if update.is_empty() {
+            return self.get_by_id(id).await;
+        }
+
+        let mut query: QueryBuilder<sqlx::Postgres> = QueryBuilder::new("UPDATE threads SET ");
+        let mut separated = query.separated(", ");
+
+        if let Some(ref title) = update.title {
+            separated.push("title = ");
+            separated.push_bind_unseparated(title);
+        }
+        if let Some(delta) = update.post_count_delta {
+            separated.push("post_count = post_count + ");
+            separated.push_bind_unseparated(delta);
+        }
+        if update.touch {
+            separated.push(format!("updated_at = {SQL_NOW}"));
         }
 
         query.push(" WHERE id = ");
@@ -135,7 +207,7 @@ impl<'a> ThreadRepository<'a> {
     /// Returns true if a thread was deleted, false if not found.
     /// Note: This will cascade delete all posts in the thread.
     pub async fn delete(&self, id: i64) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM threads WHERE id = ?")
+        let result = sqlx::query("DELETE FROM threads WHERE id = $1")
             .bind(id)
             .execute(self.pool)
             .await
@@ -147,7 +219,7 @@ impl<'a> ThreadRepository<'a> {
     pub async fn list_by_board(&self, board_id: i64) -> Result<Vec<super::thread::Thread>> {
         let rows = sqlx::query_as::<_, ThreadRow>(
             "SELECT id, board_id, title, author_id, post_count, created_at, updated_at
-             FROM threads WHERE board_id = ? ORDER BY updated_at DESC, id DESC",
+             FROM threads WHERE board_id = $1 ORDER BY updated_at DESC, id DESC",
         )
         .bind(board_id)
         .fetch_all(self.pool)
@@ -166,7 +238,7 @@ impl<'a> ThreadRepository<'a> {
     ) -> Result<Vec<super::thread::Thread>> {
         let rows = sqlx::query_as::<_, ThreadRow>(
             "SELECT id, board_id, title, author_id, post_count, created_at, updated_at
-             FROM threads WHERE board_id = ? ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?",
+             FROM threads WHERE board_id = $1 ORDER BY updated_at DESC, id DESC LIMIT $2 OFFSET $3",
         )
         .bind(board_id)
         .bind(limit)
@@ -182,7 +254,7 @@ impl<'a> ThreadRepository<'a> {
     pub async fn list_by_author(&self, author_id: i64) -> Result<Vec<super::thread::Thread>> {
         let rows = sqlx::query_as::<_, ThreadRow>(
             "SELECT id, board_id, title, author_id, post_count, created_at, updated_at
-             FROM threads WHERE author_id = ? ORDER BY updated_at DESC",
+             FROM threads WHERE author_id = $1 ORDER BY updated_at DESC",
         )
         .bind(author_id)
         .fetch_all(self.pool)
@@ -194,7 +266,7 @@ impl<'a> ThreadRepository<'a> {
 
     /// Count threads in a board.
     pub async fn count_by_board(&self, board_id: i64) -> Result<i64> {
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM threads WHERE board_id = ?")
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM threads WHERE board_id = $1")
             .bind(board_id)
             .fetch_one(self.pool)
             .await

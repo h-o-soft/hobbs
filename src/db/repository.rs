@@ -2,19 +2,26 @@
 //!
 //! This module provides CRUD operations for users in the database.
 
-use sqlx::{QueryBuilder, SqlitePool};
+use sqlx::QueryBuilder;
 
 use super::user::{NewUser, Role, User, UserUpdate};
+use super::{DbPool, SQL_TRUE};
 use crate::{HobbsError, Result};
+
+// SQL datetime function for current timestamp
+#[cfg(feature = "sqlite")]
+const SQL_NOW: &str = "datetime('now')";
+#[cfg(feature = "postgres")]
+const SQL_NOW: &str = "NOW()";
 
 /// Repository for user CRUD operations.
 pub struct UserRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> UserRepository<'a> {
     /// Create a new UserRepository with the given database pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
@@ -22,9 +29,10 @@ impl<'a> UserRepository<'a> {
     ///
     /// Returns the created user with the assigned ID.
     pub async fn create(&self, new_user: &NewUser) -> Result<User> {
-        let result = sqlx::query(
+        let id: i64 = sqlx::query_scalar(
             "INSERT INTO users (username, password, nickname, email, role, terminal, encoding, language, auto_paging)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             RETURNING id",
         )
         .bind(&new_user.username)
         .bind(&new_user.password)
@@ -35,11 +43,10 @@ impl<'a> UserRepository<'a> {
         .bind(new_user.encoding.as_str())
         .bind(&new_user.language)
         .bind(new_user.auto_paging)
-        .execute(self.pool)
+        .fetch_one(self.pool)
         .await
         .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
         self.get_by_id(id)
             .await?
             .ok_or_else(|| HobbsError::NotFound("user".to_string()))
@@ -50,7 +57,7 @@ impl<'a> UserRepository<'a> {
         let result = sqlx::query_as::<_, User>(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
                     encoding, language, auto_paging, created_at, last_login, is_active
-             FROM users WHERE id = ?",
+             FROM users WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(self.pool)
@@ -62,15 +69,20 @@ impl<'a> UserRepository<'a> {
 
     /// Get a user by username (case-insensitive).
     pub async fn get_by_username(&self, username: &str) -> Result<Option<User>> {
-        let result = sqlx::query_as::<_, User>(
-            "SELECT id, username, password, nickname, email, role, profile, terminal,
+        #[cfg(feature = "sqlite")]
+        let query = "SELECT id, username, password, nickname, email, role, profile, terminal,
                     encoding, language, auto_paging, created_at, last_login, is_active
-             FROM users WHERE username = ? COLLATE NOCASE",
-        )
-        .bind(username)
-        .fetch_optional(self.pool)
-        .await
-        .map_err(|e| HobbsError::Database(e.to_string()))?;
+             FROM users WHERE username = $1 COLLATE NOCASE";
+        #[cfg(feature = "postgres")]
+        let query = "SELECT id, username, password, nickname, email, role, profile, terminal,
+                    encoding, language, auto_paging, created_at, last_login, is_active
+             FROM users WHERE LOWER(username) = LOWER($1)";
+
+        let result = sqlx::query_as::<_, User>(query)
+            .bind(username)
+            .fetch_optional(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(result)
     }
@@ -84,7 +96,10 @@ impl<'a> UserRepository<'a> {
             return self.get_by_id(id).await;
         }
 
+        #[cfg(feature = "sqlite")]
         let mut query: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new("UPDATE users SET ");
+        #[cfg(feature = "postgres")]
+        let mut query: QueryBuilder<sqlx::Postgres> = QueryBuilder::new("UPDATE users SET ");
         let mut separated = query.separated(", ");
 
         if let Some(ref password) = update.password {
@@ -146,7 +161,8 @@ impl<'a> UserRepository<'a> {
 
     /// Update the last login timestamp for a user.
     pub async fn update_last_login(&self, id: i64) -> Result<()> {
-        sqlx::query("UPDATE users SET last_login = datetime('now') WHERE id = ?")
+        let query = format!("UPDATE users SET last_login = {} WHERE id = $1", SQL_NOW);
+        sqlx::query(&query)
             .bind(id)
             .execute(self.pool)
             .await
@@ -158,7 +174,7 @@ impl<'a> UserRepository<'a> {
     ///
     /// Returns true if a user was deleted, false if not found.
     pub async fn delete(&self, id: i64) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM users WHERE id = ?")
+        let result = sqlx::query("DELETE FROM users WHERE id = $1")
             .bind(id)
             .execute(self.pool)
             .await
@@ -168,14 +184,16 @@ impl<'a> UserRepository<'a> {
 
     /// List all active users.
     pub async fn list_active(&self) -> Result<Vec<User>> {
-        let users = sqlx::query_as::<_, User>(
+        let query = format!(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
                     encoding, language, auto_paging, created_at, last_login, is_active
-             FROM users WHERE is_active = 1 ORDER BY username",
-        )
-        .fetch_all(self.pool)
-        .await
-        .map_err(|e| HobbsError::Database(e.to_string()))?;
+             FROM users WHERE is_active = {} ORDER BY username",
+            SQL_TRUE
+        );
+        let users = sqlx::query_as::<_, User>(&query)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(users)
     }
@@ -196,15 +214,17 @@ impl<'a> UserRepository<'a> {
 
     /// List users by role.
     pub async fn list_by_role(&self, role: Role) -> Result<Vec<User>> {
-        let users = sqlx::query_as::<_, User>(
+        let query = format!(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
                     encoding, language, auto_paging, created_at, last_login, is_active
-             FROM users WHERE role = ? AND is_active = 1 ORDER BY username",
-        )
-        .bind(role.as_str())
-        .fetch_all(self.pool)
-        .await
-        .map_err(|e| HobbsError::Database(e.to_string()))?;
+             FROM users WHERE role = $1 AND is_active = {} ORDER BY username",
+            SQL_TRUE
+        );
+        let users = sqlx::query_as::<_, User>(&query)
+            .bind(role.as_str())
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(users)
     }
@@ -220,7 +240,8 @@ impl<'a> UserRepository<'a> {
 
     /// Count active users.
     pub async fn count_active(&self) -> Result<i64> {
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE is_active = 1")
+        let query = format!("SELECT COUNT(*) FROM users WHERE is_active = {}", SQL_TRUE);
+        let count: (i64,) = sqlx::query_as(&query)
             .fetch_one(self.pool)
             .await
             .map_err(|e| HobbsError::Database(e.to_string()))?;
@@ -229,12 +250,16 @@ impl<'a> UserRepository<'a> {
 
     /// Check if a username is already taken (case-insensitive).
     pub async fn username_exists(&self, username: &str) -> Result<bool> {
-        let exists: (bool,) =
-            sqlx::query_as("SELECT EXISTS(SELECT 1 FROM users WHERE username = ? COLLATE NOCASE)")
-                .bind(username)
-                .fetch_one(self.pool)
-                .await
-                .map_err(|e| HobbsError::Database(e.to_string()))?;
+        #[cfg(feature = "sqlite")]
+        let query = "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1 COLLATE NOCASE)";
+        #[cfg(feature = "postgres")]
+        let query = "SELECT EXISTS(SELECT 1 FROM users WHERE LOWER(username) = LOWER($1))";
+
+        let exists: (bool,) = sqlx::query_as(query)
+            .bind(username)
+            .fetch_one(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
         Ok(exists.0)
     }
 }

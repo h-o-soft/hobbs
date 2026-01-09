@@ -2,8 +2,16 @@
 //!
 //! Provides storage for script-specific data, both global and per-user.
 
+use crate::db::DbPool;
 use crate::error::{HobbsError, Result};
-use sqlx::SqlitePool;
+
+/// SQL expression for current timestamp (SQLite).
+#[cfg(feature = "sqlite")]
+const SQL_NOW: &str = "datetime('now')";
+
+/// SQL expression for current timestamp (PostgreSQL).
+#[cfg(feature = "postgres")]
+const SQL_NOW: &str = "TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')";
 
 /// A single script data entry.
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -24,19 +32,19 @@ pub struct ScriptData {
 
 /// Repository for script data operations.
 pub struct ScriptDataRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> ScriptDataRepository<'a> {
     /// Create a new script data repository.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Get global data for a script.
     pub async fn get_global(&self, script_id: i64, key: &str) -> Result<Option<String>> {
         let result = sqlx::query_scalar::<_, String>(
-            "SELECT value FROM script_data WHERE script_id = ? AND user_id IS NULL AND key = ?",
+            "SELECT value FROM script_data WHERE script_id = $1 AND user_id IS NULL AND key = $2",
         )
         .bind(script_id)
         .bind(key)
@@ -51,8 +59,8 @@ impl<'a> ScriptDataRepository<'a> {
     pub async fn set_global(&self, script_id: i64, key: &str, value: &str) -> Result<()> {
         // SQLite doesn't treat NULL as equal in UNIQUE constraints,
         // so we need to check and update/insert separately
-        let exists: i32 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM script_data WHERE script_id = ? AND user_id IS NULL AND key = ?",
+        let exists: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM script_data WHERE script_id = $1 AND user_id IS NULL AND key = $2",
         )
         .bind(script_id)
         .bind(key)
@@ -61,9 +69,10 @@ impl<'a> ScriptDataRepository<'a> {
         .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         if exists > 0 {
-            sqlx::query(
-                "UPDATE script_data SET value = ?, updated_at = datetime('now') WHERE script_id = ? AND user_id IS NULL AND key = ?",
-            )
+            sqlx::query(&format!(
+                "UPDATE script_data SET value = $1, updated_at = {} WHERE script_id = $2 AND user_id IS NULL AND key = $3",
+                SQL_NOW
+            ))
             .bind(value)
             .bind(script_id)
             .bind(key)
@@ -71,9 +80,10 @@ impl<'a> ScriptDataRepository<'a> {
             .await
             .map_err(|e| HobbsError::Database(e.to_string()))?;
         } else {
-            sqlx::query(
-                "INSERT INTO script_data (script_id, user_id, key, value, updated_at) VALUES (?, NULL, ?, ?, datetime('now'))",
-            )
+            sqlx::query(&format!(
+                "INSERT INTO script_data (script_id, user_id, key, value, updated_at) VALUES ($1, NULL, $2, $3, {})",
+                SQL_NOW
+            ))
             .bind(script_id)
             .bind(key)
             .bind(value)
@@ -88,7 +98,7 @@ impl<'a> ScriptDataRepository<'a> {
     /// Delete global data for a script.
     pub async fn delete_global(&self, script_id: i64, key: &str) -> Result<bool> {
         let result = sqlx::query(
-            "DELETE FROM script_data WHERE script_id = ? AND user_id IS NULL AND key = ?",
+            "DELETE FROM script_data WHERE script_id = $1 AND user_id IS NULL AND key = $2",
         )
         .bind(script_id)
         .bind(key)
@@ -107,7 +117,7 @@ impl<'a> ScriptDataRepository<'a> {
         key: &str,
     ) -> Result<Option<String>> {
         let result = sqlx::query_scalar::<_, String>(
-            "SELECT value FROM script_data WHERE script_id = ? AND user_id = ? AND key = ?",
+            "SELECT value FROM script_data WHERE script_id = $1 AND user_id = $2 AND key = $3",
         )
         .bind(script_id)
         .bind(user_id)
@@ -127,15 +137,16 @@ impl<'a> ScriptDataRepository<'a> {
         key: &str,
         value: &str,
     ) -> Result<()> {
-        sqlx::query(
+        sqlx::query(&format!(
             r#"
             INSERT INTO script_data (script_id, user_id, key, value, updated_at)
-            VALUES (?, ?, ?, ?, datetime('now'))
+            VALUES ($1, $2, $3, $4, {})
             ON CONFLICT(script_id, user_id, key) DO UPDATE SET
                 value = excluded.value,
-                updated_at = datetime('now')
+                updated_at = {}
             "#,
-        )
+            SQL_NOW, SQL_NOW
+        ))
         .bind(script_id)
         .bind(user_id)
         .bind(key)
@@ -150,7 +161,7 @@ impl<'a> ScriptDataRepository<'a> {
     /// Delete user-specific data for a script.
     pub async fn delete_user(&self, script_id: i64, user_id: i64, key: &str) -> Result<bool> {
         let result =
-            sqlx::query("DELETE FROM script_data WHERE script_id = ? AND user_id = ? AND key = ?")
+            sqlx::query("DELETE FROM script_data WHERE script_id = $1 AND user_id = $2 AND key = $3")
                 .bind(script_id)
                 .bind(user_id)
                 .bind(key)
@@ -164,7 +175,7 @@ impl<'a> ScriptDataRepository<'a> {
     /// List all global keys for a script.
     pub async fn list_global_keys(&self, script_id: i64) -> Result<Vec<String>> {
         let keys = sqlx::query_scalar::<_, String>(
-            "SELECT key FROM script_data WHERE script_id = ? AND user_id IS NULL ORDER BY key",
+            "SELECT key FROM script_data WHERE script_id = $1 AND user_id IS NULL ORDER BY key",
         )
         .bind(script_id)
         .fetch_all(self.pool)
@@ -177,7 +188,7 @@ impl<'a> ScriptDataRepository<'a> {
     /// List all user-specific keys for a script.
     pub async fn list_user_keys(&self, script_id: i64, user_id: i64) -> Result<Vec<String>> {
         let keys = sqlx::query_scalar::<_, String>(
-            "SELECT key FROM script_data WHERE script_id = ? AND user_id = ? ORDER BY key",
+            "SELECT key FROM script_data WHERE script_id = $1 AND user_id = $2 ORDER BY key",
         )
         .bind(script_id)
         .bind(user_id)
@@ -190,7 +201,7 @@ impl<'a> ScriptDataRepository<'a> {
 
     /// Delete all data for a script.
     pub async fn delete_all_for_script(&self, script_id: i64) -> Result<u64> {
-        let result = sqlx::query("DELETE FROM script_data WHERE script_id = ?")
+        let result = sqlx::query("DELETE FROM script_data WHERE script_id = $1")
             .bind(script_id)
             .execute(self.pool)
             .await
@@ -201,7 +212,7 @@ impl<'a> ScriptDataRepository<'a> {
 
     /// Delete all data for a user across all scripts.
     pub async fn delete_all_for_user(&self, user_id: i64) -> Result<u64> {
-        let result = sqlx::query("DELETE FROM script_data WHERE user_id = ?")
+        let result = sqlx::query("DELETE FROM script_data WHERE user_id = $1")
             .bind(user_id)
             .execute(self.pool)
             .await
@@ -211,10 +222,11 @@ impl<'a> ScriptDataRepository<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
     use crate::Database;
+    use sqlx::SqlitePool;
 
     async fn create_test_pool() -> SqlitePool {
         let db = Database::open_in_memory()

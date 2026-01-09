@@ -1128,6 +1128,7 @@ mod tests {
         assert_ne!(MenuResult::Logout, MenuResult::Quit);
     }
 
+    #[cfg(feature = "sqlite")]
     #[tokio::test]
     async fn test_set_language_updates_i18n() {
         use crate::db::Database;
@@ -1202,6 +1203,7 @@ main = "Main Menu""#,
         assert_eq!(handler.i18n.t("menu.main"), "menu.main"); // Fallback to key
     }
 
+    #[cfg(feature = "sqlite")]
     #[tokio::test]
     async fn test_set_language_affects_create_context() {
         use crate::db::Database;
@@ -1268,6 +1270,7 @@ value = "English value""#,
         assert_eq!(handler.i18n.locale(), "en");
     }
 
+    #[cfg(feature = "sqlite")]
     #[tokio::test]
     async fn test_set_language_affects_screen_context() {
         use crate::db::Database;

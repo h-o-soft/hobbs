@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use mlua::Table;
-use sqlx::SqlitePool;
 
 use super::api::BbsApi;
 use super::data_repository::ScriptDataRepository;
@@ -14,7 +13,7 @@ use super::loader::ScriptLoader;
 use super::log_repository::ScriptLogRepository;
 use super::repository::ScriptRepository;
 use super::types::Script;
-use crate::db::Database;
+use crate::db::{Database, DbPool};
 use crate::{HobbsError, Result};
 
 /// Result of script execution.
@@ -30,16 +29,25 @@ pub struct ExecutionResult {
     pub error: Option<String>,
 }
 
+/// Pre-loaded script data for execution.
+#[derive(Debug, Clone, Default)]
+pub struct ScriptData {
+    /// Global data (shared across all users).
+    pub global: HashMap<String, String>,
+    /// User-specific data.
+    pub user: HashMap<String, String>,
+}
+
 /// Service for managing and executing scripts.
 pub struct ScriptService<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
     db: &'a Database,
     scripts_dir: Option<std::path::PathBuf>,
 }
 
 impl<'a> ScriptService<'a> {
     /// Create a new ScriptService.
-    pub fn new(pool: &'a SqlitePool, db: &'a Database) -> Self {
+    pub fn new(pool: &'a DbPool, db: &'a Database) -> Self {
         Self {
             pool,
             db,
@@ -82,6 +90,38 @@ impl<'a> ScriptService<'a> {
         script.can_execute(user_role)
     }
 
+    /// Load script data from the database (async).
+    ///
+    /// This should be called BEFORE entering a blocking context.
+    pub async fn load_script_data(
+        &self,
+        script_id: i64,
+        user_id: Option<i64>,
+    ) -> Result<ScriptData> {
+        let repo = ScriptDataRepository::new(self.pool);
+        let global = self.load_global_data(&repo, script_id).await?;
+        let user = self.load_user_data(&repo, script_id, user_id).await?;
+        Ok(ScriptData { global, user })
+    }
+
+    /// Save script data to the database (async).
+    ///
+    /// This should be called AFTER exiting a blocking context.
+    pub async fn save_script_data(
+        &self,
+        script_id: i64,
+        user_id: Option<i64>,
+        data: &ScriptData,
+    ) -> Result<()> {
+        let repo = ScriptDataRepository::new(self.pool);
+        self.save_global_data(&repo, script_id, &data.global).await?;
+        if let Some(uid) = user_id {
+            self.save_user_data(&repo, script_id, uid, &data.user)
+                .await?;
+        }
+        Ok(())
+    }
+
     /// Execute a script with the given context.
     ///
     /// Returns the execution result containing output and status.
@@ -89,6 +129,107 @@ impl<'a> ScriptService<'a> {
     /// for scripts that require user input.
     pub fn execute(&self, script: &Script, context: ScriptContext) -> Result<ExecutionResult> {
         self.execute_with_runtime(script, context, None)
+    }
+
+    /// Execute a script with pre-loaded data (no database access).
+    ///
+    /// This method is designed to be called from a blocking context (spawn_blocking).
+    /// Data loading and saving should be done outside the blocking context.
+    ///
+    /// Returns the execution result and the modified script data.
+    pub fn execute_with_data(
+        &self,
+        script: &Script,
+        mut context: ScriptContext,
+        script_handle: Option<Arc<super::runtime::ScriptHandle>>,
+        mut data: ScriptData,
+    ) -> Result<(ExecutionResult, ScriptData)> {
+        // Check if script is enabled
+        if !script.enabled {
+            return Err(HobbsError::Script("Script is disabled".to_string()));
+        }
+
+        // Check permission
+        if !script.can_execute(context.user_role) {
+            return Err(HobbsError::Permission(format!(
+                "Insufficient role to execute script '{}'",
+                script.name
+            )));
+        }
+
+        // Set script_id in context
+        context.script_id = Some(script.id);
+
+        // Load translations from sidecar file
+        if let Some(ref scripts_dir) = self.scripts_dir {
+            let loader = ScriptLoader::new(scripts_dir);
+            context.translations = loader.load_translations(&script.file_path);
+        }
+
+        // Load source code
+        let source = self.load_script_source(&script.file_path)?;
+
+        // Create engine with script-specific limits
+        let limits = ResourceLimits {
+            max_instructions: script.max_instructions as u64,
+            max_memory: script.max_memory_mb as usize * 1024 * 1024,
+            max_execution_seconds: script.max_execution_seconds as u32,
+        };
+
+        let engine = ScriptEngine::with_limits(limits)?;
+
+        // Use pre-loaded data (no database access here)
+        let global_data = Arc::new(Mutex::new(std::mem::take(&mut data.global)));
+        let user_data = Arc::new(Mutex::new(std::mem::take(&mut data.user)));
+
+        // Register BBS API with optional script handle
+        let mut api = BbsApi::new(context.clone());
+        if let Some(handle) = script_handle {
+            api = api.with_script_handle(handle);
+        }
+        let output_buffer = api.output_buffer_ref();
+        api.register(engine.lua())
+            .map_err(|e| HobbsError::Script(format!("Failed to register BBS API: {}", e)))?;
+
+        // Register data API
+        self.register_data_api(
+            engine.lua(),
+            script.id,
+            context.user_id,
+            &global_data,
+            &user_data,
+        )
+        .map_err(|e| HobbsError::Script(format!("Failed to register data API: {}", e)))?;
+
+        // Execute the script
+        let result = engine.execute(&source);
+
+        // Get output regardless of success/failure
+        let output = output_buffer.lock().unwrap().clone();
+
+        // Extract modified data
+        let modified_data = ScriptData {
+            global: std::mem::take(&mut *global_data.lock().unwrap()),
+            user: std::mem::take(&mut *user_data.lock().unwrap()),
+        };
+
+        // Build execution result
+        let exec_result = match &result {
+            Ok(()) => ExecutionResult {
+                output,
+                instructions_used: engine.instruction_count(),
+                success: true,
+                error: None,
+            },
+            Err(e) => ExecutionResult {
+                output,
+                instructions_used: engine.instruction_count(),
+                success: false,
+                error: Some(e.to_string()),
+            },
+        };
+
+        Ok((exec_result, modified_data))
     }
 
     /// Execute a script with the given context and optional script handle.
@@ -752,17 +893,12 @@ bbs.println("Counter: " .. count)
         let dir = tempdir().unwrap();
 
         // Create a user
-        sqlx::query(
-            "INSERT INTO users (username, password, nickname, role) VALUES ('testuser', 'hash', 'Test', 'member')",
+        let user_id: i64 = sqlx::query_scalar(
+            "INSERT INTO users (username, password, nickname, role) VALUES ('testuser', 'hash', 'Test', 'member') RETURNING id",
         )
-        .execute(db.pool())
+        .fetch_one(db.pool())
         .await
         .unwrap();
-
-        let user_id: i64 = sqlx::query_scalar("SELECT last_insert_rowid()")
-            .fetch_one(db.pool())
-            .await
-            .unwrap();
 
         // Create a script that uses user data
         let script_content = r#"-- @name User Data Test

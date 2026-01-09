@@ -1,8 +1,9 @@
 //! File metadata types and repository for HOBBS file management.
 
 use chrono::{DateTime, Utc};
-use sqlx::{QueryBuilder, SqlitePool};
+use sqlx::QueryBuilder;
 
+use crate::db::DbPool;
 use crate::Result;
 
 /// Metadata for a file in the file library.
@@ -123,20 +124,21 @@ impl FileUpdate {
 
 /// Repository for file metadata operations.
 pub struct FileRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> FileRepository<'a> {
     /// Create a new FileRepository with the given database pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Create a new file entry.
     pub async fn create(&self, file: &NewFile) -> Result<FileMetadata> {
-        let result = sqlx::query(
+        let id: i64 = sqlx::query_scalar(
             "INSERT INTO files (folder_id, filename, stored_name, size, description, uploader_id)
-             VALUES (?, ?, ?, ?, ?, ?)",
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING id",
         )
         .bind(file.folder_id)
         .bind(&file.filename)
@@ -144,11 +146,10 @@ impl<'a> FileRepository<'a> {
         .bind(file.size)
         .bind(&file.description)
         .bind(file.uploader_id)
-        .execute(self.pool)
+        .fetch_one(self.pool)
         .await
         .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
         self.get_by_id(id)
             .await?
             .ok_or_else(|| crate::HobbsError::NotFound("file".to_string()))
@@ -158,7 +159,7 @@ impl<'a> FileRepository<'a> {
     pub async fn get_by_id(&self, id: i64) -> Result<Option<FileMetadata>> {
         let file = sqlx::query_as::<_, FileMetadata>(
             "SELECT id, folder_id, filename, stored_name, size, description, uploader_id, downloads, created_at
-             FROM files WHERE id = ?",
+             FROM files WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(self.pool)
@@ -172,7 +173,7 @@ impl<'a> FileRepository<'a> {
     pub async fn get_by_stored_name(&self, stored_name: &str) -> Result<Option<FileMetadata>> {
         let file = sqlx::query_as::<_, FileMetadata>(
             "SELECT id, folder_id, filename, stored_name, size, description, uploader_id, downloads, created_at
-             FROM files WHERE stored_name = ?",
+             FROM files WHERE stored_name = $1",
         )
         .bind(stored_name)
         .fetch_optional(self.pool)
@@ -186,7 +187,7 @@ impl<'a> FileRepository<'a> {
     pub async fn list_by_folder(&self, folder_id: i64) -> Result<Vec<FileMetadata>> {
         let files = sqlx::query_as::<_, FileMetadata>(
             "SELECT id, folder_id, filename, stored_name, size, description, uploader_id, downloads, created_at
-             FROM files WHERE folder_id = ? ORDER BY created_at DESC, id DESC",
+             FROM files WHERE folder_id = $1 ORDER BY created_at DESC, id DESC",
         )
         .bind(folder_id)
         .fetch_all(self.pool)
@@ -200,7 +201,7 @@ impl<'a> FileRepository<'a> {
     pub async fn list_by_uploader(&self, uploader_id: i64) -> Result<Vec<FileMetadata>> {
         let files = sqlx::query_as::<_, FileMetadata>(
             "SELECT id, folder_id, filename, stored_name, size, description, uploader_id, downloads, created_at
-             FROM files WHERE uploader_id = ? ORDER BY created_at DESC, id DESC",
+             FROM files WHERE uploader_id = $1 ORDER BY created_at DESC, id DESC",
         )
         .bind(uploader_id)
         .fetch_all(self.pool)
@@ -216,7 +217,10 @@ impl<'a> FileRepository<'a> {
             return self.get_by_id(id).await;
         }
 
+        #[cfg(feature = "sqlite")]
         let mut query: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new("UPDATE files SET ");
+        #[cfg(feature = "postgres")]
+        let mut query: QueryBuilder<sqlx::Postgres> = QueryBuilder::new("UPDATE files SET ");
         let mut separated = query.separated(", ");
 
         if let Some(ref filename) = update.filename {
@@ -252,13 +256,13 @@ impl<'a> FileRepository<'a> {
 
     /// Increment the download count for a file.
     pub async fn increment_downloads(&self, id: i64) -> Result<i64> {
-        sqlx::query("UPDATE files SET downloads = downloads + 1 WHERE id = ?")
+        sqlx::query("UPDATE files SET downloads = downloads + 1 WHERE id = $1")
             .bind(id)
             .execute(self.pool)
             .await
             .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        let downloads: (i64,) = sqlx::query_as("SELECT downloads FROM files WHERE id = ?")
+        let downloads: (i64,) = sqlx::query_as("SELECT downloads FROM files WHERE id = $1")
             .bind(id)
             .fetch_one(self.pool)
             .await
@@ -269,7 +273,7 @@ impl<'a> FileRepository<'a> {
 
     /// Delete a file by ID.
     pub async fn delete(&self, id: i64) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM files WHERE id = ?")
+        let result = sqlx::query("DELETE FROM files WHERE id = $1")
             .bind(id)
             .execute(self.pool)
             .await
@@ -280,7 +284,7 @@ impl<'a> FileRepository<'a> {
 
     /// Count files in a folder.
     pub async fn count_by_folder(&self, folder_id: i64) -> Result<i64> {
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM files WHERE folder_id = ?")
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM files WHERE folder_id = $1")
             .bind(folder_id)
             .fetch_one(self.pool)
             .await
@@ -292,7 +296,7 @@ impl<'a> FileRepository<'a> {
     /// Get total size of files in a folder.
     pub async fn total_size_by_folder(&self, folder_id: i64) -> Result<i64> {
         let size: (i64,) =
-            sqlx::query_as("SELECT COALESCE(SUM(size), 0) FROM files WHERE folder_id = ?")
+            sqlx::query_as("SELECT COALESCE(SUM(size), 0) FROM files WHERE folder_id = $1")
                 .bind(folder_id)
                 .fetch_one(self.pool)
                 .await
@@ -302,12 +306,13 @@ impl<'a> FileRepository<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
     use crate::db::{NewUser, UserRepository};
     use crate::file::{FolderRepository, NewFolder};
     use crate::Database;
+    use sqlx::SqlitePool;
 
     async fn setup_db() -> Database {
         Database::open_in_memory().await.unwrap()

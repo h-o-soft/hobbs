@@ -1,3 +1,4 @@
+#![cfg(feature = "sqlite")]
 //! E2E Connection tests for HOBBS.
 //!
 //! Tests basic Telnet connection, negotiation, and session lifecycle.

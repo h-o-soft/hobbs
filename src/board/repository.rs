@@ -2,30 +2,31 @@
 //!
 //! This module provides CRUD operations for boards in the database.
 
-use sqlx::{QueryBuilder, SqlitePool};
+use sqlx::QueryBuilder;
 
 use super::types::{Board, BoardType, BoardUpdate, NewBoard};
-use crate::db::Role;
+use crate::db::{DbPool, Role, SQL_TRUE};
 use crate::{HobbsError, Result};
 
 /// Repository for board CRUD operations.
 pub struct BoardRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> BoardRepository<'a> {
     /// Create a new BoardRepository with the given database pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Create a new board in the database.
     ///
     /// Returns the created board with the assigned ID.
+    #[cfg(feature = "sqlite")]
     pub async fn create(&self, new_board: &NewBoard) -> Result<Board> {
-        let result = sqlx::query(
+        let id: i64 = sqlx::query_scalar(
             "INSERT INTO boards (name, description, board_type, min_read_role, min_write_role, sort_order)
-             VALUES (?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
         )
         .bind(&new_board.name)
         .bind(&new_board.description)
@@ -33,11 +34,34 @@ impl<'a> BoardRepository<'a> {
         .bind(new_board.min_read_role.as_str())
         .bind(new_board.min_write_role.as_str())
         .bind(new_board.sort_order)
-        .execute(self.pool)
+        .fetch_one(self.pool)
         .await
         .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
+        self.get_by_id(id)
+            .await?
+            .ok_or_else(|| HobbsError::NotFound("board".to_string()))
+    }
+
+    /// Create a new board in the database.
+    ///
+    /// Returns the created board with the assigned ID.
+    #[cfg(feature = "postgres")]
+    pub async fn create(&self, new_board: &NewBoard) -> Result<Board> {
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO boards (name, description, board_type, min_read_role, min_write_role, sort_order)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+        )
+        .bind(&new_board.name)
+        .bind(&new_board.description)
+        .bind(new_board.board_type.as_str())
+        .bind(new_board.min_read_role.as_str())
+        .bind(new_board.min_write_role.as_str())
+        .bind(new_board.sort_order)
+        .fetch_one(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
         self.get_by_id(id)
             .await?
             .ok_or_else(|| HobbsError::NotFound("board".to_string()))
@@ -48,7 +72,7 @@ impl<'a> BoardRepository<'a> {
         let result: Option<BoardRow> = sqlx::query_as(
             "SELECT id, name, description, board_type, min_read_role, min_write_role,
                     sort_order, is_active, created_at
-             FROM boards WHERE id = ?",
+             FROM boards WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(self.pool)
@@ -63,7 +87,7 @@ impl<'a> BoardRepository<'a> {
         let result: Option<BoardRow> = sqlx::query_as(
             "SELECT id, name, description, board_type, min_read_role, min_write_role,
                     sort_order, is_active, created_at
-             FROM boards WHERE name = ?",
+             FROM boards WHERE name = $1",
         )
         .bind(name)
         .fetch_optional(self.pool)
@@ -77,6 +101,7 @@ impl<'a> BoardRepository<'a> {
     ///
     /// Only fields that are set in the update will be modified.
     /// Returns the updated board, or None if not found.
+    #[cfg(feature = "sqlite")]
     pub async fn update(&self, id: i64, update: &BoardUpdate) -> Result<Option<Board>> {
         if update.is_empty() {
             return self.get_by_id(id).await;
@@ -130,11 +155,69 @@ impl<'a> BoardRepository<'a> {
         self.get_by_id(id).await
     }
 
+    /// Update a board by ID.
+    ///
+    /// Only fields that are set in the update will be modified.
+    /// Returns the updated board, or None if not found.
+    #[cfg(feature = "postgres")]
+    pub async fn update(&self, id: i64, update: &BoardUpdate) -> Result<Option<Board>> {
+        if update.is_empty() {
+            return self.get_by_id(id).await;
+        }
+
+        let mut query: QueryBuilder<sqlx::Postgres> = QueryBuilder::new("UPDATE boards SET ");
+        let mut separated = query.separated(", ");
+
+        if let Some(ref name) = update.name {
+            separated.push("name = ");
+            separated.push_bind_unseparated(name);
+        }
+        if let Some(ref description) = update.description {
+            separated.push("description = ");
+            separated.push_bind_unseparated(description.clone());
+        }
+        if let Some(board_type) = update.board_type {
+            separated.push("board_type = ");
+            separated.push_bind_unseparated(board_type.as_str().to_string());
+        }
+        if let Some(role) = update.min_read_role {
+            separated.push("min_read_role = ");
+            separated.push_bind_unseparated(role.as_str().to_string());
+        }
+        if let Some(role) = update.min_write_role {
+            separated.push("min_write_role = ");
+            separated.push_bind_unseparated(role.as_str().to_string());
+        }
+        if let Some(sort_order) = update.sort_order {
+            separated.push("sort_order = ");
+            separated.push_bind_unseparated(sort_order);
+        }
+        if let Some(is_active) = update.is_active {
+            separated.push("is_active = ");
+            separated.push_bind_unseparated(is_active);
+        }
+
+        query.push(" WHERE id = ");
+        query.push_bind(id);
+
+        let result = query
+            .build()
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        if result.rows_affected() == 0 {
+            return Ok(None);
+        }
+
+        self.get_by_id(id).await
+    }
+
     /// Delete a board by ID.
     ///
     /// Returns true if a board was deleted, false if not found.
     pub async fn delete(&self, id: i64) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM boards WHERE id = ?")
+        let result = sqlx::query("DELETE FROM boards WHERE id = $1")
             .bind(id)
             .execute(self.pool)
             .await
@@ -144,14 +227,16 @@ impl<'a> BoardRepository<'a> {
 
     /// List all active boards, ordered by sort_order then created_at.
     pub async fn list_active(&self) -> Result<Vec<Board>> {
-        let rows: Vec<BoardRow> = sqlx::query_as(
+        let query = format!(
             "SELECT id, name, description, board_type, min_read_role, min_write_role,
                     sort_order, is_active, created_at
-             FROM boards WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC, id ASC",
-        )
-        .fetch_all(self.pool)
-        .await
-        .map_err(|e| HobbsError::Database(e.to_string()))?;
+             FROM boards WHERE is_active = {} ORDER BY sort_order ASC, created_at ASC, id ASC",
+            SQL_TRUE
+        );
+        let rows: Vec<BoardRow> = sqlx::query_as(&query)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(rows.into_iter().map(|row| row.into_board()).collect())
     }
@@ -205,7 +290,8 @@ impl<'a> BoardRepository<'a> {
 
     /// Count active boards.
     pub async fn count_active(&self) -> Result<i64> {
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM boards WHERE is_active = 1")
+        let query = format!("SELECT COUNT(*) FROM boards WHERE is_active = {}", SQL_TRUE);
+        let count: (i64,) = sqlx::query_as(&query)
             .fetch_one(self.pool)
             .await
             .map_err(|e| HobbsError::Database(e.to_string()))?;
@@ -214,7 +300,7 @@ impl<'a> BoardRepository<'a> {
 
     /// Check if a board name is already taken.
     pub async fn name_exists(&self, name: &str) -> Result<bool> {
-        let exists: (bool,) = sqlx::query_as("SELECT EXISTS(SELECT 1 FROM boards WHERE name = ?)")
+        let exists: (bool,) = sqlx::query_as("SELECT EXISTS(SELECT 1 FROM boards WHERE name = $1)")
             .bind(name)
             .fetch_one(self.pool)
             .await

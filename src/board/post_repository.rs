@@ -2,38 +2,58 @@
 //!
 //! This module provides CRUD operations for posts in the database.
 
-use sqlx::SqlitePool;
-
 use super::post::{NewFlatPost, NewThreadPost, Post, PostUpdate};
+use crate::db::DbPool;
 use crate::{HobbsError, Result};
 
 /// Repository for post CRUD operations.
 pub struct PostRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> PostRepository<'a> {
     /// Create a new PostRepository with the given pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Create a new post in a thread.
     ///
     /// Returns the created post with the assigned ID.
+    #[cfg(feature = "sqlite")]
     pub async fn create_thread_post(&self, new_post: &NewThreadPost) -> Result<Post> {
-        let result = sqlx::query(
-            "INSERT INTO posts (board_id, thread_id, author_id, body) VALUES (?, ?, ?, ?)",
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO posts (board_id, thread_id, author_id, body) VALUES (?, ?, ?, ?) RETURNING id",
         )
         .bind(new_post.board_id)
         .bind(new_post.thread_id)
         .bind(new_post.author_id)
         .bind(&new_post.body)
-        .execute(self.pool)
+        .fetch_one(self.pool)
         .await
         .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
+        self.get_by_id(id)
+            .await?
+            .ok_or_else(|| HobbsError::NotFound("post".to_string()))
+    }
+
+    /// Create a new post in a thread.
+    ///
+    /// Returns the created post with the assigned ID.
+    #[cfg(feature = "postgres")]
+    pub async fn create_thread_post(&self, new_post: &NewThreadPost) -> Result<Post> {
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO posts (board_id, thread_id, author_id, body) VALUES ($1, $2, $3, $4) RETURNING id",
+        )
+        .bind(new_post.board_id)
+        .bind(new_post.thread_id)
+        .bind(new_post.author_id)
+        .bind(&new_post.body)
+        .fetch_one(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
         self.get_by_id(id)
             .await?
             .ok_or_else(|| HobbsError::NotFound("post".to_string()))
@@ -42,18 +62,38 @@ impl<'a> PostRepository<'a> {
     /// Create a new post in a flat board.
     ///
     /// Returns the created post with the assigned ID.
+    #[cfg(feature = "sqlite")]
     pub async fn create_flat_post(&self, new_post: &NewFlatPost) -> Result<Post> {
-        let result =
-            sqlx::query("INSERT INTO posts (board_id, author_id, title, body) VALUES (?, ?, ?, ?)")
+        let id: i64 =
+            sqlx::query_scalar("INSERT INTO posts (board_id, author_id, title, body) VALUES (?, ?, ?, ?) RETURNING id")
                 .bind(new_post.board_id)
                 .bind(new_post.author_id)
                 .bind(&new_post.title)
                 .bind(&new_post.body)
-                .execute(self.pool)
+                .fetch_one(self.pool)
                 .await
                 .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
+        self.get_by_id(id)
+            .await?
+            .ok_or_else(|| HobbsError::NotFound("post".to_string()))
+    }
+
+    /// Create a new post in a flat board.
+    ///
+    /// Returns the created post with the assigned ID.
+    #[cfg(feature = "postgres")]
+    pub async fn create_flat_post(&self, new_post: &NewFlatPost) -> Result<Post> {
+        let id: i64 =
+            sqlx::query_scalar("INSERT INTO posts (board_id, author_id, title, body) VALUES ($1, $2, $3, $4) RETURNING id")
+                .bind(new_post.board_id)
+                .bind(new_post.author_id)
+                .bind(&new_post.title)
+                .bind(&new_post.body)
+                .fetch_one(self.pool)
+                .await
+                .map_err(|e| HobbsError::Database(e.to_string()))?;
+
         self.get_by_id(id)
             .await?
             .ok_or_else(|| HobbsError::NotFound("post".to_string()))
@@ -63,7 +103,7 @@ impl<'a> PostRepository<'a> {
     pub async fn get_by_id(&self, id: i64) -> Result<Option<Post>> {
         let post = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE id = ?",
+             FROM posts WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(self.pool)
@@ -84,15 +124,18 @@ impl<'a> PostRepository<'a> {
 
         // Build dynamic query based on what fields are set
         let mut set_clauses = Vec::new();
+        let mut param_num = 1;
 
         if update.title.is_some() {
-            set_clauses.push("title = ?");
+            set_clauses.push(format!("title = ${}", param_num));
+            param_num += 1;
         }
         if update.body.is_some() {
-            set_clauses.push("body = ?");
+            set_clauses.push(format!("body = ${}", param_num));
+            param_num += 1;
         }
 
-        let sql = format!("UPDATE posts SET {} WHERE id = ?", set_clauses.join(", "));
+        let sql = format!("UPDATE posts SET {} WHERE id = ${}", set_clauses.join(", "), param_num);
 
         // Build the query dynamically
         let mut query = sqlx::query(&sql);
@@ -122,7 +165,7 @@ impl<'a> PostRepository<'a> {
     ///
     /// Returns true if a post was deleted, false if not found.
     pub async fn delete(&self, id: i64) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM posts WHERE id = ?")
+        let result = sqlx::query("DELETE FROM posts WHERE id = $1")
             .bind(id)
             .execute(self.pool)
             .await
@@ -135,7 +178,7 @@ impl<'a> PostRepository<'a> {
     pub async fn list_by_thread(&self, thread_id: i64) -> Result<Vec<Post>> {
         let posts = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE thread_id = ? ORDER BY created_at ASC",
+             FROM posts WHERE thread_id = $1 ORDER BY created_at ASC",
         )
         .bind(thread_id)
         .fetch_all(self.pool)
@@ -154,7 +197,7 @@ impl<'a> PostRepository<'a> {
     ) -> Result<Vec<Post>> {
         let posts = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE thread_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
+             FROM posts WHERE thread_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3",
         )
         .bind(thread_id)
         .bind(limit)
@@ -170,7 +213,7 @@ impl<'a> PostRepository<'a> {
     pub async fn list_by_flat_board(&self, board_id: i64) -> Result<Vec<Post>> {
         let posts = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE board_id = ? AND thread_id IS NULL ORDER BY created_at DESC, id DESC",
+             FROM posts WHERE board_id = $1 AND thread_id IS NULL ORDER BY created_at DESC, id DESC",
         )
         .bind(board_id)
         .fetch_all(self.pool)
@@ -189,8 +232,8 @@ impl<'a> PostRepository<'a> {
     ) -> Result<Vec<Post>> {
         let posts = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE board_id = ? AND thread_id IS NULL
-             ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
+             FROM posts WHERE board_id = $1 AND thread_id IS NULL
+             ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3",
         )
         .bind(board_id)
         .bind(limit)
@@ -206,7 +249,7 @@ impl<'a> PostRepository<'a> {
     pub async fn list_by_author(&self, author_id: i64) -> Result<Vec<Post>> {
         let posts = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE author_id = ? ORDER BY created_at DESC",
+             FROM posts WHERE author_id = $1 ORDER BY created_at DESC",
         )
         .bind(author_id)
         .fetch_all(self.pool)
@@ -218,7 +261,7 @@ impl<'a> PostRepository<'a> {
 
     /// Count posts in a thread.
     pub async fn count_by_thread(&self, thread_id: i64) -> Result<i64> {
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE thread_id = ?")
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE thread_id = $1")
             .bind(thread_id)
             .fetch_one(self.pool)
             .await
@@ -230,7 +273,7 @@ impl<'a> PostRepository<'a> {
     /// Count posts in a flat board.
     pub async fn count_by_flat_board(&self, board_id: i64) -> Result<i64> {
         let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM posts WHERE board_id = ? AND thread_id IS NULL",
+            "SELECT COUNT(*) FROM posts WHERE board_id = $1 AND thread_id IS NULL",
         )
         .bind(board_id)
         .fetch_one(self.pool)
@@ -242,7 +285,7 @@ impl<'a> PostRepository<'a> {
 
     /// Count all posts in a board (both flat and thread posts).
     pub async fn count_by_board(&self, board_id: i64) -> Result<i64> {
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE board_id = ?")
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE board_id = $1")
             .bind(board_id)
             .fetch_one(self.pool)
             .await
@@ -255,7 +298,7 @@ impl<'a> PostRepository<'a> {
     pub async fn get_latest_in_thread(&self, thread_id: i64) -> Result<Option<Post>> {
         let post = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE thread_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+             FROM posts WHERE thread_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1",
         )
         .bind(thread_id)
         .fetch_optional(self.pool)
@@ -266,11 +309,12 @@ impl<'a> PostRepository<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
     use crate::board::{BoardRepository, BoardType, NewBoard, NewThread, ThreadRepository};
     use crate::Database;
+    use sqlx::SqlitePool;
 
     async fn setup_db() -> Database {
         Database::open_in_memory().await.unwrap()

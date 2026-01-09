@@ -1,39 +1,40 @@
 //! Mail repository for HOBBS.
 
 use chrono::{DateTime, Utc};
-use sqlx::{QueryBuilder, Row, SqlitePool};
+use sqlx::{QueryBuilder, Row};
 
 use super::types::{Mail, MailUpdate, NewMail};
+use crate::db::{DbPool, SQL_FALSE, SQL_TRUE};
 use crate::{HobbsError, Result};
 
 /// Repository for mail operations.
 pub struct MailRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> MailRepository<'a> {
     /// Create a new MailRepository with the given database pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Create a new mail.
     pub async fn create(&self, mail: &NewMail) -> Result<Mail> {
-        let result = sqlx::query(
+        let id: i64 = sqlx::query_scalar(
             r#"
             INSERT INTO mails (sender_id, recipient_id, subject, body)
-            VALUES (?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id
             "#,
         )
         .bind(mail.sender_id)
         .bind(mail.recipient_id)
         .bind(&mail.subject)
         .bind(&mail.body)
-        .execute(self.pool)
+        .fetch_one(self.pool)
         .await
         .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
         self.get_by_id(id)
             .await?
             .ok_or_else(|| HobbsError::NotFound("mail".to_string()))
@@ -46,7 +47,7 @@ impl<'a> MailRepository<'a> {
             SELECT id, sender_id, recipient_id, subject, body,
                    is_read, is_deleted_by_sender, is_deleted_by_recipient, created_at
             FROM mails
-            WHERE id = ?
+            WHERE id = $1
             "#,
         )
         .bind(id)
@@ -62,55 +63,62 @@ impl<'a> MailRepository<'a> {
 
     /// List inbox mails for a user (received mails, not deleted by recipient).
     pub async fn list_inbox(&self, user_id: i64) -> Result<Vec<Mail>> {
-        let rows = sqlx::query(
+        let query = format!(
             r#"
             SELECT id, sender_id, recipient_id, subject, body,
                    is_read, is_deleted_by_sender, is_deleted_by_recipient, created_at
             FROM mails
-            WHERE recipient_id = ? AND is_deleted_by_recipient = 0
+            WHERE recipient_id = $1 AND is_deleted_by_recipient = {}
             ORDER BY created_at DESC, id DESC
             "#,
-        )
-        .bind(user_id)
-        .fetch_all(self.pool)
-        .await
-        .map_err(|e| HobbsError::Database(e.to_string()))?;
+            SQL_FALSE
+        );
+        let rows = sqlx::query(&query)
+            .bind(user_id)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         rows.iter().map(Self::row_to_mail).collect()
     }
 
     /// List sent mails for a user (not deleted by sender).
     pub async fn list_sent(&self, user_id: i64) -> Result<Vec<Mail>> {
-        let rows = sqlx::query(
+        let query = format!(
             r#"
             SELECT id, sender_id, recipient_id, subject, body,
                    is_read, is_deleted_by_sender, is_deleted_by_recipient, created_at
             FROM mails
-            WHERE sender_id = ? AND is_deleted_by_sender = 0
+            WHERE sender_id = $1 AND is_deleted_by_sender = {}
             ORDER BY created_at DESC, id DESC
             "#,
-        )
-        .bind(user_id)
-        .fetch_all(self.pool)
-        .await
-        .map_err(|e| HobbsError::Database(e.to_string()))?;
+            SQL_FALSE
+        );
+        let rows = sqlx::query(&query)
+            .bind(user_id)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         rows.iter().map(Self::row_to_mail).collect()
     }
 
     /// Count unread mails for a user.
     pub async fn count_unread(&self, user_id: i64) -> Result<i64> {
-        let count: (i64,) = sqlx::query_as(
+        let query = format!(
             r#"
             SELECT COUNT(*)
             FROM mails
-            WHERE recipient_id = ? AND is_read = 0 AND is_deleted_by_recipient = 0
+            WHERE recipient_id = $1 AND is_read = {} AND is_deleted_by_recipient = {}
             "#,
-        )
-        .bind(user_id)
-        .fetch_one(self.pool)
-        .await
-        .map_err(|e| HobbsError::Database(e.to_string()))?;
+            SQL_FALSE,
+            SQL_FALSE
+        );
+        let count: (i64,) = sqlx::query_as(&query)
+            .bind(user_id)
+            .fetch_one(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(count.0)
     }
@@ -121,22 +129,34 @@ impl<'a> MailRepository<'a> {
             return Ok(false);
         }
 
+        #[cfg(feature = "sqlite")]
         let mut query: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new("UPDATE mails SET ");
+        #[cfg(feature = "postgres")]
+        let mut query: QueryBuilder<sqlx::Postgres> = QueryBuilder::new("UPDATE mails SET ");
         let mut separated = query.separated(", ");
 
         if let Some(is_read) = update.is_read {
             separated.push("is_read = ");
+            #[cfg(feature = "sqlite")]
             separated.push_bind_unseparated(is_read as i32);
+            #[cfg(feature = "postgres")]
+            separated.push_bind_unseparated(is_read);
         }
 
         if let Some(deleted) = update.is_deleted_by_sender {
             separated.push("is_deleted_by_sender = ");
+            #[cfg(feature = "sqlite")]
             separated.push_bind_unseparated(deleted as i32);
+            #[cfg(feature = "postgres")]
+            separated.push_bind_unseparated(deleted);
         }
 
         if let Some(deleted) = update.is_deleted_by_recipient {
             separated.push("is_deleted_by_recipient = ");
+            #[cfg(feature = "sqlite")]
             separated.push_bind_unseparated(deleted as i32);
+            #[cfg(feature = "postgres")]
+            separated.push_bind_unseparated(deleted);
         }
 
         query.push(" WHERE id = ");
@@ -180,7 +200,7 @@ impl<'a> MailRepository<'a> {
     /// Physically delete a mail.
     /// Should only be used for mails that have been deleted by both sender and recipient.
     pub async fn purge(&self, id: i64) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM mails WHERE id = ?")
+        let result = sqlx::query("DELETE FROM mails WHERE id = $1")
             .bind(id)
             .execute(self.pool)
             .await
@@ -191,12 +211,14 @@ impl<'a> MailRepository<'a> {
 
     /// Purge all mails that have been deleted by both sender and recipient.
     pub async fn purge_all_deleted(&self) -> Result<u64> {
-        let result = sqlx::query(
-            "DELETE FROM mails WHERE is_deleted_by_sender = 1 AND is_deleted_by_recipient = 1",
-        )
-        .execute(self.pool)
-        .await
-        .map_err(|e| HobbsError::Database(e.to_string()))?;
+        let query = format!(
+            "DELETE FROM mails WHERE is_deleted_by_sender = {} AND is_deleted_by_recipient = {}",
+            SQL_TRUE, SQL_TRUE
+        );
+        let result = sqlx::query(&query)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(result.rows_affected())
     }
@@ -212,6 +234,7 @@ impl<'a> MailRepository<'a> {
     }
 
     /// Convert a database row to a Mail.
+    #[cfg(feature = "sqlite")]
     fn row_to_mail(row: &sqlx::sqlite::SqliteRow) -> Result<Mail> {
         let created_at_str: String = row
             .try_get("created_at")
@@ -248,6 +271,45 @@ impl<'a> MailRepository<'a> {
                 .try_get::<i32, _>("is_deleted_by_recipient")
                 .map_err(|e| HobbsError::Database(e.to_string()))?
                 != 0,
+            created_at,
+        })
+    }
+
+    /// Convert a database row to a Mail.
+    #[cfg(feature = "postgres")]
+    fn row_to_mail(row: &sqlx::postgres::PgRow) -> Result<Mail> {
+        let created_at_str: String = row
+            .try_get("created_at")
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+        let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now());
+
+        Ok(Mail {
+            id: row
+                .try_get("id")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
+            sender_id: row
+                .try_get("sender_id")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
+            recipient_id: row
+                .try_get("recipient_id")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
+            subject: row
+                .try_get("subject")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
+            body: row
+                .try_get("body")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
+            is_read: row
+                .try_get::<bool, _>("is_read")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
+            is_deleted_by_sender: row
+                .try_get::<bool, _>("is_deleted_by_sender")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
+            is_deleted_by_recipient: row
+                .try_get::<bool, _>("is_deleted_by_recipient")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
             created_at,
         })
     }

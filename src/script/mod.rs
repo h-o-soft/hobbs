@@ -23,5 +23,5 @@ pub use loader::ScriptLoader;
 pub use log_repository::{ScriptLog, ScriptLogRepository};
 pub use repository::ScriptRepository;
 pub use runtime::{create_script_runtime, HostMessage, ScriptHandle, ScriptMessage, ScriptRuntime};
-pub use service::{ExecutionResult, ScriptService};
+pub use service::{ExecutionResult, ScriptData, ScriptService};
 pub use types::{Script, ScriptMetadata, SyncResult};

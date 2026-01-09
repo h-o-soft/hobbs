@@ -5,10 +5,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
-use sqlx::SqlitePool;
 
 use super::repository::ScriptRepository;
 use super::types::{Script, ScriptMetadata, SyncResult};
+use crate::db::DbPool;
 use crate::Result;
 
 /// Loader for scanning Lua scripts from the file system.
@@ -31,7 +31,7 @@ impl ScriptLoader {
     /// 1. Scan the scripts directory for .lua files
     /// 2. Parse metadata from each file
     /// 3. Add new scripts, update changed ones, and remove deleted ones
-    pub async fn sync(&self, pool: &SqlitePool) -> Result<SyncResult> {
+    pub async fn sync(&self, pool: &DbPool) -> Result<SyncResult> {
         let repo = ScriptRepository::new(pool);
         let mut result = SyncResult::default();
 

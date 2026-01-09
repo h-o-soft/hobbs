@@ -321,12 +321,25 @@ pub async fn register(
 
     // Create user
     let user_repo = UserRepository::new(state.db.pool());
+
+    // Check if this is the first user - make them SysOp
+    let user_count = user_repo.count().await.map_err(|e| {
+        tracing::error!("Failed to count users: {}", e);
+        ApiError::internal("Failed to check user count")
+    })?;
+
     let mut new_user = NewUser::new(&req.username, password_hash, &req.nickname);
+    if user_count == 0 {
+        new_user = new_user.with_role(Role::SysOp);
+        tracing::info!("First user registration - assigning SysOp role to {}", req.username);
+    }
     if let Some(ref email) = req.email {
         new_user = new_user.with_email(email);
     }
     let user = user_repo.create(&new_user).await.map_err(|e| {
-        if e.to_string().contains("UNIQUE") {
+        let error_msg = e.to_string();
+        // Check for unique constraint violation (SQLite: UNIQUE, PostgreSQL: duplicate key)
+        if error_msg.contains("UNIQUE") || error_msg.contains("duplicate key") {
             ApiError::username_taken()
         } else {
             tracing::error!("User creation failed: {}", e);

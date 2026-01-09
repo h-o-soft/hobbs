@@ -47,6 +47,10 @@ pub enum HobbsError {
     /// RSS feed error.
     #[error("RSS error: {0}")]
     Rss(String),
+
+    /// Configuration error.
+    #[error("configuration error: {0}")]
+    Config(String),
 }
 
 // Conversion from sqlx errors

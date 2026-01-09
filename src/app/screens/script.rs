@@ -172,6 +172,13 @@ impl ScriptScreen {
         let (runtime, handle) = create_script_runtime();
         let handle = Arc::new(handle);
 
+        // Save user_id for later use (before script_context is moved)
+        let user_id = script_context.user_id;
+
+        // Load script data BEFORE entering blocking context (async-safe)
+        let service = ScriptService::new(ctx.db.pool(), &ctx.db);
+        let script_data = service.load_script_data(script.id, user_id).await?;
+
         // Clone data needed for the blocking task
         let db = Arc::clone(&ctx.db);
         let scripts_dir = scripts_dir.clone();
@@ -182,21 +189,32 @@ impl ScriptScreen {
         let task_handle = tokio::task::spawn_blocking(move || {
             let service = ScriptService::new(db.pool(), &db).with_scripts_dir(&scripts_dir);
 
-            // Execute with runtime for interactive I/O
-            match service.execute_with_runtime(&script_clone, script_context, Some(script_handle)) {
-                Ok(result) => ExecutionResult {
-                    success: result.success,
-                    error: result.error,
-                },
-                Err(e) => ExecutionResult {
-                    success: false,
-                    error: Some(e.to_string()),
-                },
+            // Execute with pre-loaded data (no database access in blocking context)
+            match service.execute_with_data(
+                &script_clone,
+                script_context,
+                Some(script_handle),
+                script_data,
+            ) {
+                Ok((result, modified_data)) => (
+                    ExecutionResult {
+                        success: result.success,
+                        error: result.error,
+                    },
+                    Some(modified_data),
+                ),
+                Err(e) => (
+                    ExecutionResult {
+                        success: false,
+                        error: Some(e.to_string()),
+                    },
+                    None,
+                ),
             }
         });
 
         // Message loop: handle output and input requests
-        let result = loop {
+        let (result, modified_data) = loop {
             // Poll for messages with a timeout
             match runtime.recv_timeout(Duration::from_millis(50)) {
                 Some(ScriptMessage::Output(text)) => {
@@ -216,8 +234,11 @@ impl ScriptScreen {
                     runtime.send_input(Some(input));
                 }
                 Some(ScriptMessage::Done { success, error }) => {
-                    // Script finished
-                    break ExecutionResult { success, error };
+                    // Script finished - wait for task to get modified data
+                    match task_handle.await {
+                        Ok((_, data)) => break (ExecutionResult { success, error }, data),
+                        Err(_) => break (ExecutionResult { success, error }, None),
+                    }
                 }
                 None => {
                     // Timeout - check if the task is still running
@@ -225,18 +246,29 @@ impl ScriptScreen {
                         // Task finished without sending Done message
                         // This might happen if the script panicked
                         match task_handle.await {
-                            Ok(result) => break result,
+                            Ok((result, data)) => break (result, data),
                             Err(e) => {
-                                break ExecutionResult {
-                                    success: false,
-                                    error: Some(format!("Script execution failed: {}", e)),
-                                };
+                                break (
+                                    ExecutionResult {
+                                        success: false,
+                                        error: Some(format!("Script execution failed: {}", e)),
+                                    },
+                                    None,
+                                );
                             }
                         }
                     }
                 }
             }
         };
+
+        // Save modified data AFTER exiting blocking context (async-safe)
+        if let Some(data) = modified_data {
+            let service = ScriptService::new(ctx.db.pool(), &ctx.db);
+            if let Err(e) = service.save_script_data(script.id, user_id, &data).await {
+                tracing::error!("Failed to save script data: {}", e);
+            }
+        }
 
         Ok(result)
     }

@@ -1,37 +1,45 @@
 //! Test helpers for E2E tests.
 //!
 //! Provides TestClient, TestServer, and helper functions for E2E testing.
+//!
+//! Note: TestServer uses file-based SQLite databases for isolation,
+//! so E2E tests are only available when compiled with the `sqlite` feature.
 
 use std::net::SocketAddr;
+#[cfg(feature = "sqlite")]
 use std::path::PathBuf;
+#[cfg(feature = "sqlite")]
 use std::sync::Arc;
+#[cfg(feature = "sqlite")]
 use std::thread;
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+#[cfg(feature = "sqlite")]
 use tokio::sync::oneshot;
-use tokio::task::LocalSet;
 use tokio::time::timeout;
 
+#[cfg(feature = "sqlite")]
 use hobbs::chat::ChatRoomManager;
-use hobbs::config::{
-    BbsConfig, Config, DatabaseConfig, LocaleConfig, LoggingConfig, RssConfig, ServerConfig,
-    WebConfig,
-};
+use hobbs::config::{BbsConfig, Config, DatabaseConfig, LocaleConfig, LoggingConfig, ServerConfig};
 use hobbs::server::{encode_for_client, CharacterEncoding, SessionManager};
+#[cfg(feature = "sqlite")]
 use hobbs::{Application, Database, I18nManager, TelnetServer, TelnetSession, TemplateLoader};
 
 /// Default timeout for test operations.
+#[cfg(feature = "sqlite")]
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Test client for connecting to the BBS server.
+#[cfg(feature = "sqlite")]
 pub struct TestClient {
     stream: TcpStream,
     encoding: CharacterEncoding,
     buffer: Vec<u8>,
 }
 
+#[cfg(feature = "sqlite")]
 impl TestClient {
     /// Connect to the server at the given address.
     pub async fn connect(addr: SocketAddr) -> Result<Self, std::io::Error> {
@@ -359,6 +367,10 @@ impl TestClient {
 
 /// Test server configuration and lifecycle management.
 /// Runs the server in a separate thread with its own tokio runtime.
+///
+/// Note: This struct is only available with the `sqlite` feature because
+/// it uses file-based SQLite databases for test isolation.
+#[cfg(feature = "sqlite")]
 pub struct TestServer {
     addr: SocketAddr,
     db: Database,
@@ -367,6 +379,7 @@ pub struct TestServer {
     _thread_handle: Option<thread::JoinHandle<()>>,
 }
 
+#[cfg(feature = "sqlite")]
 impl TestServer {
     /// Create a new test server with a temporary file-based database.
     pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
@@ -500,6 +513,7 @@ impl TestServer {
     }
 }
 
+#[cfg(feature = "sqlite")]
 impl Drop for TestServer {
     fn drop(&mut self) {
         self.stop();
@@ -556,6 +570,7 @@ pub fn test_config() -> Config {
 /// async closure with a connected client, and cleans up afterward.
 /// Note: The client receives raw connection data; tests should handle
 /// Telnet negotiation and welcome screen as needed.
+#[cfg(feature = "sqlite")]
 pub async fn with_test_server<F, Fut>(f: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: FnOnce(TestClient) -> Fut,
@@ -580,6 +595,7 @@ where
 }
 
 /// Run a test with a server and multiple clients.
+#[cfg(feature = "sqlite")]
 pub async fn with_test_server_multi<F, Fut>(
     num_clients: usize,
     f: F,
@@ -611,8 +627,9 @@ where
 }
 
 /// Create a test user in the database.
+#[cfg(feature = "sqlite")]
 pub async fn create_test_user(
-    db: &Database,
+    db: &hobbs::Database,
     username: &str,
     password: &str,
     role: &str,
@@ -630,8 +647,9 @@ pub async fn create_test_user(
 }
 
 /// Create a test user with specific language and encoding settings.
+#[cfg(feature = "sqlite")]
 pub async fn create_test_user_with_settings(
-    db: &Database,
+    db: &hobbs::Database,
     username: &str,
     password: &str,
     role: &str,
@@ -656,8 +674,9 @@ pub async fn create_test_user_with_settings(
 }
 
 /// Create a test board in the database.
+#[cfg(feature = "sqlite")]
 pub async fn create_test_board(
-    db: &Database,
+    db: &hobbs::Database,
     name: &str,
     board_type: &str,
 ) -> Result<i64, Box<dyn std::error::Error>> {
@@ -684,6 +703,7 @@ mod tests {
         assert_eq!(config.locale.language, "en");
     }
 
+    #[cfg(feature = "sqlite")]
     #[tokio::test]
     async fn test_create_test_server() {
         let server = TestServer::new().await;

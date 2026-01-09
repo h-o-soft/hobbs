@@ -4,12 +4,9 @@
 //!
 //! # Backend Support
 //!
-//! Currently supports:
-//! - SQLite via sqlx with connection pooling
-//!
-//! Future phases will add:
-//! - PostgreSQL via sqlx
-//! - MySQL via sqlx
+//! Supports multiple backends via feature flags:
+//! - SQLite via sqlx with connection pooling (feature = "sqlite")
+//! - PostgreSQL via sqlx with connection pooling (feature = "postgres")
 
 mod refresh_token;
 mod repository;
@@ -19,222 +16,376 @@ pub use refresh_token::{NewRefreshToken, RefreshToken, RefreshTokenRepository};
 pub use repository::UserRepository;
 pub use user::{NewUser, Role, User, UserUpdate};
 
-use std::path::Path;
-use std::time::Duration;
-
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
-use sqlx::ConnectOptions;
 use tracing::{debug, info};
+
+// SQL boolean literals for cross-database compatibility
+// SQLite uses INTEGER (0/1) for boolean, PostgreSQL uses BOOLEAN (TRUE/FALSE)
+#[cfg(feature = "sqlite")]
+pub const SQL_TRUE: &str = "1";
+#[cfg(feature = "sqlite")]
+pub const SQL_FALSE: &str = "0";
+
+#[cfg(feature = "postgres")]
+pub const SQL_TRUE: &str = "TRUE";
+#[cfg(feature = "postgres")]
+pub const SQL_FALSE: &str = "FALSE";
 
 use crate::Result;
 
-/// Database wrapper for managing SQLite connections with connection pooling.
+// Type aliases for database pool based on feature
+#[cfg(feature = "sqlite")]
+pub type DbPool = sqlx::sqlite::SqlitePool;
+
+#[cfg(feature = "postgres")]
+pub type DbPool = sqlx::postgres::PgPool;
+
+/// Database wrapper for managing database connections with connection pooling.
 pub struct Database {
-    pool: SqlitePool,
+    pool: DbPool,
 }
 
-impl Database {
-    /// Open a database connection pool at the specified path.
-    ///
-    /// If the database file doesn't exist, it will be created.
-    /// Migrations are automatically applied.
-    pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let path = path.as_ref();
-        info!("Opening database at {:?}", path);
+// SQLite implementation
+#[cfg(feature = "sqlite")]
+mod sqlite_impl {
+    use super::*;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use sqlx::ConnectOptions;
+    use std::path::Path;
+    use std::time::Duration;
 
-        // Create parent directories if they don't exist
-        if let Some(parent) = path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent)?;
+    impl Database {
+        /// Open a database connection pool at the specified path.
+        ///
+        /// If the database file doesn't exist, it will be created.
+        /// Migrations are automatically applied.
+        pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
+            let path = path.as_ref();
+            info!("Opening SQLite database at {:?}", path);
+
+            // Create parent directories if they don't exist
+            if let Some(parent) = path.parent() {
+                if !parent.exists() {
+                    std::fs::create_dir_all(parent)?;
+                }
             }
+
+            let options = SqliteConnectOptions::new()
+                .filename(path)
+                .create_if_missing(true)
+                .foreign_keys(true)
+                .busy_timeout(Duration::from_secs(5))
+                .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+                .disable_statement_logging();
+
+            let pool = SqlitePoolOptions::new()
+                .max_connections(5)
+                .connect_with(options)
+                .await
+                .map_err(|e| crate::HobbsError::DatabaseConnection(e.to_string()))?;
+
+            let db = Self { pool };
+            db.migrate().await?;
+
+            Ok(db)
         }
 
-        let options = SqliteConnectOptions::new()
-            .filename(path)
-            .create_if_missing(true)
-            .foreign_keys(true)
-            .busy_timeout(Duration::from_secs(5))
-            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
-            .disable_statement_logging();
+        /// Open an in-memory database for testing.
+        pub async fn open_in_memory() -> Result<Self> {
+            debug!("Opening in-memory SQLite database");
 
-        let pool = SqlitePoolOptions::new()
-            .max_connections(5)
-            .connect_with(options)
-            .await
-            .map_err(|e| crate::HobbsError::DatabaseConnection(e.to_string()))?;
+            let options = SqliteConnectOptions::new()
+                .filename(":memory:")
+                .foreign_keys(true)
+                .disable_statement_logging();
 
-        let db = Self { pool };
-        db.migrate().await?;
+            // For in-memory databases, we need exactly 1 connection to share state
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect_with(options)
+                .await
+                .map_err(|e| crate::HobbsError::DatabaseConnection(e.to_string()))?;
 
-        Ok(db)
-    }
+            let db = Self { pool };
+            db.migrate().await?;
 
-    /// Open an in-memory database for testing.
-    pub async fn open_in_memory() -> Result<Self> {
-        debug!("Opening in-memory database");
-
-        let options = SqliteConnectOptions::new()
-            .filename(":memory:")
-            .foreign_keys(true)
-            .disable_statement_logging();
-
-        // For in-memory databases, we need exactly 1 connection to share state
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(options)
-            .await
-            .map_err(|e| crate::HobbsError::DatabaseConnection(e.to_string()))?;
-
-        let db = Self { pool };
-        db.migrate().await?;
-
-        Ok(db)
-    }
-
-    /// Get a reference to the underlying connection pool.
-    pub fn pool(&self) -> &SqlitePool {
-        &self.pool
-    }
-
-    /// Get the current schema version.
-    pub async fn schema_version(&self) -> Result<i64> {
-        // Check if _sqlx_migrations table exists
-        let table_exists: i32 = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations')",
-        )
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
-
-        if table_exists == 0 {
-            return Ok(0);
+            Ok(db)
         }
 
-        let version: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+        /// Get the current schema version.
+        pub async fn schema_version(&self) -> Result<i64> {
+            // Check if _sqlx_migrations table exists
+            let table_exists: i32 = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations')",
+            )
             .fetch_one(&self.pool)
             .await
-            .unwrap_or(0);
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        Ok(version)
-    }
+            if table_exists == 0 {
+                return Ok(0);
+            }
 
-    /// Apply pending migrations using sqlx embedded migrations.
-    ///
-    /// For legacy databases (created with rusqlite before the sqlx migration),
-    /// all migrations are marked as already applied since the schema is already in place.
-    pub async fn migrate(&self) -> Result<()> {
-        info!("Running database migrations...");
-
-        // Check if this is a legacy database that needs migration records
-        let users_table_exists: i32 = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='users')",
-        )
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
-
-        let migrations_table_exists: i32 = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations')",
-        )
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
-
-        // Check how many migrations are recorded
-        let migrations_recorded: i64 = if migrations_table_exists == 1 {
-            sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+            let version: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
                 .fetch_one(&self.pool)
                 .await
-                .unwrap_or(0)
-        } else {
-            0
-        };
+                .unwrap_or(0);
 
-        info!(
-            "Migration check: users exists={}, migrations table exists={}, migrations recorded={}",
-            users_table_exists, migrations_table_exists, migrations_recorded
-        );
-
-        // If users table exists but no migrations are recorded, this is a legacy database
-        if users_table_exists == 1 && migrations_recorded == 0 {
-            // Legacy database detected - mark all migrations as applied
-            info!("Legacy database detected, marking migrations as applied...");
-            self.mark_legacy_migrations_applied().await?;
-        } else {
-            // Run migrations normally
-            sqlx::migrate!("./migrations")
-                .run(&self.pool)
-                .await
-                .map_err(|e| crate::HobbsError::Database(format!("Migration failed: {}", e)))?;
+            Ok(version)
         }
 
-        let version = self.schema_version().await?;
-        info!("Database migration complete (version {})", version);
+        /// Apply pending migrations using sqlx embedded migrations.
+        ///
+        /// For legacy databases (created with rusqlite before the sqlx migration),
+        /// all migrations are marked as already applied since the schema is already in place.
+        pub async fn migrate(&self) -> Result<()> {
+            info!("Running SQLite database migrations...");
 
-        Ok(())
-    }
-
-    /// Mark all migrations as applied for legacy databases.
-    ///
-    /// This is used when migrating from rusqlite to sqlx. The legacy database
-    /// already has all tables, so we just need to create the _sqlx_migrations
-    /// table and mark all migrations as completed.
-    async fn mark_legacy_migrations_applied(&self) -> Result<()> {
-        // Create _sqlx_migrations table
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS _sqlx_migrations (
-                version BIGINT PRIMARY KEY,
-                description TEXT NOT NULL,
-                installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                success BOOLEAN NOT NULL,
-                checksum BLOB NOT NULL,
-                execution_time BIGINT NOT NULL
+            // Check if this is a legacy database that needs migration records
+            let users_table_exists: i32 = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='users')",
             )
-            "#,
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        // Get all migrations from the embedded migrator
-        let migrator = sqlx::migrate!("./migrations");
+            let migrations_table_exists: i32 = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations')",
+            )
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        for migration in migrator.iter() {
-            // Insert each migration as already applied
+            // Check how many migrations are recorded
+            let migrations_recorded: i64 = if migrations_table_exists == 1 {
+                sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+                    .fetch_one(&self.pool)
+                    .await
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+
+            info!(
+                "Migration check: users exists={}, migrations table exists={}, migrations recorded={}",
+                users_table_exists, migrations_table_exists, migrations_recorded
+            );
+
+            // If users table exists but no migrations are recorded, this is a legacy database
+            if users_table_exists == 1 && migrations_recorded == 0 {
+                // Legacy database detected - mark all migrations as applied
+                info!("Legacy database detected, marking migrations as applied...");
+                self.mark_legacy_migrations_applied().await?;
+            } else {
+                // Run migrations normally
+                sqlx::migrate!("./migrations/sqlite")
+                    .run(&self.pool)
+                    .await
+                    .map_err(|e| crate::HobbsError::Database(format!("Migration failed: {}", e)))?;
+            }
+
+            let version = self.schema_version().await?;
+            info!("Database migration complete (version {})", version);
+
+            Ok(())
+        }
+
+        /// Mark all migrations as applied for legacy databases.
+        ///
+        /// This is used when migrating from rusqlite to sqlx. The legacy database
+        /// already has all tables, so we just need to create the _sqlx_migrations
+        /// table and mark all migrations as completed.
+        async fn mark_legacy_migrations_applied(&self) -> Result<()> {
+            // Create _sqlx_migrations table
             sqlx::query(
                 r#"
-                INSERT OR IGNORE INTO _sqlx_migrations (version, description, installed_on, success, checksum, execution_time)
-                VALUES (?, ?, CURRENT_TIMESTAMP, 1, ?, 0)
+                CREATE TABLE IF NOT EXISTS _sqlx_migrations (
+                    version BIGINT PRIMARY KEY,
+                    description TEXT NOT NULL,
+                    installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    success BOOLEAN NOT NULL,
+                    checksum BLOB NOT NULL,
+                    execution_time BIGINT NOT NULL
+                )
                 "#,
             )
-            .bind(migration.version)
-            .bind(&*migration.description)
-            .bind(&*migration.checksum)
             .execute(&self.pool)
             .await
             .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+
+            // Get all migrations from the embedded migrator
+            let migrator = sqlx::migrate!("./migrations/sqlite");
+
+            for migration in migrator.iter() {
+                // Insert each migration as already applied
+                sqlx::query(
+                    r#"
+                    INSERT OR IGNORE INTO _sqlx_migrations (version, description, installed_on, success, checksum, execution_time)
+                    VALUES (?, ?, CURRENT_TIMESTAMP, 1, ?, 0)
+                    "#,
+                )
+                .bind(migration.version)
+                .bind(&*migration.description)
+                .bind(&*migration.checksum)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+            }
+
+            info!(
+                "Marked {} migrations as applied for legacy database",
+                migrator.iter().count()
+            );
+
+            Ok(())
         }
 
-        info!(
-            "Marked {} migrations as applied for legacy database",
-            migrator.iter().count()
-        );
+        /// Check if a table exists.
+        pub async fn table_exists(&self, table_name: &str) -> Result<bool> {
+            let exists: i32 = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)",
+            )
+            .bind(table_name)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        Ok(())
+            Ok(exists == 1)
+        }
     }
+}
 
-    /// Check if a table exists.
-    pub async fn table_exists(&self, table_name: &str) -> Result<bool> {
-        let exists: i32 = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)",
-        )
-        .bind(table_name)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+// PostgreSQL implementation
+#[cfg(feature = "postgres")]
+mod postgres_impl {
+    use super::*;
+    use sqlx::postgres::PgPoolOptions;
 
-        Ok(exists == 1)
+    impl Database {
+        /// Open a database connection pool with the specified URL.
+        ///
+        /// Migrations are automatically applied.
+        pub async fn open(url: impl AsRef<str>) -> Result<Self> {
+            let url = url.as_ref();
+            info!("Opening PostgreSQL database");
+
+            let pool = PgPoolOptions::new()
+                .max_connections(10)
+                .connect(url)
+                .await
+                .map_err(|e| crate::HobbsError::DatabaseConnection(e.to_string()))?;
+
+            let db = Self { pool };
+            db.migrate().await?;
+
+            Ok(db)
+        }
+
+        /// Open an in-memory database for testing.
+        ///
+        /// Note: PostgreSQL doesn't support in-memory databases, so this creates
+        /// a temporary database. The DATABASE_URL environment variable must be set
+        /// to a PostgreSQL connection string for a test database.
+        pub async fn open_in_memory() -> Result<Self> {
+            debug!("Opening PostgreSQL test database");
+
+            let url = std::env::var("DATABASE_URL")
+                .unwrap_or_else(|_| "postgres://hobbs:hobbs@localhost/hobbs_test".to_string());
+
+            let pool = PgPoolOptions::new()
+                .max_connections(5)
+                .connect(&url)
+                .await
+                .map_err(|e| crate::HobbsError::DatabaseConnection(e.to_string()))?;
+
+            // Clean up existing tables for a fresh test
+            let db = Self { pool };
+            db.cleanup_test_database().await?;
+            db.migrate().await?;
+
+            Ok(db)
+        }
+
+        /// Clean up test database by dropping all tables.
+        async fn cleanup_test_database(&self) -> Result<()> {
+            // Drop _sqlx_migrations first to allow fresh migration
+            let _ = sqlx::query("DROP TABLE IF EXISTS _sqlx_migrations CASCADE")
+                .execute(&self.pool)
+                .await;
+
+            // Get all user tables and drop them
+            let tables: Vec<(String,)> = sqlx::query_as(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename != '_sqlx_migrations'"
+            )
+            .fetch_all(&self.pool)
+            .await
+            .unwrap_or_default();
+
+            for (table,) in tables {
+                let _ = sqlx::query(&format!("DROP TABLE IF EXISTS \"{}\" CASCADE", table))
+                    .execute(&self.pool)
+                    .await;
+            }
+
+            Ok(())
+        }
+
+        /// Get the current schema version.
+        pub async fn schema_version(&self) -> Result<i64> {
+            // Check if _sqlx_migrations table exists
+            let table_exists: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '_sqlx_migrations')",
+            )
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+
+            if !table_exists {
+                return Ok(0);
+            }
+
+            let version: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+                .fetch_one(&self.pool)
+                .await
+                .unwrap_or(0);
+
+            Ok(version)
+        }
+
+        /// Apply pending migrations using sqlx embedded migrations.
+        pub async fn migrate(&self) -> Result<()> {
+            info!("Running PostgreSQL database migrations...");
+
+            sqlx::migrate!("./migrations/postgres")
+                .run(&self.pool)
+                .await
+                .map_err(|e| crate::HobbsError::Database(format!("Migration failed: {}", e)))?;
+
+            let version = self.schema_version().await?;
+            info!("Database migration complete (version {})", version);
+
+            Ok(())
+        }
+
+        /// Check if a table exists.
+        pub async fn table_exists(&self, table_name: &str) -> Result<bool> {
+            let exists: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1)",
+            )
+            .bind(table_name)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+
+            Ok(exists)
+        }
+    }
+}
+
+// Common implementation for both backends
+impl Database {
+    /// Get a reference to the underlying connection pool.
+    pub fn pool(&self) -> &DbPool {
+        &self.pool
     }
 
     /// Close the database connection pool.
@@ -249,7 +400,7 @@ impl std::fmt::Debug for Database {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
 

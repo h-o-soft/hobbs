@@ -26,7 +26,7 @@ pub use user::{generate_password, UserAdminService, UserDetail, DEFAULT_PASSWORD
 use thiserror::Error;
 
 use crate::auth::{require_subop, require_sysop, PermissionError};
-use crate::db::{Database, Role, User};
+use crate::db::{Database, Role, User, SQL_FALSE, SQL_TRUE};
 
 /// Admin-related errors.
 #[derive(Error, Debug)]
@@ -204,11 +204,11 @@ impl<'a> AdminService<'a> {
     ///
     /// This is used to prevent demoting the last SysOp.
     pub async fn has_multiple_sysops(&self) -> std::result::Result<bool, AdminError> {
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM users WHERE role = 'sysop' AND is_active = 1",
-        )
-        .fetch_one(self.db.pool())
-        .await?;
+        let query = format!(
+            "SELECT COUNT(*) FROM users WHERE role = 'sysop' AND is_active = {}",
+            SQL_TRUE
+        );
+        let count: i64 = sqlx::query_scalar(&query).fetch_one(self.db.pool()).await?;
         Ok(count > 1)
     }
 
@@ -248,6 +248,7 @@ impl<'a> AdminService<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::{SQL_FALSE, SQL_TRUE};
     use crate::server::CharacterEncoding;
 
     fn create_test_user(id: i64, role: Role) -> User {
@@ -434,10 +435,11 @@ mod tests {
         let db = Database::open_in_memory().await.unwrap();
 
         // Create one sysop
-        sqlx::query(
+        sqlx::query(&format!(
             "INSERT INTO users (username, password, nickname, role, terminal, encoding, is_active)
-             VALUES ('sysop', 'hash', 'SysOp', 'sysop', 'standard', 'shiftjis', 1)",
-        )
+             VALUES ('sysop', 'hash', 'SysOp', 'sysop', 'standard', 'shiftjis', {})",
+            SQL_TRUE
+        ))
         .execute(db.pool())
         .await
         .unwrap();
@@ -451,17 +453,19 @@ mod tests {
         let db = Database::open_in_memory().await.unwrap();
 
         // Create two sysops
-        sqlx::query(
+        sqlx::query(&format!(
             "INSERT INTO users (username, password, nickname, role, terminal, encoding, is_active)
-             VALUES ('sysop1', 'hash', 'SysOp 1', 'sysop', 'standard', 'shiftjis', 1)",
-        )
+             VALUES ('sysop1', 'hash', 'SysOp 1', 'sysop', 'standard', 'shiftjis', {})",
+            SQL_TRUE
+        ))
         .execute(db.pool())
         .await
         .unwrap();
-        sqlx::query(
+        sqlx::query(&format!(
             "INSERT INTO users (username, password, nickname, role, terminal, encoding, is_active)
-             VALUES ('sysop2', 'hash', 'SysOp 2', 'sysop', 'standard', 'shiftjis', 1)",
-        )
+             VALUES ('sysop2', 'hash', 'SysOp 2', 'sysop', 'standard', 'shiftjis', {})",
+            SQL_TRUE
+        ))
         .execute(db.pool())
         .await
         .unwrap();
@@ -475,17 +479,19 @@ mod tests {
         let db = Database::open_in_memory().await.unwrap();
 
         // Create two sysops, one inactive
-        sqlx::query(
+        sqlx::query(&format!(
             "INSERT INTO users (username, password, nickname, role, terminal, encoding, is_active)
-             VALUES ('sysop1', 'hash', 'SysOp 1', 'sysop', 'standard', 'shiftjis', 1)",
-        )
+             VALUES ('sysop1', 'hash', 'SysOp 1', 'sysop', 'standard', 'shiftjis', {})",
+            SQL_TRUE
+        ))
         .execute(db.pool())
         .await
         .unwrap();
-        sqlx::query(
+        sqlx::query(&format!(
             "INSERT INTO users (username, password, nickname, role, terminal, encoding, is_active)
-             VALUES ('sysop2', 'hash', 'SysOp 2', 'sysop', 'standard', 'shiftjis', 0)",
-        )
+             VALUES ('sysop2', 'hash', 'SysOp 2', 'sysop', 'standard', 'shiftjis', {})",
+            SQL_FALSE
+        ))
         .execute(db.pool())
         .await
         .unwrap();
@@ -500,10 +506,11 @@ mod tests {
         let db = Database::open_in_memory().await.unwrap();
 
         // Create one sysop
-        sqlx::query(
+        sqlx::query(&format!(
             "INSERT INTO users (username, password, nickname, role, terminal, encoding, is_active)
-             VALUES ('sysop', 'hash', 'SysOp', 'sysop', 'standard', 'shiftjis', 1)",
-        )
+             VALUES ('sysop', 'hash', 'SysOp', 'sysop', 'standard', 'shiftjis', {})",
+            SQL_TRUE
+        ))
         .execute(db.pool())
         .await
         .unwrap();
@@ -543,10 +550,11 @@ mod tests {
         };
 
         // Insert the second sysop but make them inactive (so only 1 active)
-        sqlx::query(
+        sqlx::query(&format!(
             "INSERT INTO users (username, password, nickname, role, terminal, encoding, is_active)
-             VALUES ('sysop2', 'hash', 'SysOp 2', 'sysop', 'standard', 'shiftjis', 0)",
-        )
+             VALUES ('sysop2', 'hash', 'SysOp 2', 'sysop', 'standard', 'shiftjis', {})",
+            SQL_FALSE
+        ))
         .execute(db.pool())
         .await
         .unwrap();
@@ -555,7 +563,10 @@ mod tests {
 
         // Try to demote the "target" from SysOp to Member
         // We need to add target to DB as active sysop for proper test
-        sqlx::query("UPDATE users SET is_active = 1 WHERE username = 'sysop2'")
+        sqlx::query(&format!(
+            "UPDATE users SET is_active = {} WHERE username = 'sysop2'",
+            SQL_TRUE
+        ))
             .execute(db.pool())
             .await
             .unwrap();
@@ -567,7 +578,10 @@ mod tests {
             .is_ok());
 
         // Make one inactive again
-        sqlx::query("UPDATE users SET is_active = 0 WHERE username = 'sysop2'")
+        sqlx::query(&format!(
+            "UPDATE users SET is_active = {} WHERE username = 'sysop2'",
+            SQL_FALSE
+        ))
             .execute(db.pool())
             .await
             .unwrap();

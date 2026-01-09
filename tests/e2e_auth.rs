@@ -1,3 +1,4 @@
+#![cfg(feature = "sqlite")]
 //! E2E Authentication tests for HOBBS.
 //!
 //! Tests login, logout, and registration flows.

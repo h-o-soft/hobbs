@@ -4,9 +4,9 @@
 //! from the database.
 
 use chrono::{DateTime, Utc};
-use sqlx::SqlitePool;
 
 use super::room::MessageType;
+use crate::db::DbPool;
 use crate::{HobbsError, Result};
 
 /// Default number of recent logs to retrieve.
@@ -178,21 +178,22 @@ impl NewChatLog {
 
 /// Repository for chat log operations.
 pub struct ChatLogRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> ChatLogRepository<'a> {
     /// Create a new ChatLogRepository with the given database pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Save a chat log entry.
     pub async fn save(&self, log: &NewChatLog) -> Result<i64> {
-        let result = sqlx::query(
+        let id: i64 = sqlx::query_scalar(
             r#"
             INSERT INTO chat_logs (room_id, user_id, sender_name, message_type, content)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
             "#,
         )
         .bind(&log.room_id)
@@ -200,11 +201,11 @@ impl<'a> ChatLogRepository<'a> {
         .bind(&log.sender_name)
         .bind(log.message_type.as_str())
         .bind(&log.content)
-        .execute(self.pool)
+        .fetch_one(self.pool)
         .await
         .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        Ok(result.last_insert_rowid())
+        Ok(id)
     }
 
     /// Get a log entry by ID.
@@ -213,7 +214,7 @@ impl<'a> ChatLogRepository<'a> {
             r#"
             SELECT id, room_id, user_id, sender_name, message_type, content, created_at
             FROM chat_logs
-            WHERE id = ?
+            WHERE id = $1
             "#,
         )
         .bind(id)
@@ -232,9 +233,9 @@ impl<'a> ChatLogRepository<'a> {
             r#"
             SELECT id, room_id, user_id, sender_name, message_type, content, created_at
             FROM chat_logs
-            WHERE room_id = ?
+            WHERE room_id = $1
             ORDER BY created_at DESC, id DESC
-            LIMIT ?
+            LIMIT $2
             "#,
         )
         .bind(room_id)
@@ -256,7 +257,7 @@ impl<'a> ChatLogRepository<'a> {
             r#"
             SELECT id, room_id, user_id, sender_name, message_type, content, created_at
             FROM chat_logs
-            WHERE room_id = ? AND created_at > ?
+            WHERE room_id = $1 AND created_at > $2
             ORDER BY created_at ASC, id ASC
             "#,
         )
@@ -271,7 +272,7 @@ impl<'a> ChatLogRepository<'a> {
 
     /// Count logs for a room.
     pub async fn count(&self, room_id: &str) -> Result<i64> {
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM chat_logs WHERE room_id = ?")
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM chat_logs WHERE room_id = $1")
             .bind(room_id)
             .fetch_one(self.pool)
             .await
@@ -282,7 +283,7 @@ impl<'a> ChatLogRepository<'a> {
 
     /// Delete logs older than a specific timestamp.
     pub async fn delete_before(&self, before: DateTime<Utc>) -> Result<usize> {
-        let result = sqlx::query("DELETE FROM chat_logs WHERE created_at < ?")
+        let result = sqlx::query("DELETE FROM chat_logs WHERE created_at < $1")
             .bind(before.to_rfc3339())
             .execute(self.pool)
             .await
@@ -293,7 +294,7 @@ impl<'a> ChatLogRepository<'a> {
 
     /// Delete all logs for a room.
     pub async fn delete_room(&self, room_id: &str) -> Result<usize> {
-        let result = sqlx::query("DELETE FROM chat_logs WHERE room_id = ?")
+        let result = sqlx::query("DELETE FROM chat_logs WHERE room_id = $1")
             .bind(room_id)
             .execute(self.pool)
             .await

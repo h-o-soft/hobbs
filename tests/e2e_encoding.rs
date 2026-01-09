@@ -1,3 +1,4 @@
+#![cfg(feature = "sqlite")]
 //! E2E Encoding tests for HOBBS.
 //!
 //! Tests that Japanese text is correctly encoded and decoded across different

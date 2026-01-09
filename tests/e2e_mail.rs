@@ -1,3 +1,4 @@
+#![cfg(feature = "sqlite")]
 //! E2E Mail tests for HOBBS.
 //!
 //! Tests mail inbox, sending, and reading.
