@@ -1,15 +1,28 @@
 //! Database module for HOBBS.
 //!
-//! This module provides SQLite database connectivity and migration management.
+//! This module provides database connectivity and migration management.
+//!
+//! # Backend Support
+//!
+//! Currently supports:
+//! - SQLite via rusqlite (default)
+//!
+//! Future phases will add:
+//! - PostgreSQL via sqlx
+//! - MySQL via sqlx
 
 mod refresh_token;
 mod repository;
+mod repository_traits;
 mod schema;
+mod traits;
 mod user;
 
 pub use refresh_token::{NewRefreshToken, RefreshToken, RefreshTokenRepository};
 pub use repository::UserRepository;
+pub use repository_traits::UserRepositoryTrait;
 pub use schema::MIGRATIONS;
+pub use traits::{ConnectionProvider, DatabaseBackendTrait};
 pub use user::{NewUser, Role, User, UserUpdate};
 
 use std::path::Path;
@@ -181,6 +194,32 @@ impl Database {
 impl std::fmt::Debug for Database {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Database").finish()
+    }
+}
+
+// Implement DatabaseBackendTrait for Database
+impl DatabaseBackendTrait for Database {
+    fn backend_name(&self) -> &'static str {
+        "sqlite"
+    }
+
+    fn schema_version(&self) -> Result<i64> {
+        // Delegate to the existing method
+        Database::schema_version(self)
+    }
+
+    fn table_exists(&self, table_name: &str) -> Result<bool> {
+        // Delegate to the existing method
+        Database::table_exists(self, table_name)
+    }
+}
+
+// Implement ConnectionProvider for Database
+impl ConnectionProvider for Database {
+    type Connection = Connection;
+
+    fn get_connection(&self) -> &Self::Connection {
+        &self.conn
     }
 }
 

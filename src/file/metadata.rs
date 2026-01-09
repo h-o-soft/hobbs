@@ -128,7 +128,7 @@ impl FileRepository {
 
         let id = conn.last_insert_rowid();
         Self::get_by_id(conn, id)?
-            .ok_or_else(|| crate::HobbsError::Database(rusqlite::Error::QueryReturnedNoRows))
+            .ok_or_else(|| crate::HobbsError::NotFound("file".to_string()))
     }
 
     /// Get a file by ID.
