@@ -2,19 +2,20 @@
 //!
 //! This module provides CRUD operations for users in the database.
 
-use sqlx::{QueryBuilder, SqlitePool};
+use sqlx::QueryBuilder;
 
 use super::user::{NewUser, Role, User, UserUpdate};
+use super::DbPool;
 use crate::{HobbsError, Result};
 
 /// Repository for user CRUD operations.
 pub struct UserRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> UserRepository<'a> {
     /// Create a new UserRepository with the given database pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
@@ -22,9 +23,10 @@ impl<'a> UserRepository<'a> {
     ///
     /// Returns the created user with the assigned ID.
     pub async fn create(&self, new_user: &NewUser) -> Result<User> {
-        let result = sqlx::query(
+        let id: i64 = sqlx::query_scalar(
             "INSERT INTO users (username, password, nickname, email, role, terminal, encoding, language, auto_paging)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             RETURNING id",
         )
         .bind(&new_user.username)
         .bind(&new_user.password)
@@ -35,11 +37,10 @@ impl<'a> UserRepository<'a> {
         .bind(new_user.encoding.as_str())
         .bind(&new_user.language)
         .bind(new_user.auto_paging)
-        .execute(self.pool)
+        .fetch_one(self.pool)
         .await
         .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
         self.get_by_id(id)
             .await?
             .ok_or_else(|| HobbsError::NotFound("user".to_string()))
@@ -84,7 +85,10 @@ impl<'a> UserRepository<'a> {
             return self.get_by_id(id).await;
         }
 
+        #[cfg(feature = "sqlite")]
         let mut query: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new("UPDATE users SET ");
+        #[cfg(feature = "postgres")]
+        let mut query: QueryBuilder<sqlx::Postgres> = QueryBuilder::new("UPDATE users SET ");
         let mut separated = query.separated(", ");
 
         if let Some(ref password) = update.password {

@@ -1,39 +1,40 @@
 //! Mail repository for HOBBS.
 
 use chrono::{DateTime, Utc};
-use sqlx::{QueryBuilder, Row, SqlitePool};
+use sqlx::{QueryBuilder, Row};
 
 use super::types::{Mail, MailUpdate, NewMail};
+use crate::db::DbPool;
 use crate::{HobbsError, Result};
 
 /// Repository for mail operations.
 pub struct MailRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> MailRepository<'a> {
     /// Create a new MailRepository with the given database pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Create a new mail.
     pub async fn create(&self, mail: &NewMail) -> Result<Mail> {
-        let result = sqlx::query(
+        let id: i64 = sqlx::query_scalar(
             r#"
             INSERT INTO mails (sender_id, recipient_id, subject, body)
             VALUES (?, ?, ?, ?)
+            RETURNING id
             "#,
         )
         .bind(mail.sender_id)
         .bind(mail.recipient_id)
         .bind(&mail.subject)
         .bind(&mail.body)
-        .execute(self.pool)
+        .fetch_one(self.pool)
         .await
         .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
         self.get_by_id(id)
             .await?
             .ok_or_else(|| HobbsError::NotFound("mail".to_string()))
@@ -121,7 +122,10 @@ impl<'a> MailRepository<'a> {
             return Ok(false);
         }
 
+        #[cfg(feature = "sqlite")]
         let mut query: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new("UPDATE mails SET ");
+        #[cfg(feature = "postgres")]
+        let mut query: QueryBuilder<sqlx::Postgres> = QueryBuilder::new("UPDATE mails SET ");
         let mut separated = query.separated(", ");
 
         if let Some(is_read) = update.is_read {
@@ -212,6 +216,7 @@ impl<'a> MailRepository<'a> {
     }
 
     /// Convert a database row to a Mail.
+    #[cfg(feature = "sqlite")]
     fn row_to_mail(row: &sqlx::sqlite::SqliteRow) -> Result<Mail> {
         let created_at_str: String = row
             .try_get("created_at")
@@ -248,6 +253,45 @@ impl<'a> MailRepository<'a> {
                 .try_get::<i32, _>("is_deleted_by_recipient")
                 .map_err(|e| HobbsError::Database(e.to_string()))?
                 != 0,
+            created_at,
+        })
+    }
+
+    /// Convert a database row to a Mail.
+    #[cfg(feature = "postgres")]
+    fn row_to_mail(row: &sqlx::postgres::PgRow) -> Result<Mail> {
+        let created_at_str: String = row
+            .try_get("created_at")
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+        let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now());
+
+        Ok(Mail {
+            id: row
+                .try_get("id")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
+            sender_id: row
+                .try_get("sender_id")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
+            recipient_id: row
+                .try_get("recipient_id")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
+            subject: row
+                .try_get("subject")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
+            body: row
+                .try_get("body")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
+            is_read: row
+                .try_get::<bool, _>("is_read")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
+            is_deleted_by_sender: row
+                .try_get::<bool, _>("is_deleted_by_sender")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
+            is_deleted_by_recipient: row
+                .try_get::<bool, _>("is_deleted_by_recipient")
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
             created_at,
         })
     }

@@ -1,9 +1,9 @@
 //! Folder types and repository for HOBBS file management.
 
 use chrono::{DateTime, Utc};
-use sqlx::{QueryBuilder, SqlitePool};
+use sqlx::QueryBuilder;
 
-use crate::db::Role;
+use crate::db::{DbPool, Role};
 use crate::{HobbsError, Result};
 
 /// A folder in the file library.
@@ -171,20 +171,21 @@ impl FolderUpdate {
 
 /// Repository for folder operations.
 pub struct FolderRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> FolderRepository<'a> {
     /// Create a new FolderRepository with the given database pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Create a new folder.
     pub async fn create(&self, folder: &NewFolder) -> Result<Folder> {
-        let result = sqlx::query(
+        let id: i64 = sqlx::query_scalar(
             "INSERT INTO folders (name, description, parent_id, permission, upload_perm, order_num)
-             VALUES (?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?)
+             RETURNING id",
         )
         .bind(&folder.name)
         .bind(&folder.description)
@@ -192,11 +193,10 @@ impl<'a> FolderRepository<'a> {
         .bind(folder.permission.as_str())
         .bind(folder.upload_perm.as_str())
         .bind(folder.order_num)
-        .execute(self.pool)
+        .fetch_one(self.pool)
         .await
         .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
         self.get_by_id(id)
             .await?
             .ok_or_else(|| HobbsError::NotFound("folder".to_string()))
@@ -281,7 +281,10 @@ impl<'a> FolderRepository<'a> {
             return self.get_by_id(id).await;
         }
 
+        #[cfg(feature = "sqlite")]
         let mut query: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new("UPDATE folders SET ");
+        #[cfg(feature = "postgres")]
+        let mut query: QueryBuilder<sqlx::Postgres> = QueryBuilder::new("UPDATE folders SET ");
         let mut separated = query.separated(", ");
 
         if let Some(ref name) = update.name {

@@ -2,8 +2,8 @@
 //!
 //! Provides storage for script-specific data, both global and per-user.
 
+use crate::db::DbPool;
 use crate::error::{HobbsError, Result};
-use sqlx::SqlitePool;
 
 /// A single script data entry.
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -24,12 +24,12 @@ pub struct ScriptData {
 
 /// Repository for script data operations.
 pub struct ScriptDataRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> ScriptDataRepository<'a> {
     /// Create a new script data repository.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
@@ -215,6 +215,7 @@ impl<'a> ScriptDataRepository<'a> {
 mod tests {
     use super::*;
     use crate::Database;
+    use sqlx::SqlitePool;
 
     async fn create_test_pool() -> SqlitePool {
         let db = Database::open_in_memory()

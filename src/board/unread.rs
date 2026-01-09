@@ -3,9 +3,7 @@
 //! This module provides functionality to track and manage unread posts
 //! for each user per board.
 
-use sqlx::SqlitePool;
-
-use crate::db::Role;
+use crate::db::{DbPool, Role};
 use crate::HobbsError;
 use crate::Result;
 
@@ -37,12 +35,12 @@ pub struct ReadPosition {
 
 /// Repository for unread management operations.
 pub struct UnreadRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> UnreadRepository<'a> {
     /// Create a new UnreadRepository with the given pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
@@ -434,6 +432,7 @@ impl From<PostRow> for Post {
 mod tests {
     use super::*;
     use crate::Database;
+    use sqlx::SqlitePool;
 
     async fn setup_db() -> Database {
         Database::open_in_memory().await.unwrap()

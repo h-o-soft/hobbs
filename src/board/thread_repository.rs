@@ -2,9 +2,10 @@
 //!
 //! This module provides CRUD operations for threads in the database.
 
-use sqlx::{FromRow, QueryBuilder, SqlitePool};
+use sqlx::{FromRow, QueryBuilder};
 
 use super::thread::{NewThread, ThreadUpdate};
+use crate::db::DbPool;
 use crate::{HobbsError, Result};
 
 /// Thread entity representing a discussion thread in a board.
@@ -44,29 +45,48 @@ impl From<ThreadRow> for super::thread::Thread {
 
 /// Repository for thread CRUD operations.
 pub struct ThreadRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> ThreadRepository<'a> {
     /// Create a new ThreadRepository with the given database pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Create a new thread in the database.
     ///
     /// Returns the created thread with the assigned ID.
+    #[cfg(feature = "sqlite")]
     pub async fn create(&self, new_thread: &NewThread) -> Result<super::thread::Thread> {
-        let result =
-            sqlx::query("INSERT INTO threads (board_id, title, author_id) VALUES (?, ?, ?)")
+        let id: i64 =
+            sqlx::query_scalar("INSERT INTO threads (board_id, title, author_id) VALUES (?, ?, ?) RETURNING id")
                 .bind(new_thread.board_id)
                 .bind(&new_thread.title)
                 .bind(new_thread.author_id)
-                .execute(self.pool)
+                .fetch_one(self.pool)
                 .await
                 .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
+        self.get_by_id(id)
+            .await?
+            .ok_or_else(|| HobbsError::NotFound("thread".to_string()))
+    }
+
+    /// Create a new thread in the database.
+    ///
+    /// Returns the created thread with the assigned ID.
+    #[cfg(feature = "postgres")]
+    pub async fn create(&self, new_thread: &NewThread) -> Result<super::thread::Thread> {
+        let id: i64 =
+            sqlx::query_scalar("INSERT INTO threads (board_id, title, author_id) VALUES ($1, $2, $3) RETURNING id")
+                .bind(new_thread.board_id)
+                .bind(&new_thread.title)
+                .bind(new_thread.author_id)
+                .fetch_one(self.pool)
+                .await
+                .map_err(|e| HobbsError::Database(e.to_string()))?;
+
         self.get_by_id(id)
             .await?
             .ok_or_else(|| HobbsError::NotFound("thread".to_string()))
@@ -90,6 +110,7 @@ impl<'a> ThreadRepository<'a> {
     ///
     /// Only fields that are set in the update will be modified.
     /// Returns the updated thread, or None if not found.
+    #[cfg(feature = "sqlite")]
     pub async fn update(
         &self,
         id: i64,
@@ -112,6 +133,51 @@ impl<'a> ThreadRepository<'a> {
         }
         if update.touch {
             separated.push("updated_at = datetime('now')");
+        }
+
+        query.push(" WHERE id = ");
+        query.push_bind(id);
+
+        let result = query
+            .build()
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        if result.rows_affected() == 0 {
+            return Ok(None);
+        }
+
+        self.get_by_id(id).await
+    }
+
+    /// Update a thread by ID.
+    ///
+    /// Only fields that are set in the update will be modified.
+    /// Returns the updated thread, or None if not found.
+    #[cfg(feature = "postgres")]
+    pub async fn update(
+        &self,
+        id: i64,
+        update: &ThreadUpdate,
+    ) -> Result<Option<super::thread::Thread>> {
+        if update.is_empty() {
+            return self.get_by_id(id).await;
+        }
+
+        let mut query: QueryBuilder<sqlx::Postgres> = QueryBuilder::new("UPDATE threads SET ");
+        let mut separated = query.separated(", ");
+
+        if let Some(ref title) = update.title {
+            separated.push("title = ");
+            separated.push_bind_unseparated(title);
+        }
+        if let Some(delta) = update.post_count_delta {
+            separated.push("post_count = post_count + ");
+            separated.push_bind_unseparated(delta);
+        }
+        if update.touch {
+            separated.push("updated_at = NOW()");
         }
 
         query.push(" WHERE id = ");

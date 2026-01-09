@@ -1,7 +1,6 @@
 //! Refresh token repository for JWT authentication.
 
-use sqlx::SqlitePool;
-
+use super::DbPool;
 use crate::Result;
 
 /// Refresh token entity.
@@ -33,27 +32,27 @@ pub struct NewRefreshToken {
 
 /// Repository for refresh token operations.
 pub struct RefreshTokenRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> RefreshTokenRepository<'a> {
     /// Create a new repository instance.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Create a new refresh token.
     pub async fn create(&self, new_token: &NewRefreshToken) -> Result<RefreshToken> {
-        let result =
-            sqlx::query("INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)")
-                .bind(new_token.user_id)
-                .bind(&new_token.token)
-                .bind(&new_token.expires_at)
-                .execute(self.pool)
-                .await
-                .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?) RETURNING id",
+        )
+        .bind(new_token.user_id)
+        .bind(&new_token.token)
+        .bind(&new_token.expires_at)
+        .fetch_one(self.pool)
+        .await
+        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
         self.get_by_id(id)
             .await?
             .ok_or_else(|| crate::HobbsError::NotFound("Refresh token not found".into()))

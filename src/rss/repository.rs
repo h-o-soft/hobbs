@@ -1,12 +1,16 @@
 //! RSS repositories for HOBBS.
 
 use chrono::{DateTime, Utc};
-use sqlx::{QueryBuilder, SqlitePool};
+#[cfg(feature = "postgres")]
+use sqlx::QueryBuilder;
+#[cfg(feature = "sqlite")]
+use sqlx::QueryBuilder;
 
 use super::types::{
     NewRssFeed, NewRssItem, RssFeed, RssFeedUpdate, RssFeedWithUnread, RssItem, RssReadPosition,
     MAX_ITEMS_PER_FEED,
 };
+use crate::db::DbPool;
 use crate::{HobbsError, Result};
 
 /// Row type for RSS feed from database.
@@ -148,21 +152,22 @@ impl From<RssReadPositionRow> for RssReadPosition {
 
 /// Repository for RSS feed operations.
 pub struct RssFeedRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> RssFeedRepository<'a> {
     /// Create a new repository instance.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Create a new feed.
     pub async fn create(&self, feed: &NewRssFeed) -> Result<RssFeed> {
-        let result = sqlx::query(
+        let id: i64 = sqlx::query_scalar(
             r#"
             INSERT INTO rss_feeds (url, title, description, site_url, created_by)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
             "#,
         )
         .bind(&feed.url)
@@ -170,11 +175,10 @@ impl<'a> RssFeedRepository<'a> {
         .bind(&feed.description)
         .bind(&feed.site_url)
         .bind(feed.created_by)
-        .execute(self.pool)
+        .fetch_one(self.pool)
         .await
         .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
         self.get_by_id(id)
             .await?
             .ok_or_else(|| HobbsError::NotFound("RSS feed not found".into()))
@@ -351,6 +355,7 @@ impl<'a> RssFeedRepository<'a> {
     }
 
     /// Update a feed.
+    #[cfg(feature = "sqlite")]
     pub async fn update(&self, id: i64, update: &RssFeedUpdate) -> Result<bool> {
         if update.is_empty() {
             return Ok(false);
@@ -380,6 +385,50 @@ impl<'a> RssFeedRepository<'a> {
         }
 
         separated.push("updated_at = datetime('now')");
+
+        query.push(" WHERE id = ");
+        query.push_bind(id);
+
+        let result = query
+            .build()
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Update a feed.
+    #[cfg(feature = "postgres")]
+    pub async fn update(&self, id: i64, update: &RssFeedUpdate) -> Result<bool> {
+        if update.is_empty() {
+            return Ok(false);
+        }
+
+        let mut query: QueryBuilder<sqlx::Postgres> = QueryBuilder::new("UPDATE rss_feeds SET ");
+        let mut separated = query.separated(", ");
+
+        if let Some(ref title) = update.title {
+            separated.push("title = ");
+            separated.push_bind_unseparated(title);
+        }
+
+        if let Some(ref description) = update.description {
+            separated.push("description = ");
+            separated.push_bind_unseparated(description.clone());
+        }
+
+        if let Some(interval) = update.fetch_interval {
+            separated.push("fetch_interval = ");
+            separated.push_bind_unseparated(interval);
+        }
+
+        if let Some(is_active) = update.is_active {
+            separated.push("is_active = ");
+            separated.push_bind_unseparated(is_active);
+        }
+
+        separated.push("updated_at = NOW()");
 
         query.push(" WHERE id = ");
         query.push_bind(id);
@@ -500,23 +549,24 @@ impl<'a> RssFeedRepository<'a> {
 
 /// Repository for RSS item operations.
 pub struct RssItemRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> RssItemRepository<'a> {
     /// Create a new repository instance.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Create a new item, ignoring if duplicate (same feed_id + guid).
+    #[cfg(feature = "sqlite")]
     pub async fn create_or_ignore(&self, item: &NewRssItem) -> Result<Option<i64>> {
         let published_at = item.published_at.map(|dt| dt.to_rfc3339());
 
         let result = sqlx::query(
             r#"
             INSERT OR IGNORE INTO rss_items (feed_id, guid, title, link, description, author, published_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             "#,
         )
         .bind(item.feed_id)
@@ -535,6 +585,33 @@ impl<'a> RssItemRepository<'a> {
         } else {
             Ok(None) // Already existed
         }
+    }
+
+    /// Create a new item, ignoring if duplicate (same feed_id + guid).
+    #[cfg(feature = "postgres")]
+    pub async fn create_or_ignore(&self, item: &NewRssItem) -> Result<Option<i64>> {
+        let published_at = item.published_at.map(|dt| dt.to_rfc3339());
+
+        let result: Option<(i64,)> = sqlx::query_as(
+            r#"
+            INSERT INTO rss_items (feed_id, guid, title, link, description, author, published_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (feed_id, guid) DO NOTHING
+            RETURNING id
+            "#,
+        )
+        .bind(item.feed_id)
+        .bind(&item.guid)
+        .bind(&item.title)
+        .bind(&item.link)
+        .bind(&item.description)
+        .bind(&item.author)
+        .bind(&published_at)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.map(|(id,)| id))
     }
 
     /// Get an item by ID.
@@ -687,12 +764,12 @@ impl<'a> RssItemRepository<'a> {
 
 /// Repository for RSS read position operations.
 pub struct RssReadPositionRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> RssReadPositionRepository<'a> {
     /// Create a new repository instance.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 

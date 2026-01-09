@@ -4,9 +4,9 @@
 //! from the database.
 
 use chrono::{DateTime, Utc};
-use sqlx::SqlitePool;
 
 use super::room::MessageType;
+use crate::db::DbPool;
 use crate::{HobbsError, Result};
 
 /// Default number of recent logs to retrieve.
@@ -178,21 +178,22 @@ impl NewChatLog {
 
 /// Repository for chat log operations.
 pub struct ChatLogRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> ChatLogRepository<'a> {
     /// Create a new ChatLogRepository with the given database pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Save a chat log entry.
     pub async fn save(&self, log: &NewChatLog) -> Result<i64> {
-        let result = sqlx::query(
+        let id: i64 = sqlx::query_scalar(
             r#"
             INSERT INTO chat_logs (room_id, user_id, sender_name, message_type, content)
             VALUES (?, ?, ?, ?, ?)
+            RETURNING id
             "#,
         )
         .bind(&log.room_id)
@@ -200,11 +201,11 @@ impl<'a> ChatLogRepository<'a> {
         .bind(&log.sender_name)
         .bind(log.message_type.as_str())
         .bind(&log.content)
-        .execute(self.pool)
+        .fetch_one(self.pool)
         .await
         .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        Ok(result.last_insert_rowid())
+        Ok(id)
     }
 
     /// Get a log entry by ID.

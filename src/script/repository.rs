@@ -3,9 +3,8 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use sqlx::SqlitePool;
-
 use super::types::Script;
+use crate::db::DbPool;
 use crate::{HobbsError, Result};
 
 /// Database row for Script.
@@ -68,12 +67,12 @@ impl ScriptRow {
 
 /// Repository for script CRUD operations.
 pub struct ScriptRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> ScriptRepository<'a> {
     /// Create a new ScriptRepository with the given database pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 

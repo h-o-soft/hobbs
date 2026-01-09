@@ -2,8 +2,7 @@
 //!
 //! Provides logging for script executions.
 
-use sqlx::SqlitePool;
-
+use crate::db::DbPool;
 use crate::error::Result;
 use crate::HobbsError;
 
@@ -28,12 +27,12 @@ pub struct ScriptLog {
 
 /// Repository for script execution logs.
 pub struct ScriptLogRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> ScriptLogRepository<'a> {
     /// Create a new script log repository.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
@@ -46,10 +45,11 @@ impl<'a> ScriptLogRepository<'a> {
         success: bool,
         error_message: Option<&str>,
     ) -> Result<i64> {
-        let result = sqlx::query(
+        let id: i64 = sqlx::query_scalar(
             r#"
             INSERT INTO script_logs (script_id, user_id, execution_ms, success, error_message)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
             "#,
         )
         .bind(script_id)
@@ -57,11 +57,11 @@ impl<'a> ScriptLogRepository<'a> {
         .bind(execution_ms)
         .bind(success)
         .bind(error_message)
-        .execute(self.pool)
+        .fetch_one(self.pool)
         .await
         .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        Ok(result.last_insert_rowid())
+        Ok(id)
     }
 
     /// Get logs for a specific script.
@@ -176,6 +176,7 @@ impl<'a> ScriptLogRepository<'a> {
 mod tests {
     use super::*;
     use crate::Database;
+    use sqlx::SqlitePool;
 
     async fn create_test_db() -> Database {
         Database::open_in_memory()

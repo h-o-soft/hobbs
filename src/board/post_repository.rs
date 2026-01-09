@@ -2,38 +2,58 @@
 //!
 //! This module provides CRUD operations for posts in the database.
 
-use sqlx::SqlitePool;
-
 use super::post::{NewFlatPost, NewThreadPost, Post, PostUpdate};
+use crate::db::DbPool;
 use crate::{HobbsError, Result};
 
 /// Repository for post CRUD operations.
 pub struct PostRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> PostRepository<'a> {
     /// Create a new PostRepository with the given pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Create a new post in a thread.
     ///
     /// Returns the created post with the assigned ID.
+    #[cfg(feature = "sqlite")]
     pub async fn create_thread_post(&self, new_post: &NewThreadPost) -> Result<Post> {
-        let result = sqlx::query(
-            "INSERT INTO posts (board_id, thread_id, author_id, body) VALUES (?, ?, ?, ?)",
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO posts (board_id, thread_id, author_id, body) VALUES (?, ?, ?, ?) RETURNING id",
         )
         .bind(new_post.board_id)
         .bind(new_post.thread_id)
         .bind(new_post.author_id)
         .bind(&new_post.body)
-        .execute(self.pool)
+        .fetch_one(self.pool)
         .await
         .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
+        self.get_by_id(id)
+            .await?
+            .ok_or_else(|| HobbsError::NotFound("post".to_string()))
+    }
+
+    /// Create a new post in a thread.
+    ///
+    /// Returns the created post with the assigned ID.
+    #[cfg(feature = "postgres")]
+    pub async fn create_thread_post(&self, new_post: &NewThreadPost) -> Result<Post> {
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO posts (board_id, thread_id, author_id, body) VALUES ($1, $2, $3, $4) RETURNING id",
+        )
+        .bind(new_post.board_id)
+        .bind(new_post.thread_id)
+        .bind(new_post.author_id)
+        .bind(&new_post.body)
+        .fetch_one(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
         self.get_by_id(id)
             .await?
             .ok_or_else(|| HobbsError::NotFound("post".to_string()))
@@ -42,18 +62,38 @@ impl<'a> PostRepository<'a> {
     /// Create a new post in a flat board.
     ///
     /// Returns the created post with the assigned ID.
+    #[cfg(feature = "sqlite")]
     pub async fn create_flat_post(&self, new_post: &NewFlatPost) -> Result<Post> {
-        let result =
-            sqlx::query("INSERT INTO posts (board_id, author_id, title, body) VALUES (?, ?, ?, ?)")
+        let id: i64 =
+            sqlx::query_scalar("INSERT INTO posts (board_id, author_id, title, body) VALUES (?, ?, ?, ?) RETURNING id")
                 .bind(new_post.board_id)
                 .bind(new_post.author_id)
                 .bind(&new_post.title)
                 .bind(&new_post.body)
-                .execute(self.pool)
+                .fetch_one(self.pool)
                 .await
                 .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
+        self.get_by_id(id)
+            .await?
+            .ok_or_else(|| HobbsError::NotFound("post".to_string()))
+    }
+
+    /// Create a new post in a flat board.
+    ///
+    /// Returns the created post with the assigned ID.
+    #[cfg(feature = "postgres")]
+    pub async fn create_flat_post(&self, new_post: &NewFlatPost) -> Result<Post> {
+        let id: i64 =
+            sqlx::query_scalar("INSERT INTO posts (board_id, author_id, title, body) VALUES ($1, $2, $3, $4) RETURNING id")
+                .bind(new_post.board_id)
+                .bind(new_post.author_id)
+                .bind(&new_post.title)
+                .bind(&new_post.body)
+                .fetch_one(self.pool)
+                .await
+                .map_err(|e| HobbsError::Database(e.to_string()))?;
+
         self.get_by_id(id)
             .await?
             .ok_or_else(|| HobbsError::NotFound("post".to_string()))
@@ -271,6 +311,7 @@ mod tests {
     use super::*;
     use crate::board::{BoardRepository, BoardType, NewBoard, NewThread, ThreadRepository};
     use crate::Database;
+    use sqlx::SqlitePool;
 
     async fn setup_db() -> Database {
         Database::open_in_memory().await.unwrap()

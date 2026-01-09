@@ -1,8 +1,9 @@
 //! File metadata types and repository for HOBBS file management.
 
 use chrono::{DateTime, Utc};
-use sqlx::{QueryBuilder, SqlitePool};
+use sqlx::QueryBuilder;
 
+use crate::db::DbPool;
 use crate::Result;
 
 /// Metadata for a file in the file library.
@@ -123,20 +124,21 @@ impl FileUpdate {
 
 /// Repository for file metadata operations.
 pub struct FileRepository<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
 }
 
 impl<'a> FileRepository<'a> {
     /// Create a new FileRepository with the given database pool reference.
-    pub fn new(pool: &'a SqlitePool) -> Self {
+    pub fn new(pool: &'a DbPool) -> Self {
         Self { pool }
     }
 
     /// Create a new file entry.
     pub async fn create(&self, file: &NewFile) -> Result<FileMetadata> {
-        let result = sqlx::query(
+        let id: i64 = sqlx::query_scalar(
             "INSERT INTO files (folder_id, filename, stored_name, size, description, uploader_id)
-             VALUES (?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?)
+             RETURNING id",
         )
         .bind(file.folder_id)
         .bind(&file.filename)
@@ -144,11 +146,10 @@ impl<'a> FileRepository<'a> {
         .bind(file.size)
         .bind(&file.description)
         .bind(file.uploader_id)
-        .execute(self.pool)
+        .fetch_one(self.pool)
         .await
         .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        let id = result.last_insert_rowid();
         self.get_by_id(id)
             .await?
             .ok_or_else(|| crate::HobbsError::NotFound("file".to_string()))
@@ -216,7 +217,10 @@ impl<'a> FileRepository<'a> {
             return self.get_by_id(id).await;
         }
 
+        #[cfg(feature = "sqlite")]
         let mut query: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new("UPDATE files SET ");
+        #[cfg(feature = "postgres")]
+        let mut query: QueryBuilder<sqlx::Postgres> = QueryBuilder::new("UPDATE files SET ");
         let mut separated = query.separated(", ");
 
         if let Some(ref filename) = update.filename {
@@ -308,6 +312,7 @@ mod tests {
     use crate::db::{NewUser, UserRepository};
     use crate::file::{FolderRepository, NewFolder};
     use crate::Database;
+    use sqlx::SqlitePool;
 
     async fn setup_db() -> Database {
         Database::open_in_memory().await.unwrap()

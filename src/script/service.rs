@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use mlua::Table;
-use sqlx::SqlitePool;
 
 use super::api::BbsApi;
 use super::data_repository::ScriptDataRepository;
@@ -14,7 +13,7 @@ use super::loader::ScriptLoader;
 use super::log_repository::ScriptLogRepository;
 use super::repository::ScriptRepository;
 use super::types::Script;
-use crate::db::Database;
+use crate::db::{Database, DbPool};
 use crate::{HobbsError, Result};
 
 /// Result of script execution.
@@ -32,14 +31,14 @@ pub struct ExecutionResult {
 
 /// Service for managing and executing scripts.
 pub struct ScriptService<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
     db: &'a Database,
     scripts_dir: Option<std::path::PathBuf>,
 }
 
 impl<'a> ScriptService<'a> {
     /// Create a new ScriptService.
-    pub fn new(pool: &'a SqlitePool, db: &'a Database) -> Self {
+    pub fn new(pool: &'a DbPool, db: &'a Database) -> Self {
         Self {
             pool,
             db,

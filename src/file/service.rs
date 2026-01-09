@@ -5,9 +5,7 @@
 //! - Download with access control
 //! - File listing and deletion
 
-use sqlx::SqlitePool;
-
-use crate::db::{Role, User};
+use crate::db::{DbPool, Role, User};
 use crate::{HobbsError, Result};
 
 use super::folder::FolderRepository;
@@ -57,14 +55,14 @@ pub struct DownloadResult {
 
 /// File service for managing file uploads and downloads.
 pub struct FileService<'a> {
-    pool: &'a SqlitePool,
+    pool: &'a DbPool,
     storage: &'a FileStorage,
     max_file_size: u64,
 }
 
 impl<'a> FileService<'a> {
     /// Create a new FileService.
-    pub fn new(pool: &'a SqlitePool, storage: &'a FileStorage) -> Self {
+    pub fn new(pool: &'a DbPool, storage: &'a FileStorage) -> Self {
         Self {
             pool,
             storage,
@@ -307,6 +305,7 @@ mod tests {
     use crate::db::{NewUser, UserRepository};
     use crate::file::NewFolder;
     use crate::Database;
+    use sqlx::SqlitePool;
     use tempfile::TempDir;
 
     async fn setup() -> (Database, TempDir, FileStorage) {
