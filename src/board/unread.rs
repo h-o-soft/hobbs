@@ -80,7 +80,7 @@ impl<'a> UnreadRepository<'a> {
              ON CONFLICT(user_id, board_id) DO UPDATE SET
                  last_read_post_id = excluded.last_read_post_id,
                  last_read_at = {}
-             WHERE excluded.last_read_post_id > last_read_post_id",
+             WHERE excluded.last_read_post_id > read_positions.last_read_post_id",
             SQL_NOW, SQL_NOW
         );
         sqlx::query(&query)
