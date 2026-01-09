@@ -35,6 +35,7 @@ Telnetプロトコルで接続するレトロなパソコン通信BBSホスト�
 - Rust 1.70以上
 - SQLite 3.35以上（デフォルト、bundled版を使用するため個別インストール不要）
 - PostgreSQL 12以上（PostgreSQL版を使用する場合）
+- Docker / Docker Compose（PostgreSQL開発環境を使用する場合）
 - Node.js 18以上（Web UI をビルドする場合）
 
 ## インストール
@@ -229,6 +230,25 @@ hobbs/
 ```
 
 ## 開発
+
+### PostgreSQL開発環境（Docker）
+
+PostgreSQL版で開発する場合、Docker Composeで簡単に環境を構築できます：
+
+```bash
+# PostgreSQLを起動
+docker compose up -d postgres
+
+# PostgreSQL版をビルドして実行
+cargo build --no-default-features --features postgres
+DATABASE_URL="postgres://hobbs:hobbs_password@localhost:5433/hobbs" \
+    ./target/debug/hobbs
+
+# 停止
+docker compose down
+```
+
+詳細は [運用ガイド - PostgreSQL環境構築](docs/operation_guide.md#postgresql環境構築) を参照してください。
 
 ### テスト実行
 
