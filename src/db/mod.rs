@@ -99,14 +99,14 @@ impl Database {
     /// Get the current schema version.
     pub async fn schema_version(&self) -> Result<i64> {
         // Check if _sqlx_migrations table exists
-        let table_exists: bool = sqlx::query_scalar(
+        let table_exists: i32 = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations')",
         )
         .fetch_one(&self.pool)
         .await
         .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        if !table_exists {
+        if table_exists == 0 {
             return Ok(0);
         }
 
@@ -125,22 +125,38 @@ impl Database {
     pub async fn migrate(&self) -> Result<()> {
         info!("Running database migrations...");
 
-        // Check if this is a legacy database (has tables but no _sqlx_migrations)
-        let migrations_table_exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations')",
-        )
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
-
-        let users_table_exists: bool = sqlx::query_scalar(
+        // Check if this is a legacy database that needs migration records
+        let users_table_exists: i32 = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='users')",
         )
         .fetch_one(&self.pool)
         .await
         .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        if !migrations_table_exists && users_table_exists {
+        let migrations_table_exists: i32 = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations')",
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
+
+        // Check how many migrations are recorded
+        let migrations_recorded: i64 = if migrations_table_exists == 1 {
+            sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+                .fetch_one(&self.pool)
+                .await
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        info!(
+            "Migration check: users exists={}, migrations table exists={}, migrations recorded={}",
+            users_table_exists, migrations_table_exists, migrations_recorded
+        );
+
+        // If users table exists but no migrations are recorded, this is a legacy database
+        if users_table_exists == 1 && migrations_recorded == 0 {
             // Legacy database detected - mark all migrations as applied
             info!("Legacy database detected, marking migrations as applied...");
             self.mark_legacy_migrations_applied().await?;
@@ -210,7 +226,7 @@ impl Database {
 
     /// Check if a table exists.
     pub async fn table_exists(&self, table_name: &str) -> Result<bool> {
-        let exists: bool = sqlx::query_scalar(
+        let exists: i32 = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)",
         )
         .bind(table_name)
@@ -218,7 +234,7 @@ impl Database {
         .await
         .map_err(|e| crate::HobbsError::Database(e.to_string()))?;
 
-        Ok(exists)
+        Ok(exists == 1)
     }
 
     /// Close the database connection pool.
