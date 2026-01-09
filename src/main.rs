@@ -6,7 +6,7 @@ use hobbs::server::SessionManager;
 use hobbs::web::WebServer;
 use hobbs::{
     chat::ChatRoomManager, start_rss_updater_with_config, Application, Config, Database,
-    I18nManager, TelnetServer, TelnetSession, TemplateLoader,
+    HobbsError, I18nManager, TelnetServer, TelnetSession, TemplateLoader,
 };
 
 fn main() {
@@ -60,12 +60,30 @@ async fn run_server(config: Config) -> Result<(), Box<dyn std::error::Error>> {
 
     local
         .run_until(async move {
-            // Ensure data directory exists
-            std::fs::create_dir_all("data")?;
-
             // Open database
-            let db = Arc::new(Database::open(&config.database.path).await?);
+            #[cfg(feature = "sqlite")]
+            let db = {
+                // Ensure data directory exists for SQLite
+                std::fs::create_dir_all("data")?;
+                Arc::new(Database::open(&config.database.path).await?)
+            };
+            #[cfg(feature = "postgres")]
+            let db = {
+                // For PostgreSQL, use url from config or DATABASE_URL env var
+                let url = if !config.database.url.is_empty() {
+                    config.database.url.clone()
+                } else {
+                    std::env::var("DATABASE_URL")
+                        .map_err(|_| HobbsError::Config(
+                            "PostgreSQL requires database.url in config or DATABASE_URL environment variable".to_string()
+                        ))?
+                };
+                Arc::new(Database::open(&url).await?)
+            };
+            #[cfg(feature = "sqlite")]
             info!("Database opened: {}", config.database.path);
+            #[cfg(feature = "postgres")]
+            info!("PostgreSQL database connected");
 
             // Load I18n
             let i18n_manager = Arc::new(I18nManager::load_all("locales")?);
@@ -103,7 +121,20 @@ async fn run_server(config: Config) -> Result<(), Box<dyn std::error::Error>> {
             // Start Web server if enabled (runs in separate task with its own DB connection)
             // Web server uses Send-safe types, so tokio::spawn is fine
             if config.web.enabled {
+                #[cfg(feature = "sqlite")]
                 let web_db = Database::open(&config.database.path).await?;
+                #[cfg(feature = "postgres")]
+                let web_db = {
+                    let url = if !config.database.url.is_empty() {
+                        config.database.url.clone()
+                    } else {
+                        std::env::var("DATABASE_URL")
+                            .map_err(|_| HobbsError::Config(
+                                "PostgreSQL requires database.url in config or DATABASE_URL environment variable".to_string()
+                            ))?
+                    };
+                    Database::open(&url).await?
+                };
                 let web_chat_manager = Arc::clone(&chat_manager);
                 let web_server = WebServer::from_database_with_configs(
                     &config.web,
