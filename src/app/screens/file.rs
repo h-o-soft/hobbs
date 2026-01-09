@@ -25,7 +25,9 @@ impl FileScreen {
         loop {
             // Get folder info
             let folder_name = if let Some(fid) = current_folder {
-                FolderRepository::get_by_id(ctx.db.conn(), fid)?
+                FolderRepository::new(ctx.db.pool())
+                    .get_by_id(fid)
+                    .await?
                     .map(|f| f.name.clone())
                     .unwrap_or_else(|| ctx.i18n.t("file.folder_list").to_string())
             } else {
@@ -34,21 +36,27 @@ impl FileScreen {
 
             // Get child folders
             let child_folders = if let Some(fid) = current_folder {
-                FolderRepository::list_by_parent(ctx.db.conn(), fid)?
+                FolderRepository::new(ctx.db.pool())
+                    .list_by_parent(fid)
+                    .await?
             } else {
-                FolderRepository::list_root(ctx.db.conn())?
+                FolderRepository::new(ctx.db.pool()).list_root().await?
             };
 
             // Get files
             let total = if let Some(fid) = current_folder {
-                FileRepository::count_by_folder(ctx.db.conn(), fid)? as usize
+                FileRepository::new(ctx.db.pool())
+                    .count_by_folder(fid)
+                    .await? as usize
             } else {
                 0 // Root folder doesn't have files directly
             };
             pagination.total = total;
 
             let files = if let Some(fid) = current_folder {
-                FileRepository::list_by_folder(ctx.db.conn(), fid)?
+                FileRepository::new(ctx.db.pool())
+                    .list_by_folder(fid)
+                    .await?
             } else {
                 vec![]
             };
@@ -155,7 +163,9 @@ impl FileScreen {
                 "b" => {
                     // Go back to parent folder
                     if let Some(fid) = current_folder {
-                        let folder = FolderRepository::get_by_id(ctx.db.conn(), fid)?;
+                        let folder = FolderRepository::new(ctx.db.pool())
+                            .get_by_id(fid)
+                            .await?;
                         current_folder = folder.and_then(|f| f.parent_id);
                         pagination = Pagination::new(1, 10, 0);
                     }
@@ -198,15 +208,17 @@ impl FileScreen {
         session: &mut TelnetSession,
         file_id: i64,
     ) -> Result<()> {
-        let file = match FileRepository::get_by_id(ctx.db.conn(), file_id)? {
+        let file_repo = FileRepository::new(ctx.db.pool());
+        let file = match file_repo.get_by_id(file_id).await? {
             Some(f) => f,
             None => return Ok(()),
         };
 
         // Get uploader name
-        let user_repo = UserRepository::new(&ctx.db);
+        let user_repo = UserRepository::new(ctx.db.pool());
         let uploader = user_repo
-            .get_by_id(file.uploader_id)?
+            .get_by_id(file.uploader_id)
+            .await?
             .map(|u| u.nickname)
             .unwrap_or_else(|| "Unknown".to_string());
 
@@ -237,7 +249,7 @@ impl FileScreen {
             &format!(
                 "{}: {}",
                 ctx.i18n.t("file.uploaded_at"),
-                file.created_at.format("%Y/%m/%d %H:%M")
+                file.created_at_datetime().format("%Y/%m/%d %H:%M")
             ),
         )
         .await?;
@@ -286,8 +298,8 @@ impl FileScreen {
             }
         };
 
-        let user_repo = UserRepository::new(&ctx.db);
-        let user = match user_repo.get_by_id(user_id)? {
+        let user_repo = UserRepository::new(ctx.db.pool());
+        let user = match user_repo.get_by_id(user_id).await? {
             Some(u) => u,
             None => {
                 ctx.send_line(session, ctx.i18n.t("error.user_not_found"))
@@ -308,10 +320,10 @@ impl FileScreen {
                 return Ok(());
             }
         };
-        let file_service = FileService::new(&ctx.db, &storage);
+        let file_service = FileService::new(ctx.db.pool(), &storage);
 
         // Download file (this checks permissions and increments counter)
-        let download_result = match file_service.download(file_id, &user) {
+        let download_result = match file_service.download(file_id, &user).await {
             Ok(result) => result,
             Err(e) => {
                 ctx.send_line(
@@ -387,8 +399,8 @@ impl FileScreen {
             }
         };
 
-        let user_repo = UserRepository::new(&ctx.db);
-        let user = match user_repo.get_by_id(user_id)? {
+        let user_repo = UserRepository::new(ctx.db.pool());
+        let user = match user_repo.get_by_id(user_id).await? {
             Some(u) => u,
             None => {
                 ctx.send_line(session, ctx.i18n.t("error.user_not_found"))
@@ -451,14 +463,14 @@ impl FileScreen {
                         return Ok(());
                     }
                 };
-                let file_service = FileService::new(&ctx.db, &storage);
+                let file_service = FileService::new(ctx.db.pool(), &storage);
 
                 let mut request = UploadRequest::new(folder_id, filename.to_string(), data);
                 if let Some(desc) = description {
                     request = request.with_description(desc);
                 }
 
-                match file_service.upload(&request, &user) {
+                match file_service.upload(&request, &user).await {
                     Ok(metadata) => {
                         ctx.send_line(session, "").await?;
                         ctx.send_line(

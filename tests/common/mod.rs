@@ -379,7 +379,7 @@ impl TestServer {
         let db_path = std::env::temp_dir().join(format!("hobbs_test_{}.db", uuid::Uuid::new_v4()));
 
         // Create database for test setup (in this thread)
-        let db = Database::open(&db_path)?;
+        let db = Database::open(&db_path).await?;
 
         // Bind server to a random port first to get the address
         let server_config = ServerConfig {
@@ -414,6 +414,7 @@ impl TestServer {
                     // Create database connection for this thread
                     let server_db = Arc::new(
                         Database::open(&db_path_for_server)
+                            .await
                             .expect("Failed to open database in server thread"),
                     );
 
@@ -610,25 +611,26 @@ where
 }
 
 /// Create a test user in the database.
-pub fn create_test_user(
+pub async fn create_test_user(
     db: &Database,
     username: &str,
     password: &str,
     role: &str,
 ) -> Result<i64, Box<dyn std::error::Error>> {
+    use hobbs::db::{NewUser, Role, UserRepository};
+
     let password_hash = hobbs::hash_password(password)?;
+    let user_role: Role = role.parse().unwrap_or(Role::Member);
 
-    db.conn().execute(
-        "INSERT INTO users (username, password, nickname, role) VALUES (?, ?, ?, ?)",
-        rusqlite::params![username, password_hash, username, role],
-    )?;
+    let user_repo = UserRepository::new(db.pool());
+    let new_user = NewUser::new(username, &password_hash, username).with_role(user_role);
+    let user = user_repo.create(&new_user).await?;
 
-    let id = db.conn().last_insert_rowid();
-    Ok(id)
+    Ok(user.id)
 }
 
 /// Create a test user with specific language and encoding settings.
-pub fn create_test_user_with_settings(
+pub async fn create_test_user_with_settings(
     db: &Database,
     username: &str,
     password: &str,
@@ -636,30 +638,39 @@ pub fn create_test_user_with_settings(
     language: &str,
     encoding: &str,
 ) -> Result<i64, Box<dyn std::error::Error>> {
+    use hobbs::db::{NewUser, Role, UserRepository};
+    use hobbs::server::CharacterEncoding;
+
     let password_hash = hobbs::hash_password(password)?;
+    let user_role: Role = role.parse().unwrap_or(Role::Member);
+    let char_encoding: CharacterEncoding = encoding.parse().unwrap_or(CharacterEncoding::ShiftJIS);
 
-    db.conn().execute(
-        "INSERT INTO users (username, password, nickname, role, language, encoding) VALUES (?, ?, ?, ?, ?, ?)",
-        rusqlite::params![username, password_hash, username, role, language, encoding],
-    )?;
+    let user_repo = UserRepository::new(db.pool());
+    let new_user = NewUser::new(username, &password_hash, username)
+        .with_role(user_role)
+        .with_language(language)
+        .with_encoding(char_encoding);
+    let user = user_repo.create(&new_user).await?;
 
-    let id = db.conn().last_insert_rowid();
-    Ok(id)
+    Ok(user.id)
 }
 
 /// Create a test board in the database.
-pub fn create_test_board(
+pub async fn create_test_board(
     db: &Database,
     name: &str,
     board_type: &str,
 ) -> Result<i64, Box<dyn std::error::Error>> {
-    db.conn().execute(
-        "INSERT INTO boards (name, description, board_type) VALUES (?, ?, ?)",
-        rusqlite::params![name, format!("Test board: {}", name), board_type],
-    )?;
+    use hobbs::board::{BoardRepository, BoardType, NewBoard};
 
-    let id = db.conn().last_insert_rowid();
-    Ok(id)
+    let bt: BoardType = board_type.parse().unwrap_or(BoardType::Thread);
+    let board_repo = BoardRepository::new(db.pool());
+    let new_board = NewBoard::new(name)
+        .with_description(&format!("Test board: {}", name))
+        .with_board_type(bt);
+    let board = board_repo.create(&new_board).await?;
+
+    Ok(board.id)
 }
 
 #[cfg(test)]

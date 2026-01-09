@@ -3,7 +3,6 @@
 use axum::{extract::State, Json};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use utoipa;
 
 use crate::chat::ChatRoomManager;
@@ -19,12 +18,12 @@ use crate::web::middleware::{AuthUser, JwtClaims};
 use crate::{Database, Role};
 
 /// Thread-safe database wrapper for Web API.
-pub type SharedDatabase = Arc<Mutex<Database>>;
+pub type SharedDatabase = Arc<Database>;
 
 /// Application state shared across handlers.
 #[derive(Clone)]
 pub struct AppState {
-    /// Database connection (wrapped in Mutex for thread safety).
+    /// Database connection.
     pub db: SharedDatabase,
     /// JWT encoding key.
     pub encoding_key: EncodingKey,
@@ -145,13 +144,12 @@ pub async fn login(
     }
 
     // Get user from database
-    let user = {
-        let db = state.db.lock().await;
-        let repo = UserRepository::new(&*db);
-        repo.get_by_username(&req.username)
-            .map_err(|_| ApiError::invalid_credentials())?
-            .ok_or_else(|| ApiError::invalid_credentials())?
-    };
+    let repo = UserRepository::new(state.db.pool());
+    let user = repo
+        .get_by_username(&req.username)
+        .await
+        .map_err(|_| ApiError::invalid_credentials())?
+        .ok_or_else(|| ApiError::invalid_credentials())?;
 
     // Verify password
     crate::verify_password(&req.password, &user.password)
@@ -167,28 +165,22 @@ pub async fn login(
     let refresh_token = state.generate_refresh_token();
 
     // Store refresh token in database
-    {
-        let db = state.db.lock().await;
-        let repo = RefreshTokenRepository::new(db.conn());
-        let expires_at =
-            chrono::Utc::now() + chrono::Duration::days(state.refresh_token_expiry as i64);
-        let new_token = NewRefreshToken {
-            user_id: user.id,
-            token: refresh_token.clone(),
-            expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-        };
-        repo.create(&new_token).map_err(|e| {
-            tracing::error!("Failed to store refresh token: {}", e);
-            ApiError::internal("Failed to create session")
-        })?;
-    }
+    let token_repo = RefreshTokenRepository::new(state.db.pool());
+    let expires_at =
+        chrono::Utc::now() + chrono::Duration::days(state.refresh_token_expiry as i64);
+    let new_token = NewRefreshToken {
+        user_id: user.id,
+        token: refresh_token.clone(),
+        expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+    };
+    token_repo.create(&new_token).await.map_err(|e| {
+        tracing::error!("Failed to store refresh token: {}", e);
+        ApiError::internal("Failed to create session")
+    })?;
 
     // Update last login time
-    {
-        let db = state.db.lock().await;
-        let repo = UserRepository::new(&*db);
-        let _ = repo.update_last_login(user.id);
-    }
+    let user_repo = UserRepository::new(state.db.pool());
+    let _ = user_repo.update_last_login(user.id).await;
 
     let response = LoginResponse {
         access_token,
@@ -220,9 +212,8 @@ pub async fn logout(
     Json(req): Json<LogoutRequest>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     // Revoke the refresh token
-    let db = state.db.lock().await;
-    let repo = RefreshTokenRepository::new(db.conn());
-    let _ = repo.revoke(&req.refresh_token);
+    let repo = RefreshTokenRepository::new(state.db.pool());
+    let _ = repo.revoke(&req.refresh_token).await;
 
     Ok(Json(ApiResponse::new(())))
 }
@@ -243,24 +234,21 @@ pub async fn refresh(
     Json(req): Json<RefreshRequest>,
 ) -> Result<Json<ApiResponse<RefreshResponse>>, ApiError> {
     // Validate refresh token
-    let user_id = {
-        let db = state.db.lock().await;
-        let repo = RefreshTokenRepository::new(db.conn());
-        let token = repo
-            .get_valid_token(&req.refresh_token)
-            .map_err(|_| ApiError::internal("Database error"))?
-            .ok_or_else(|| ApiError::invalid_refresh_token())?;
-        token.user_id
-    };
+    let token_repo = RefreshTokenRepository::new(state.db.pool());
+    let token = token_repo
+        .get_valid_token(&req.refresh_token)
+        .await
+        .map_err(|_| ApiError::internal("Database error"))?
+        .ok_or_else(|| ApiError::invalid_refresh_token())?;
+    let user_id = token.user_id;
 
     // Get user info
-    let user = {
-        let db = state.db.lock().await;
-        let repo = UserRepository::new(&*db);
-        repo.get_by_id(user_id)
-            .map_err(|_| ApiError::internal("Database error"))?
-            .ok_or_else(|| ApiError::user_not_found())?
-    };
+    let user_repo = UserRepository::new(state.db.pool());
+    let user = user_repo
+        .get_by_id(user_id)
+        .await
+        .map_err(|_| ApiError::internal("Database error"))?
+        .ok_or_else(|| ApiError::user_not_found())?;
 
     // Check if user is active
     if !user.is_active {
@@ -268,32 +256,24 @@ pub async fn refresh(
     }
 
     // Revoke old refresh token
-    {
-        let db = state.db.lock().await;
-        let repo = RefreshTokenRepository::new(db.conn());
-        let _ = repo.revoke(&req.refresh_token);
-    }
+    let _ = token_repo.revoke(&req.refresh_token).await;
 
     // Generate new tokens
     let access_token = state.generate_access_token(user.id, &user.username, &user.role)?;
     let new_refresh_token = state.generate_refresh_token();
 
     // Store new refresh token
-    {
-        let db = state.db.lock().await;
-        let repo = RefreshTokenRepository::new(db.conn());
-        let expires_at =
-            chrono::Utc::now() + chrono::Duration::days(state.refresh_token_expiry as i64);
-        let new_token = NewRefreshToken {
-            user_id: user.id,
-            token: new_refresh_token.clone(),
-            expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-        };
-        repo.create(&new_token).map_err(|e| {
-            tracing::error!("Failed to store refresh token: {}", e);
-            ApiError::internal("Failed to create session")
-        })?;
-    }
+    let expires_at =
+        chrono::Utc::now() + chrono::Duration::days(state.refresh_token_expiry as i64);
+    let new_token = NewRefreshToken {
+        user_id: user.id,
+        token: new_refresh_token.clone(),
+        expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+    };
+    token_repo.create(&new_token).await.map_err(|e| {
+        tracing::error!("Failed to store refresh token: {}", e);
+        ApiError::internal("Failed to create session")
+    })?;
 
     let response = RefreshResponse {
         access_token,
@@ -340,43 +320,37 @@ pub async fn register(
         .map_err(|_| ApiError::internal("Failed to hash password"))?;
 
     // Create user
-    let user = {
-        let db = state.db.lock().await;
-        let repo = UserRepository::new(&*db);
-        let mut new_user = NewUser::new(&req.username, password_hash, &req.nickname);
-        if let Some(ref email) = req.email {
-            new_user = new_user.with_email(email);
+    let user_repo = UserRepository::new(state.db.pool());
+    let mut new_user = NewUser::new(&req.username, password_hash, &req.nickname);
+    if let Some(ref email) = req.email {
+        new_user = new_user.with_email(email);
+    }
+    let user = user_repo.create(&new_user).await.map_err(|e| {
+        if e.to_string().contains("UNIQUE") {
+            ApiError::username_taken()
+        } else {
+            tracing::error!("User creation failed: {}", e);
+            ApiError::internal("Failed to create user")
         }
-        repo.create(&new_user).map_err(|e| {
-            if e.to_string().contains("UNIQUE") {
-                ApiError::username_taken()
-            } else {
-                tracing::error!("User creation failed: {}", e);
-                ApiError::internal("Failed to create user")
-            }
-        })?
-    };
+    })?;
 
     // Generate tokens
     let access_token = state.generate_access_token(user.id, &user.username, &user.role)?;
     let refresh_token = state.generate_refresh_token();
 
     // Store refresh token in database
-    {
-        let db = state.db.lock().await;
-        let repo = RefreshTokenRepository::new(db.conn());
-        let expires_at =
-            chrono::Utc::now() + chrono::Duration::days(state.refresh_token_expiry as i64);
-        let new_token = NewRefreshToken {
-            user_id: user.id,
-            token: refresh_token.clone(),
-            expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-        };
-        repo.create(&new_token).map_err(|e| {
-            tracing::error!("Failed to store refresh token: {}", e);
-            ApiError::internal("Failed to create session")
-        })?;
-    }
+    let token_repo = RefreshTokenRepository::new(state.db.pool());
+    let expires_at =
+        chrono::Utc::now() + chrono::Duration::days(state.refresh_token_expiry as i64);
+    let new_token = NewRefreshToken {
+        user_id: user.id,
+        token: refresh_token.clone(),
+        expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+    };
+    token_repo.create(&new_token).await.map_err(|e| {
+        tracing::error!("Failed to store refresh token: {}", e);
+        ApiError::internal("Failed to create session")
+    })?;
 
     let response = LoginResponse {
         access_token,
@@ -411,19 +385,16 @@ pub async fn me(
     AuthUser(claims): AuthUser,
 ) -> Result<Json<ApiResponse<MeResponse>>, ApiError> {
     // Get user from database
-    let user = {
-        let db = state.db.lock().await;
-        let repo = UserRepository::new(&*db);
-        repo.get_by_id(claims.sub)
-            .map_err(|_| ApiError::internal("Database error"))?
-            .ok_or_else(|| ApiError::not_found("User not found"))?
-    };
+    let user_repo = UserRepository::new(state.db.pool());
+    let user = user_repo
+        .get_by_id(claims.sub)
+        .await
+        .map_err(|_| ApiError::internal("Database error"))?
+        .ok_or_else(|| ApiError::not_found("User not found"))?;
 
     // Get unread mail count
-    let unread_count = {
-        let db = state.db.lock().await;
-        MailRepository::count_unread(db.conn(), claims.sub).unwrap_or(0)
-    };
+    let mail_repo = MailRepository::new(state.db.pool());
+    let unread_count = mail_repo.count_unread(claims.sub).await.unwrap_or(0);
 
     let response = MeResponse {
         id: user.id,

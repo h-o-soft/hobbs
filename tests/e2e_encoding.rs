@@ -9,6 +9,7 @@
 mod common;
 
 use common::{create_test_board, create_test_user, TestClient, TestServer};
+use sqlx;
 use std::time::Duration;
 
 /// Test that ShiftJIS client can login and access chat.
@@ -16,7 +17,7 @@ use std::time::Duration;
 #[tokio::test]
 async fn test_shiftjis_login_and_navigation() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "sj_user", "password123", "member").unwrap();
+    create_test_user(server.db(), "sj_user", "password123", "member").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -63,7 +64,7 @@ async fn test_shiftjis_login_and_navigation() {
 #[tokio::test]
 async fn test_utf8_japanese_login_and_menu() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "utf8_user", "password123", "member").unwrap();
+    create_test_user(server.db(), "utf8_user", "password123", "member").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -110,7 +111,7 @@ async fn test_utf8_japanese_login_and_menu() {
 #[tokio::test]
 async fn test_shiftjis_chat_access() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "chat_sj", "password123", "member").unwrap();
+    create_test_user(server.db(), "chat_sj", "password123", "member").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -156,8 +157,8 @@ async fn test_shiftjis_chat_access() {
 #[tokio::test]
 async fn test_utf8_board_access() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "board_u1", "password123", "member").unwrap();
-    create_test_board(server.db(), "TestBoard", "thread").unwrap();
+    create_test_user(server.db(), "board_u1", "password123", "member").await.unwrap();
+    create_test_board(server.db(), "TestBoard", "thread").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -200,7 +201,7 @@ async fn test_utf8_board_access() {
 #[tokio::test]
 async fn test_utf8_chat_japanese_message() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "chat_utf8", "password123", "member").unwrap();
+    create_test_user(server.db(), "chat_utf8", "password123", "member").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -248,7 +249,7 @@ async fn test_utf8_chat_japanese_message() {
 #[tokio::test]
 async fn test_shiftjis_chat_message_send() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "chat_sj_msg", "password123", "member").unwrap();
+    create_test_user(server.db(), "chat_sj_msg", "password123", "member").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -295,7 +296,7 @@ async fn test_shiftjis_chat_message_send() {
 #[tokio::test]
 async fn test_encoding_shiftjis_to_utf8_chat_log() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "conv_user", "password123", "member").unwrap();
+    create_test_user(server.db(), "conv_user", "password123", "member").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // First client: ShiftJIS - post a message
@@ -353,7 +354,7 @@ async fn test_encoding_shiftjis_to_utf8_chat_log() {
 #[tokio::test]
 async fn test_profile_access_both_encodings() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "profile_test", "password123", "member").unwrap();
+    create_test_user(server.db(), "profile_test", "password123", "member").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Test with ShiftJIS
@@ -404,15 +405,11 @@ async fn test_profile_access_both_encodings() {
 async fn test_english_utf8_interface() {
     let server = TestServer::new().await.unwrap();
     // Create user with English/UTF-8 settings
-    create_test_user(server.db(), "english_user", "password123", "member").unwrap();
+    create_test_user(server.db(), "english_user", "password123", "member").await.unwrap();
     // Set user's encoding/language to English/UTF-8
-    server
-        .db()
-        .conn()
-        .execute(
-            "UPDATE users SET language = 'en', encoding = 'utf8' WHERE username = 'english_user'",
-            [],
-        )
+    sqlx::query("UPDATE users SET language = 'en', encoding = 'utf8' WHERE username = 'english_user'")
+        .execute(server.db().pool())
+        .await
         .unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -478,7 +475,7 @@ async fn test_english_utf8_interface() {
 #[tokio::test]
 async fn test_both_utf8_variants() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "utf8_test", "password123", "member").unwrap();
+    create_test_user(server.db(), "utf8_test", "password123", "member").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // English UTF-8 - new flow: welcome screen first, then login

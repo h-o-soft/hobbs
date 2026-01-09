@@ -144,6 +144,14 @@ impl FromStr for CharacterEncoding {
     }
 }
 
+impl TryFrom<String> for CharacterEncoding {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        CharacterEncoding::from_str(&value)
+    }
+}
+
 /// Encode a UTF-8 string for sending to a client with the specified encoding.
 ///
 /// # Arguments
@@ -646,70 +654,70 @@ fn petscii_graphic_char(byte: u8) -> Option<char> {
     // This is a simplified mapping - full PETSCII has 64 unique graphics
     match byte {
         0xA0 => Some('\u{00A0}'), // Non-breaking space
-        0xA1 => Some('▌'),       // Left half block
-        0xA2 => Some('▄'),       // Lower half block
-        0xA3 => Some('▔'),       // Upper one eighth block
-        0xA4 => Some('▁'),       // Lower one eighth block
-        0xA5 => Some('▏'),       // Left one eighth block
-        0xA6 => Some('▒'),       // Medium shade
-        0xA7 => Some('▕'),       // Right one eighth block
-        0xA8 => Some('◤'),       // Upper left triangle (approximation)
-        0xA9 => Some('╮'),       // Box drawings light arc down and left
-        0xAA => Some('╰'),       // Box drawings light arc up and right
-        0xAB => Some('╯'),       // Box drawings light arc up and left
-        0xAC => Some('╲'),       // Box drawings light diagonal upper left to lower right
-        0xAD => Some('╱'),       // Box drawings light diagonal upper right to lower left
-        0xAE => Some('╳'),       // Box drawings light diagonal cross
-        0xAF => Some('◥'),       // Upper right triangle (approximation)
-        0xB0 => Some('◣'),       // Lower left triangle
-        0xB1 => Some('├'),       // Box drawings light vertical and right
-        0xB2 => Some('▗'),       // Quadrant lower right
-        0xB3 => Some('▖'),       // Quadrant lower left
-        0xB4 => Some('▝'),       // Quadrant upper right
-        0xB5 => Some('┌'),       // Box drawings light down and right
-        0xB6 => Some('▘'),       // Quadrant upper left
-        0xB7 => Some('┬'),       // Box drawings light down and horizontal
-        0xB8 => Some('┴'),       // Box drawings light up and horizontal
-        0xB9 => Some('┤'),       // Box drawings light vertical and left
-        0xBA => Some('▎'),       // Left one quarter block
-        0xBB => Some('▐'),       // Right half block
-        0xBC => Some('▀'),       // Upper half block
-        0xBD => Some('▃'),       // Lower three eighths block
-        0xBE => Some('🮇'),       // Block sextant (approximation, using Unicode 13.0+)
-        0xBF => Some('▂'),       // Lower one quarter block
-        0xC0 => Some('─'),       // Box drawings light horizontal
-        0xC1 => Some('♠'),       // Black spade suit
-        0xC2 => Some('│'),       // Box drawings light vertical
-        0xC3 => Some('─'),       // Horizontal line (duplicate)
-        0xC4 => Some('─'),       // Horizontal line
-        0xC5 => Some('─'),       // Horizontal line
-        0xC6 => Some('─'),       // Horizontal line
-        0xC7 => Some('─'),       // Horizontal line
-        0xC8 => Some('─'),       // Horizontal line
-        0xC9 => Some('╭'),       // Box drawings light arc down and right
-        0xCA => Some('╮'),       // Box drawings light arc down and left
-        0xCB => Some('╰'),       // Box drawings light arc up and right
-        0xCC => Some('╯'),       // Box drawings light arc up and left
-        0xCD => Some('┼'),       // Box drawings light vertical and horizontal
-        0xCE => Some('╲'),       // Diagonal
-        0xCF => Some('╱'),       // Diagonal
-        0xD0 => Some('╳'),       // Diagonal cross
-        0xD1 => Some('●'),       // Black circle
-        0xD2 => Some('▒'),       // Medium shade
-        0xD3 => Some('♥'),       // Black heart suit
-        0xD4 => Some('▗'),       // Quadrant lower right
-        0xD5 => Some('╭'),       // Arc
-        0xD6 => Some('╳'),       // Cross
-        0xD7 => Some('○'),       // White circle
-        0xD8 => Some('♣'),       // Black club suit
-        0xD9 => Some('▖'),       // Quadrant lower left
-        0xDA => Some('♦'),       // Black diamond suit
-        0xDB => Some('┼'),       // Cross
-        0xDC => Some('▘'),       // Quadrant upper left
-        0xDD => Some('│'),       // Vertical line
-        0xDE => Some('π'),       // Pi symbol
-        0xDF => Some('◥'),       // Triangle
-        _ => Some('?'),          // Fallback for unmapped characters
+        0xA1 => Some('▌'),        // Left half block
+        0xA2 => Some('▄'),        // Lower half block
+        0xA3 => Some('▔'),        // Upper one eighth block
+        0xA4 => Some('▁'),        // Lower one eighth block
+        0xA5 => Some('▏'),        // Left one eighth block
+        0xA6 => Some('▒'),        // Medium shade
+        0xA7 => Some('▕'),        // Right one eighth block
+        0xA8 => Some('◤'),        // Upper left triangle (approximation)
+        0xA9 => Some('╮'),        // Box drawings light arc down and left
+        0xAA => Some('╰'),        // Box drawings light arc up and right
+        0xAB => Some('╯'),        // Box drawings light arc up and left
+        0xAC => Some('╲'),        // Box drawings light diagonal upper left to lower right
+        0xAD => Some('╱'),        // Box drawings light diagonal upper right to lower left
+        0xAE => Some('╳'),        // Box drawings light diagonal cross
+        0xAF => Some('◥'),        // Upper right triangle (approximation)
+        0xB0 => Some('◣'),        // Lower left triangle
+        0xB1 => Some('├'),        // Box drawings light vertical and right
+        0xB2 => Some('▗'),        // Quadrant lower right
+        0xB3 => Some('▖'),        // Quadrant lower left
+        0xB4 => Some('▝'),        // Quadrant upper right
+        0xB5 => Some('┌'),        // Box drawings light down and right
+        0xB6 => Some('▘'),        // Quadrant upper left
+        0xB7 => Some('┬'),        // Box drawings light down and horizontal
+        0xB8 => Some('┴'),        // Box drawings light up and horizontal
+        0xB9 => Some('┤'),        // Box drawings light vertical and left
+        0xBA => Some('▎'),        // Left one quarter block
+        0xBB => Some('▐'),        // Right half block
+        0xBC => Some('▀'),        // Upper half block
+        0xBD => Some('▃'),        // Lower three eighths block
+        0xBE => Some('🮇'),        // Block sextant (approximation, using Unicode 13.0+)
+        0xBF => Some('▂'),        // Lower one quarter block
+        0xC0 => Some('─'),        // Box drawings light horizontal
+        0xC1 => Some('♠'),        // Black spade suit
+        0xC2 => Some('│'),        // Box drawings light vertical
+        0xC3 => Some('─'),        // Horizontal line (duplicate)
+        0xC4 => Some('─'),        // Horizontal line
+        0xC5 => Some('─'),        // Horizontal line
+        0xC6 => Some('─'),        // Horizontal line
+        0xC7 => Some('─'),        // Horizontal line
+        0xC8 => Some('─'),        // Horizontal line
+        0xC9 => Some('╭'),        // Box drawings light arc down and right
+        0xCA => Some('╮'),        // Box drawings light arc down and left
+        0xCB => Some('╰'),        // Box drawings light arc up and right
+        0xCC => Some('╯'),        // Box drawings light arc up and left
+        0xCD => Some('┼'),        // Box drawings light vertical and horizontal
+        0xCE => Some('╲'),        // Diagonal
+        0xCF => Some('╱'),        // Diagonal
+        0xD0 => Some('╳'),        // Diagonal cross
+        0xD1 => Some('●'),        // Black circle
+        0xD2 => Some('▒'),        // Medium shade
+        0xD3 => Some('♥'),        // Black heart suit
+        0xD4 => Some('▗'),        // Quadrant lower right
+        0xD5 => Some('╭'),        // Arc
+        0xD6 => Some('╳'),        // Cross
+        0xD7 => Some('○'),        // White circle
+        0xD8 => Some('♣'),        // Black club suit
+        0xD9 => Some('▖'),        // Quadrant lower left
+        0xDA => Some('♦'),        // Black diamond suit
+        0xDB => Some('┼'),        // Cross
+        0xDC => Some('▘'),        // Quadrant upper left
+        0xDD => Some('│'),        // Vertical line
+        0xDE => Some('π'),        // Pi symbol
+        0xDF => Some('◥'),        // Triangle
+        _ => Some('?'),           // Fallback for unmapped characters
     }
 }
 
@@ -832,7 +840,7 @@ pub fn strip_ansi_sequences(text: &str) -> String {
             // Check for CSI sequence (ESC [)
             if chars.peek() == Some(&'[') {
                 chars.next(); // consume '['
-                // Skip until we hit a letter (the final byte of the sequence)
+                              // Skip until we hit a letter (the final byte of the sequence)
                 while let Some(&next) = chars.peek() {
                     chars.next();
                     if next.is_ascii_alphabetic() {

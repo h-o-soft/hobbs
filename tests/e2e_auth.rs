@@ -14,7 +14,7 @@ async fn test_login_success() {
     let server = TestServer::new().await.unwrap();
 
     // Create test user
-    create_test_user(server.db(), "testuser", "password123", "member").unwrap();
+    create_test_user(server.db(), "testuser", "password123", "member").await.unwrap();
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -33,7 +33,7 @@ async fn test_login_success() {
 #[tokio::test]
 async fn test_login_wrong_password() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "testuser", "password123", "member").unwrap();
+    create_test_user(server.db(), "testuser", "password123", "member").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -60,7 +60,7 @@ async fn test_login_nonexistent_user() {
 #[tokio::test]
 async fn test_logout() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "testuser", "password123", "member").unwrap();
+    create_test_user(server.db(), "testuser", "password123", "member").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -110,7 +110,7 @@ async fn test_registration_success() {
 #[tokio::test]
 async fn test_registration_duplicate_username() {
     let server = TestServer::new().await.unwrap();
-    create_test_user(server.db(), "existing", "password123", "member").unwrap();
+    create_test_user(server.db(), "existing", "password123", "member").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut client = TestClient::connect(server.addr()).await.unwrap();
@@ -172,14 +172,11 @@ async fn test_login_disabled_user() {
     let server = TestServer::new().await.unwrap();
 
     // Create and disable user
-    let user_id = create_test_user(server.db(), "disabled", "password123", "member").unwrap();
-    server
-        .db()
-        .conn()
-        .execute(
-            "UPDATE users SET is_active = 0 WHERE id = ?",
-            rusqlite::params![user_id],
-        )
+    let user_id = create_test_user(server.db(), "disabled", "password123", "member").await.unwrap();
+    sqlx::query("UPDATE users SET is_active = 0 WHERE id = ?")
+        .bind(user_id)
+        .execute(server.db().pool())
+        .await
         .unwrap();
 
     tokio::time::sleep(Duration::from_millis(100)).await;

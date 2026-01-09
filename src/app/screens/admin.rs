@@ -15,7 +15,7 @@ impl AdminScreen {
     /// Run the admin menu.
     pub async fn run(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<ScreenResult> {
         // Check admin permission
-        if !Self::is_admin(ctx, session) {
+        if !Self::is_admin(ctx, session).await {
             ctx.send_line(session, ctx.i18n.t("menu.admin_required"))
                 .await?;
             return Ok(ScreenResult::Back);
@@ -67,7 +67,7 @@ impl AdminScreen {
             ctx.send_line(session, &format!("  [6] {}", ctx.i18n.t("admin.user_list")))
                 .await?;
             // SysOp only: change role
-            if Self::is_sysop(ctx, session) {
+            if Self::is_sysop(ctx, session).await {
                 ctx.send_line(
                     session,
                     &format!("  [7] {}", ctx.i18n.t("admin.change_role")),
@@ -196,8 +196,8 @@ impl AdminScreen {
     async fn show_board_list(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
         use crate::board::BoardRepository;
 
-        let board_repo = BoardRepository::new(&ctx.db);
-        let boards = board_repo.list_all()?;
+        let board_repo = BoardRepository::new(ctx.db.pool());
+        let boards = board_repo.list_all().await?;
 
         ctx.send_line(session, "").await?;
         ctx.send_line(
@@ -274,7 +274,7 @@ impl AdminScreen {
         let description = description.trim();
 
         // Create board
-        let board_repo = BoardRepository::new(&ctx.db);
+        let board_repo = BoardRepository::new(ctx.db.pool());
         let new_board = if description.is_empty() {
             NewBoard::new(name).with_board_type(board_type)
         } else {
@@ -283,7 +283,7 @@ impl AdminScreen {
                 .with_description(description)
         };
 
-        match board_repo.create(&new_board) {
+        match board_repo.create(&new_board).await {
             Ok(board) => {
                 ctx.send_line(
                     session,
@@ -306,8 +306,8 @@ impl AdminScreen {
 
         // Get board list
         let boards = {
-            let board_repo = BoardRepository::new(&ctx.db);
-            board_repo.list_all()?
+            let board_repo = BoardRepository::new(ctx.db.pool());
+            board_repo.list_all().await?
         };
 
         if boards.is_empty() {
@@ -367,8 +367,8 @@ impl AdminScreen {
         loop {
             // Reload board to get latest data
             let board = {
-                let board_repo = BoardRepository::new(&ctx.db);
-                match board_repo.get_by_id(board_id)? {
+                let board_repo = BoardRepository::new(ctx.db.pool());
+                match board_repo.get_by_id(board_id).await? {
                     Some(b) => b,
                     None => {
                         ctx.send_line(session, ctx.i18n.t("admin.board_not_found"))
@@ -487,8 +487,8 @@ impl AdminScreen {
                     let new_name = new_name.trim();
                     if !new_name.is_empty() {
                         let update = BoardUpdate::new().name(new_name);
-                        let board_repo = BoardRepository::new(&ctx.db);
-                        if let Err(e) = board_repo.update(board_id, &update) {
+                        let board_repo = BoardRepository::new(ctx.db.pool());
+                        if let Err(e) = board_repo.update(board_id, &update).await {
                             ctx.send_line(session, &format!("Error: {}", e)).await?;
                         } else {
                             ctx.send_line(
@@ -514,8 +514,8 @@ impl AdminScreen {
                     } else {
                         BoardUpdate::new().description(Some(new_desc.to_string()))
                     };
-                    let board_repo = BoardRepository::new(&ctx.db);
-                    if let Err(e) = board_repo.update(board_id, &update) {
+                    let board_repo = BoardRepository::new(ctx.db.pool());
+                    if let Err(e) = board_repo.update(board_id, &update).await {
                         ctx.send_line(session, &format!("Error: {}", e)).await?;
                     } else {
                         ctx.send_line(
@@ -530,8 +530,8 @@ impl AdminScreen {
                     // Edit read permission
                     if let Some(role) = Self::select_role(ctx, session).await? {
                         let update = BoardUpdate::new().min_read_role(role);
-                        let board_repo = BoardRepository::new(&ctx.db);
-                        if let Err(e) = board_repo.update(board_id, &update) {
+                        let board_repo = BoardRepository::new(ctx.db.pool());
+                        if let Err(e) = board_repo.update(board_id, &update).await {
                             ctx.send_line(session, &format!("Error: {}", e)).await?;
                         } else {
                             ctx.send_line(
@@ -547,8 +547,8 @@ impl AdminScreen {
                     // Edit write permission
                     if let Some(role) = Self::select_role(ctx, session).await? {
                         let update = BoardUpdate::new().min_write_role(role);
-                        let board_repo = BoardRepository::new(&ctx.db);
-                        if let Err(e) = board_repo.update(board_id, &update) {
+                        let board_repo = BoardRepository::new(ctx.db.pool());
+                        if let Err(e) = board_repo.update(board_id, &update).await {
                             ctx.send_line(session, &format!("Error: {}", e)).await?;
                         } else {
                             ctx.send_line(
@@ -563,8 +563,8 @@ impl AdminScreen {
                 "5" => {
                     // Toggle active status
                     let update = BoardUpdate::new().is_active(!board.is_active);
-                    let board_repo = BoardRepository::new(&ctx.db);
-                    if let Err(e) = board_repo.update(board_id, &update) {
+                    let board_repo = BoardRepository::new(ctx.db.pool());
+                    if let Err(e) = board_repo.update(board_id, &update).await {
                         ctx.send_line(session, &format!("Error: {}", e)).await?;
                     } else {
                         ctx.send_line(
@@ -663,8 +663,8 @@ impl AdminScreen {
             }
         };
 
-        let user_repo = UserRepository::new(&ctx.db);
-        let user = match user_repo.get_by_id(user_id)? {
+        let user_repo = UserRepository::new(ctx.db.pool());
+        let user = match user_repo.get_by_id(user_id).await? {
             Some(u) => u,
             None => return Ok(()),
         };
@@ -676,8 +676,8 @@ impl AdminScreen {
         }
 
         // Show board list
-        let board_repo = BoardRepository::new(&ctx.db);
-        let boards = board_repo.list_all()?;
+        let board_repo = BoardRepository::new(ctx.db.pool());
+        let boards = board_repo.list_all().await?;
 
         ctx.send_line(session, "").await?;
         ctx.send_line(
@@ -694,18 +694,16 @@ impl AdminScreen {
         }
 
         // Get thread/post counts for all boards upfront
-        let board_counts: Vec<(i64, i64)> = {
-            let thread_repo = ThreadRepository::new(&ctx.db);
-            let post_repo = PostRepository::new(&ctx.db);
-            boards
-                .iter()
-                .map(|b| {
-                    let t = thread_repo.count_by_board(b.id).unwrap_or(0);
-                    let p = post_repo.count_by_board(b.id).unwrap_or(0);
-                    (t, p)
-                })
-                .collect()
-        };
+        let mut board_counts: Vec<(i64, i64)> = Vec::new();
+        {
+            let thread_repo = ThreadRepository::new(ctx.db.pool());
+            let post_repo = PostRepository::new(ctx.db.pool());
+            for b in &boards {
+                let t = thread_repo.count_by_board(b.id).await.unwrap_or(0);
+                let p = post_repo.count_by_board(b.id).await.unwrap_or(0);
+                board_counts.push((t, p));
+            }
+        }
 
         // Display boards with thread/post counts
         ctx.send_line(
@@ -796,7 +794,7 @@ impl AdminScreen {
 
         // Delete board
         let admin_service = BoardAdminService::new(&ctx.db);
-        match admin_service.delete_board(board.id, &user) {
+        match admin_service.delete_board(board.id, &user).await {
             Ok(true) => {
                 ctx.send_line(
                     session,
@@ -822,8 +820,8 @@ impl AdminScreen {
     async fn show_user_list(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
         use crate::db::UserRepository;
 
-        let user_repo = UserRepository::new(&ctx.db);
-        let users = user_repo.list_all()?;
+        let user_repo = UserRepository::new(ctx.db.pool());
+        let users = user_repo.list_all().await?;
 
         ctx.send_line(session, "").await?;
         ctx.send_line(
@@ -869,7 +867,7 @@ impl AdminScreen {
         use crate::db::{Role, UserRepository};
 
         // Check SysOp permission
-        if !Self::is_sysop(ctx, session) {
+        if !Self::is_sysop(ctx, session).await {
             ctx.send_line(session, ctx.i18n.t("admin.sysop_required"))
                 .await?;
             return Ok(());
@@ -882,8 +880,8 @@ impl AdminScreen {
         };
 
         let current_user = {
-            let user_repo = UserRepository::new(&ctx.db);
-            match user_repo.get_by_id(current_user_id)? {
+            let user_repo = UserRepository::new(ctx.db.pool());
+            match user_repo.get_by_id(current_user_id).await? {
                 Some(u) => u,
                 None => return Ok(()),
             }
@@ -891,8 +889,8 @@ impl AdminScreen {
 
         // Get all users
         let users = {
-            let user_repo = UserRepository::new(&ctx.db);
-            user_repo.list_all()?
+            let user_repo = UserRepository::new(ctx.db.pool());
+            user_repo.list_all().await?
         };
 
         ctx.send_line(session, "").await?;
@@ -1022,7 +1020,7 @@ impl AdminScreen {
 
         // Call UserAdminService to change role
         let service = UserAdminService::new(&ctx.db);
-        match service.change_user_role(target_user.id, new_role, &current_user) {
+        match service.change_user_role(target_user.id, new_role, &current_user).await {
             Ok(updated) => {
                 let role_name = Self::role_to_string(&updated.role, ctx);
                 let msg = ctx
@@ -1063,8 +1061,8 @@ impl AdminScreen {
         // Get current admin user
         let current_user = match session.user_id() {
             Some(user_id) => {
-                let user_repo = UserRepository::new(&ctx.db);
-                match user_repo.get_by_id(user_id)? {
+                let user_repo = UserRepository::new(ctx.db.pool());
+                match user_repo.get_by_id(user_id).await? {
                     Some(user) => user,
                     None => {
                         ctx.send_line(session, ctx.i18n.t("error.user_not_found"))
@@ -1081,8 +1079,8 @@ impl AdminScreen {
         };
 
         // Get all active users
-        let user_repo = UserRepository::new(&ctx.db);
-        let all_users = user_repo.list_all()?;
+        let user_repo = UserRepository::new(ctx.db.pool());
+        let all_users = user_repo.list_all().await?;
         let users: Vec<_> = all_users.into_iter().filter(|u| u.is_active).collect();
 
         if users.is_empty() {
@@ -1172,7 +1170,7 @@ impl AdminScreen {
 
         // Call UserAdminService to suspend user
         let service = UserAdminService::new(&ctx.db);
-        match service.suspend_user(target_user.id, &current_user) {
+        match service.suspend_user(target_user.id, &current_user).await {
             Ok(updated) => {
                 let msg = ctx
                     .i18n
@@ -1211,8 +1209,8 @@ impl AdminScreen {
         // Get current admin user
         let current_user = match session.user_id() {
             Some(user_id) => {
-                let user_repo = UserRepository::new(&ctx.db);
-                match user_repo.get_by_id(user_id)? {
+                let user_repo = UserRepository::new(ctx.db.pool());
+                match user_repo.get_by_id(user_id).await? {
                     Some(user) => user,
                     None => {
                         ctx.send_line(session, ctx.i18n.t("error.user_not_found"))
@@ -1229,8 +1227,8 @@ impl AdminScreen {
         };
 
         // Get all suspended users
-        let user_repo = UserRepository::new(&ctx.db);
-        let all_users = user_repo.list_all()?;
+        let user_repo = UserRepository::new(ctx.db.pool());
+        let all_users = user_repo.list_all().await?;
         let users: Vec<_> = all_users.into_iter().filter(|u| !u.is_active).collect();
 
         if users.is_empty() {
@@ -1320,7 +1318,7 @@ impl AdminScreen {
 
         // Call UserAdminService to activate user
         let service = UserAdminService::new(&ctx.db);
-        match service.activate_user(target_user.id, &current_user) {
+        match service.activate_user(target_user.id, &current_user).await {
             Ok(updated) => {
                 let msg = ctx
                     .i18n
@@ -1351,8 +1349,8 @@ impl AdminScreen {
         // Get current admin user
         let current_user = match session.user_id() {
             Some(user_id) => {
-                let user_repo = UserRepository::new(&ctx.db);
-                match user_repo.get_by_id(user_id)? {
+                let user_repo = UserRepository::new(ctx.db.pool());
+                match user_repo.get_by_id(user_id).await? {
                     Some(user) => user,
                     None => {
                         ctx.send_line(session, ctx.i18n.t("error.user_not_found"))
@@ -1368,7 +1366,7 @@ impl AdminScreen {
             }
         };
 
-        let is_sysop = Self::is_sysop(ctx, session);
+        let is_sysop = Self::is_sysop(ctx, session).await;
 
         // Create SessionAdminService
         let service = SessionAdminService::new((*ctx.session_manager).clone());
@@ -1547,8 +1545,8 @@ impl AdminScreen {
         // Get current admin user
         let current_user = match session.user_id() {
             Some(user_id) => {
-                let user_repo = UserRepository::new(&ctx.db);
-                match user_repo.get_by_id(user_id)? {
+                let user_repo = UserRepository::new(ctx.db.pool());
+                match user_repo.get_by_id(user_id).await? {
                     Some(user) => user,
                     None => {
                         ctx.send_line(session, ctx.i18n.t("error.user_not_found"))
@@ -1565,8 +1563,8 @@ impl AdminScreen {
         };
 
         // Get all users
-        let user_repo = UserRepository::new(&ctx.db);
-        let users = user_repo.list_all()?;
+        let user_repo = UserRepository::new(ctx.db.pool());
+        let users = user_repo.list_all().await?;
 
         if users.is_empty() {
             ctx.send_line(session, ctx.i18n.t("member.no_members"))
@@ -1657,7 +1655,7 @@ impl AdminScreen {
 
         // Call UserAdminService to reset password
         let service = UserAdminService::new(&ctx.db);
-        match service.reset_user_password(target_user.id, &current_user) {
+        match service.reset_user_password(target_user.id, &current_user).await {
             Ok(new_password) => {
                 ctx.send_line(session, "").await?;
                 ctx.send_line(session, ctx.i18n.t("admin.password_reset_success"))
@@ -1695,11 +1693,11 @@ impl AdminScreen {
         use crate::board::BoardRepository;
         use crate::db::UserRepository;
 
-        let user_repo = UserRepository::new(&ctx.db);
-        let board_repo = BoardRepository::new(&ctx.db);
+        let user_repo = UserRepository::new(ctx.db.pool());
+        let board_repo = BoardRepository::new(ctx.db.pool());
 
-        let user_count = user_repo.count()?;
-        let board_count = board_repo.count()?;
+        let user_count = user_repo.count().await?;
+        let board_count = board_repo.count().await?;
 
         ctx.send_line(session, "").await?;
         ctx.send_line(
@@ -1897,7 +1895,7 @@ impl AdminScreen {
     async fn show_folders(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
         use crate::file::FolderRepository;
 
-        let folders = FolderRepository::list_root(ctx.db.conn())?;
+        let folders = FolderRepository::new(ctx.db.pool()).list_root().await?;
 
         ctx.send_line(session, "").await?;
         ctx.send_line(
@@ -1925,7 +1923,7 @@ impl AdminScreen {
             ctx.send_line(session, &"-".repeat(50)).await?;
 
             for folder in &folders {
-                let file_count = FolderRepository::count_files(ctx.db.conn(), folder.id)?;
+                let file_count = FolderRepository::new(ctx.db.pool()).count_files(folder.id).await?;
                 ctx.send_line(
                     session,
                     &format!(
@@ -2016,7 +2014,7 @@ impl AdminScreen {
             new_folder = new_folder.with_description(description);
         }
 
-        match FolderRepository::create(ctx.db.conn(), &new_folder) {
+        match FolderRepository::new(ctx.db.pool()).create(&new_folder).await {
             Ok(folder) => {
                 let msg = ctx
                     .i18n
@@ -2041,8 +2039,8 @@ impl AdminScreen {
         // Get current admin user
         let current_user = match session.user_id() {
             Some(user_id) => {
-                let user_repo = UserRepository::new(&ctx.db);
-                match user_repo.get_by_id(user_id)? {
+                let user_repo = UserRepository::new(ctx.db.pool());
+                match user_repo.get_by_id(user_id).await? {
                     Some(user) => user,
                     None => {
                         ctx.send_line(session, ctx.i18n.t("error.user_not_found"))
@@ -2058,7 +2056,7 @@ impl AdminScreen {
             }
         };
 
-        let folders = FolderRepository::list_root(ctx.db.conn())?;
+        let folders = FolderRepository::new(ctx.db.pool()).list_root().await?;
 
         ctx.send_line(session, "").await?;
         ctx.send_line(
@@ -2325,7 +2323,7 @@ impl AdminScreen {
 
         // Apply update
         let service = FolderAdminService::new(&ctx.db);
-        match service.update_folder(folder.id, &update, &current_user) {
+        match service.update_folder(folder.id, &update, &current_user).await {
             Ok(updated_folder) => {
                 let msg = ctx
                     .i18n
@@ -2347,7 +2345,7 @@ impl AdminScreen {
     async fn delete_folder(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
         use crate::file::FolderRepository;
 
-        let folders = FolderRepository::list_root(ctx.db.conn())?;
+        let folders = FolderRepository::new(ctx.db.pool()).list_root().await?;
 
         ctx.send_line(session, "").await?;
         ctx.send_line(
@@ -2367,7 +2365,7 @@ impl AdminScreen {
 
         // Show folder list
         for (i, folder) in folders.iter().enumerate() {
-            let file_count = FolderRepository::count_files(ctx.db.conn(), folder.id)?;
+            let file_count = FolderRepository::new(ctx.db.pool()).count_files(folder.id).await?;
             ctx.send_line(
                 session,
                 &format!("  [{}] {} ({} files)", i + 1, folder.name, file_count),
@@ -2397,7 +2395,7 @@ impl AdminScreen {
             let idx = (num - 1) as usize;
             if idx < folders.len() {
                 let folder = &folders[idx];
-                let file_count = FolderRepository::count_files(ctx.db.conn(), folder.id)?;
+                let file_count = FolderRepository::new(ctx.db.pool()).count_files(folder.id).await?;
 
                 if file_count > 0 {
                     ctx.send_line(
@@ -2418,7 +2416,7 @@ impl AdminScreen {
                     }
                 }
 
-                match FolderRepository::delete(ctx.db.conn(), folder.id) {
+                match FolderRepository::new(ctx.db.pool()).delete(folder.id).await {
                     Ok(true) => {
                         let msg = ctx
                             .i18n
@@ -2448,8 +2446,8 @@ impl AdminScreen {
         // Get current admin user
         let current_user = match session.user_id() {
             Some(user_id) => {
-                let user_repo = UserRepository::new(&ctx.db);
-                match user_repo.get_by_id(user_id)? {
+                let user_repo = UserRepository::new(ctx.db.pool());
+                match user_repo.get_by_id(user_id).await? {
                     Some(user) => user,
                     None => {
                         ctx.send_line(session, ctx.i18n.t("error.user_not_found"))
@@ -2467,8 +2465,8 @@ impl AdminScreen {
 
         // Level 1: Board list
         loop {
-            let board_repo = BoardRepository::new(&ctx.db);
-            let boards = board_repo.list_all()?;
+            let board_repo = BoardRepository::new(ctx.db.pool());
+            let boards = board_repo.list_all().await?;
 
             ctx.send_line(session, "").await?;
             ctx.send_line(
@@ -2491,13 +2489,13 @@ impl AdminScreen {
             for (i, board) in boards.iter().enumerate() {
                 let count_info = match board.board_type {
                     BoardType::Thread => {
-                        let thread_repo = ThreadRepository::new(&ctx.db);
-                        let thread_count = thread_repo.count_by_board(board.id).unwrap_or(0);
+                        let thread_repo = ThreadRepository::new(ctx.db.pool());
+                        let thread_count = thread_repo.count_by_board(board.id).await.unwrap_or(0);
                         format!("{} threads", thread_count)
                     }
                     BoardType::Flat => {
-                        let post_repo = PostRepository::new(&ctx.db);
-                        let post_count = post_repo.count_by_flat_board(board.id).unwrap_or(0);
+                        let post_repo = PostRepository::new(ctx.db.pool());
+                        let post_count = post_repo.count_by_flat_board(board.id).await.unwrap_or(0);
                         format!("{} posts", post_count)
                     }
                 };
@@ -2572,8 +2570,8 @@ impl AdminScreen {
         use crate::board::PostRepository;
 
         loop {
-            let post_repo = PostRepository::new(&ctx.db);
-            let posts = post_repo.list_by_flat_board(board.id)?;
+            let post_repo = PostRepository::new(ctx.db.pool());
+            let posts = post_repo.list_by_flat_board(board.id).await?;
 
             ctx.send_line(session, "").await?;
             ctx.send_line(
@@ -2718,8 +2716,8 @@ impl AdminScreen {
                     continue;
                 }
 
-                let service = ContentAdminService::new(&ctx.db);
-                match service.delete_post(target_post.id, mode, current_user) {
+                let service = ContentAdminService::new(ctx.db.pool());
+                match service.delete_post(target_post.id, mode, current_user).await {
                     Ok(true) => {
                         let msg = ctx
                             .i18n
@@ -2761,8 +2759,8 @@ impl AdminScreen {
 
         // Level 2: Thread list for selected board
         loop {
-            let thread_repo = ThreadRepository::new(&ctx.db);
-            let threads = thread_repo.list_by_board(board.id)?;
+            let thread_repo = ThreadRepository::new(ctx.db.pool());
+            let threads = thread_repo.list_by_board(board.id).await?;
 
             ctx.send_line(session, "").await?;
             ctx.send_line(
@@ -2795,8 +2793,8 @@ impl AdminScreen {
             }
 
             for (i, thread) in threads.iter().enumerate() {
-                let post_repo = PostRepository::new(&ctx.db);
-                let post_count = post_repo.count_by_thread(thread.id).unwrap_or(0);
+                let post_repo = PostRepository::new(ctx.db.pool());
+                let post_count = post_repo.count_by_thread(thread.id).await.unwrap_or(0);
                 ctx.send_line(
                     session,
                     &format!(
@@ -2864,8 +2862,8 @@ impl AdminScreen {
                 };
 
                 let target_thread = &threads[thread_num - 1];
-                let post_repo = PostRepository::new(&ctx.db);
-                let post_count = post_repo.count_by_thread(target_thread.id).unwrap_or(0);
+                let post_repo = PostRepository::new(ctx.db.pool());
+                let post_count = post_repo.count_by_thread(target_thread.id).await.unwrap_or(0);
 
                 let confirm_msg = ctx
                     .i18n
@@ -2879,8 +2877,8 @@ impl AdminScreen {
                     continue;
                 }
 
-                let service = ContentAdminService::new(&ctx.db);
-                match service.delete_thread(target_thread.id, current_user) {
+                let service = ContentAdminService::new(ctx.db.pool());
+                match service.delete_thread(target_thread.id, current_user).await {
                     Ok(true) => {
                         let msg = ctx
                             .i18n
@@ -2932,8 +2930,8 @@ impl AdminScreen {
         use crate::board::PostRepository;
 
         loop {
-            let post_repo = PostRepository::new(&ctx.db);
-            let posts = post_repo.list_by_thread(thread.id)?;
+            let post_repo = PostRepository::new(ctx.db.pool());
+            let posts = post_repo.list_by_thread(thread.id).await?;
 
             ctx.send_line(session, "").await?;
             ctx.send_line(
@@ -3078,8 +3076,8 @@ impl AdminScreen {
                     continue;
                 }
 
-                let service = ContentAdminService::new(&ctx.db);
-                match service.delete_post(target_post.id, mode, current_user) {
+                let service = ContentAdminService::new(ctx.db.pool());
+                match service.delete_post(target_post.id, mode, current_user).await {
                     Ok(true) => {
                         let msg = ctx
                             .i18n
@@ -3110,24 +3108,24 @@ impl AdminScreen {
     }
 
     /// Check if user is admin.
-    fn is_admin(ctx: &ScreenContext, session: &TelnetSession) -> bool {
+    async fn is_admin(ctx: &ScreenContext, session: &TelnetSession) -> bool {
         use crate::db::{Role, UserRepository};
 
         if let Some(user_id) = session.user_id() {
-            let user_repo = UserRepository::new(&ctx.db);
-            if let Ok(Some(user)) = user_repo.get_by_id(user_id) {
+            let user_repo = UserRepository::new(ctx.db.pool());
+            if let Ok(Some(user)) = user_repo.get_by_id(user_id).await {
                 return user.role >= Role::SubOp;
             }
         }
         false
     }
 
-    fn is_sysop(ctx: &ScreenContext, session: &TelnetSession) -> bool {
+    async fn is_sysop(ctx: &ScreenContext, session: &TelnetSession) -> bool {
         use crate::db::{Role, UserRepository};
 
         if let Some(user_id) = session.user_id() {
-            let user_repo = UserRepository::new(&ctx.db);
-            if let Ok(Some(user)) = user_repo.get_by_id(user_id) {
+            let user_repo = UserRepository::new(ctx.db.pool());
+            if let Ok(Some(user)) = user_repo.get_by_id(user_id).await {
                 return user.role == Role::SysOp;
             }
         }

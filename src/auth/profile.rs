@@ -157,9 +157,10 @@ impl ProfileUpdateRequest {
 /// # Returns
 ///
 /// The user's public profile, or an error if not found.
-pub fn get_profile(repo: &UserRepository, user_id: i64) -> Result<UserProfile, ProfileError> {
+pub async fn get_profile(repo: &UserRepository<'_>, user_id: i64) -> Result<UserProfile, ProfileError> {
     let user = repo
         .get_by_id(user_id)
+        .await
         .map_err(|e| ProfileError::Database(e.to_string()))?
         .ok_or(ProfileError::UserNotFound)?;
 
@@ -176,12 +177,13 @@ pub fn get_profile(repo: &UserRepository, user_id: i64) -> Result<UserProfile, P
 /// # Returns
 ///
 /// The user's public profile, or an error if not found.
-pub fn get_profile_by_username(
-    repo: &UserRepository,
+pub async fn get_profile_by_username(
+    repo: &UserRepository<'_>,
     username: &str,
 ) -> Result<UserProfile, ProfileError> {
     let user = repo
         .get_by_username(username)
+        .await
         .map_err(|e| ProfileError::Database(e.to_string()))?
         .ok_or(ProfileError::UserNotFound)?;
 
@@ -219,20 +221,21 @@ fn validate_profile_text(text: &str) -> Result<(), ProfileError> {
 /// # Returns
 ///
 /// The updated user profile, or an error.
-pub fn update_profile(
-    repo: &UserRepository,
+pub async fn update_profile(
+    repo: &UserRepository<'_>,
     user_id: i64,
     request: ProfileUpdateRequest,
 ) -> Result<UserProfile, ProfileError> {
     // Check if user exists
     let _user = repo
         .get_by_id(user_id)
+        .await
         .map_err(|e| ProfileError::Database(e.to_string()))?
         .ok_or(ProfileError::UserNotFound)?;
 
     // If empty request, just return current profile
     if request.is_empty() {
-        return get_profile(repo, user_id);
+        return get_profile(repo, user_id).await;
     }
 
     // Validate fields
@@ -270,6 +273,7 @@ pub fn update_profile(
     // Apply update
     let updated = repo
         .update(user_id, &update)
+        .await
         .map_err(|e| ProfileError::Database(e.to_string()))?
         .ok_or(ProfileError::UserNotFound)?;
 
@@ -296,8 +300,8 @@ pub fn update_profile(
 /// # Returns
 ///
 /// `Ok(())` on success, or an error.
-pub fn change_password(
-    repo: &UserRepository,
+pub async fn change_password(
+    repo: &UserRepository<'_>,
     user_id: i64,
     current_password: &str,
     new_password: &str,
@@ -305,6 +309,7 @@ pub fn change_password(
     // Get user
     let user = repo
         .get_by_id(user_id)
+        .await
         .map_err(|e| ProfileError::Database(e.to_string()))?
         .ok_or(ProfileError::UserNotFound)?;
 
@@ -320,6 +325,7 @@ pub fn change_password(
     // Update password
     let update = UserUpdate::new().password(new_hash);
     repo.update(user_id, &update)
+        .await
         .map_err(|e| ProfileError::Database(e.to_string()))?
         .ok_or(ProfileError::UserNotFound)?;
 
@@ -346,14 +352,15 @@ pub fn change_password(
 /// # Returns
 ///
 /// `Ok(())` on success, or an error.
-pub fn reset_password(
-    repo: &UserRepository,
+pub async fn reset_password(
+    repo: &UserRepository<'_>,
     user_id: i64,
     new_password: &str,
 ) -> Result<(), ProfileError> {
     // Get user to verify existence
     let user = repo
         .get_by_id(user_id)
+        .await
         .map_err(|e| ProfileError::Database(e.to_string()))?
         .ok_or(ProfileError::UserNotFound)?;
 
@@ -363,6 +370,7 @@ pub fn reset_password(
     // Update password
     let update = UserUpdate::new().password(new_hash);
     repo.update(user_id, &update)
+        .await
         .map_err(|e| ProfileError::Database(e.to_string()))?
         .ok_or(ProfileError::UserNotFound)?;
 
@@ -380,22 +388,22 @@ mod tests {
     use super::*;
     use crate::db::Database;
 
-    fn setup_user(repo: &UserRepository) -> User {
+    async fn setup_user(repo: &UserRepository<'_>) -> User {
         use crate::auth::register;
         use crate::RegistrationRequest;
 
         let request = RegistrationRequest::new("testuser", "password123", "Test User")
             .with_email("test@example.com");
-        register(repo, request).unwrap()
+        register(repo, request).await.unwrap()
     }
 
-    #[test]
-    fn test_get_profile() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_get_profile() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
-        let profile = get_profile(&repo, user.id).unwrap();
+        let profile = get_profile(&repo, user.id).await.unwrap();
 
         assert_eq!(profile.id, user.id);
         assert_eq!(profile.username, "testuser");
@@ -403,266 +411,266 @@ mod tests {
         assert_eq!(profile.role, Role::Member);
     }
 
-    #[test]
-    fn test_get_profile_not_found() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_get_profile_not_found() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
 
-        let result = get_profile(&repo, 999);
+        let result = get_profile(&repo, 999).await;
         assert!(matches!(result, Err(ProfileError::UserNotFound)));
     }
 
-    #[test]
-    fn test_get_profile_by_username() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let _user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_get_profile_by_username() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let _user = setup_user(&repo).await;
 
-        let profile = get_profile_by_username(&repo, "testuser").unwrap();
+        let profile = get_profile_by_username(&repo, "testuser").await.unwrap();
         assert_eq!(profile.username, "testuser");
     }
 
-    #[test]
-    fn test_get_profile_by_username_not_found() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_get_profile_by_username_not_found() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
 
-        let result = get_profile_by_username(&repo, "nonexistent");
+        let result = get_profile_by_username(&repo, "nonexistent").await;
         assert!(matches!(result, Err(ProfileError::UserNotFound)));
     }
 
-    #[test]
-    fn test_update_profile_nickname() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_update_profile_nickname() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
         let request = ProfileUpdateRequest::new().nickname("New Nickname");
-        let updated = update_profile(&repo, user.id, request).unwrap();
+        let updated = update_profile(&repo, user.id, request).await.unwrap();
 
         assert_eq!(updated.nickname, "New Nickname");
     }
 
-    #[test]
-    fn test_update_profile_email() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_update_profile_email() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
         let request = ProfileUpdateRequest::new().email(Some("new@example.com".to_string()));
-        let _updated = update_profile(&repo, user.id, request).unwrap();
+        let _updated = update_profile(&repo, user.id, request).await.unwrap();
 
         // Verify via database
-        let updated_user = repo.get_by_id(user.id).unwrap().unwrap();
+        let updated_user = repo.get_by_id(user.id).await.unwrap().unwrap();
         assert_eq!(updated_user.email, Some("new@example.com".to_string()));
     }
 
-    #[test]
-    fn test_update_profile_clear_email() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_update_profile_clear_email() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
         let request = ProfileUpdateRequest::new().email(None);
-        let _updated = update_profile(&repo, user.id, request).unwrap();
+        let _updated = update_profile(&repo, user.id, request).await.unwrap();
 
         // Verify via database
-        let updated_user = repo.get_by_id(user.id).unwrap().unwrap();
+        let updated_user = repo.get_by_id(user.id).await.unwrap().unwrap();
         assert_eq!(updated_user.email, None);
     }
 
-    #[test]
-    fn test_update_profile_text() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_update_profile_text() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
         let request =
             ProfileUpdateRequest::new().profile(Some("Hello, I'm a BBS user!".to_string()));
-        let updated = update_profile(&repo, user.id, request).unwrap();
+        let updated = update_profile(&repo, user.id, request).await.unwrap();
 
         assert_eq!(updated.profile, Some("Hello, I'm a BBS user!".to_string()));
     }
 
-    #[test]
-    fn test_update_profile_terminal() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_update_profile_terminal() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
         let request = ProfileUpdateRequest::new().terminal("c64");
-        let updated = update_profile(&repo, user.id, request).unwrap();
+        let updated = update_profile(&repo, user.id, request).await.unwrap();
 
         assert_eq!(updated.terminal, "c64");
     }
 
-    #[test]
-    fn test_update_profile_multiple_fields() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_update_profile_multiple_fields() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
         let request = ProfileUpdateRequest::new()
             .nickname("Updated Name")
             .profile(Some("My profile text".to_string()))
             .terminal("c64_ansi");
 
-        let updated = update_profile(&repo, user.id, request).unwrap();
+        let updated = update_profile(&repo, user.id, request).await.unwrap();
 
         assert_eq!(updated.nickname, "Updated Name");
         assert_eq!(updated.profile, Some("My profile text".to_string()));
         assert_eq!(updated.terminal, "c64_ansi");
     }
 
-    #[test]
-    fn test_update_profile_empty_request() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_update_profile_empty_request() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
         let request = ProfileUpdateRequest::new();
-        let updated = update_profile(&repo, user.id, request).unwrap();
+        let updated = update_profile(&repo, user.id, request).await.unwrap();
 
         // Should return current profile unchanged
         assert_eq!(updated.nickname, "Test User");
     }
 
-    #[test]
-    fn test_update_profile_invalid_nickname() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_update_profile_invalid_nickname() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
         let request = ProfileUpdateRequest::new().nickname("");
-        let result = update_profile(&repo, user.id, request);
+        let result = update_profile(&repo, user.id, request).await;
 
         assert!(matches!(result, Err(ProfileError::Validation(_))));
     }
 
-    #[test]
-    fn test_update_profile_invalid_email() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_update_profile_invalid_email() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
         let request = ProfileUpdateRequest::new().email(Some("invalid-email".to_string()));
-        let result = update_profile(&repo, user.id, request);
+        let result = update_profile(&repo, user.id, request).await;
 
         assert!(matches!(result, Err(ProfileError::Validation(_))));
     }
 
-    #[test]
-    fn test_update_profile_too_long() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_update_profile_too_long() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
         let long_text = "a".repeat(MAX_PROFILE_LENGTH + 1);
         let request = ProfileUpdateRequest::new().profile(Some(long_text));
-        let result = update_profile(&repo, user.id, request);
+        let result = update_profile(&repo, user.id, request).await;
 
         assert!(matches!(result, Err(ProfileError::ProfileTooLong)));
     }
 
-    #[test]
-    fn test_update_profile_max_length() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_update_profile_max_length() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
         let max_text = "a".repeat(MAX_PROFILE_LENGTH);
         let request = ProfileUpdateRequest::new().profile(Some(max_text.clone()));
-        let updated = update_profile(&repo, user.id, request).unwrap();
+        let updated = update_profile(&repo, user.id, request).await.unwrap();
 
         assert_eq!(updated.profile, Some(max_text));
     }
 
-    #[test]
-    fn test_update_profile_not_found() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_update_profile_not_found() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
 
         let request = ProfileUpdateRequest::new().nickname("New Name");
-        let result = update_profile(&repo, 999, request);
+        let result = update_profile(&repo, 999, request).await;
 
         assert!(matches!(result, Err(ProfileError::UserNotFound)));
     }
 
-    #[test]
-    fn test_change_password_success() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_change_password_success() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
-        let result = change_password(&repo, user.id, "password123", "newpassword456");
+        let result = change_password(&repo, user.id, "password123", "newpassword456").await;
         assert!(result.is_ok());
 
         // Verify new password works
-        let updated_user = repo.get_by_id(user.id).unwrap().unwrap();
+        let updated_user = repo.get_by_id(user.id).await.unwrap().unwrap();
         assert!(verify_password("newpassword456", &updated_user.password).is_ok());
     }
 
-    #[test]
-    fn test_change_password_wrong_current() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_change_password_wrong_current() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
-        let result = change_password(&repo, user.id, "wrongpassword", "newpassword456");
+        let result = change_password(&repo, user.id, "wrongpassword", "newpassword456").await;
         assert!(matches!(result, Err(ProfileError::WrongPassword)));
     }
 
-    #[test]
-    fn test_change_password_invalid_new() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_change_password_invalid_new() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
         // Too short
-        let result = change_password(&repo, user.id, "password123", "short");
+        let result = change_password(&repo, user.id, "password123", "short").await;
         assert!(matches!(result, Err(ProfileError::Password(_))));
     }
 
-    #[test]
-    fn test_change_password_not_found() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_change_password_not_found() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
 
-        let result = change_password(&repo, 999, "oldpass", "newpass123");
+        let result = change_password(&repo, 999, "oldpass", "newpass123").await;
         assert!(matches!(result, Err(ProfileError::UserNotFound)));
     }
 
-    #[test]
-    fn test_reset_password_success() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_reset_password_success() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
-        let result = reset_password(&repo, user.id, "resetpassword123");
+        let result = reset_password(&repo, user.id, "resetpassword123").await;
         assert!(result.is_ok());
 
         // Verify new password works
-        let updated_user = repo.get_by_id(user.id).unwrap().unwrap();
+        let updated_user = repo.get_by_id(user.id).await.unwrap().unwrap();
         assert!(verify_password("resetpassword123", &updated_user.password).is_ok());
     }
 
-    #[test]
-    fn test_reset_password_invalid() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_reset_password_invalid() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
         // Too short
-        let result = reset_password(&repo, user.id, "short");
+        let result = reset_password(&repo, user.id, "short").await;
         assert!(matches!(result, Err(ProfileError::Password(_))));
     }
 
-    #[test]
-    fn test_reset_password_not_found() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_reset_password_not_found() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
 
-        let result = reset_password(&repo, 999, "newpass123");
+        let result = reset_password(&repo, 999, "newpass123").await;
         assert!(matches!(result, Err(ProfileError::UserNotFound)));
     }
 
@@ -730,15 +738,15 @@ mod tests {
             .contains("文字以内"));
     }
 
-    #[test]
-    fn test_profile_with_newlines() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
-        let user = setup_user(&repo);
+    #[tokio::test]
+    async fn test_profile_with_newlines() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
+        let user = setup_user(&repo).await;
 
         let profile_text = "Line 1\nLine 2\nLine 3".to_string();
         let request = ProfileUpdateRequest::new().profile(Some(profile_text.clone()));
-        let updated = update_profile(&repo, user.id, request).unwrap();
+        let updated = update_profile(&repo, user.id, request).await.unwrap();
 
         assert_eq!(updated.profile, Some(profile_text));
     }

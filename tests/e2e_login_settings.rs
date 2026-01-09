@@ -22,6 +22,7 @@ async fn test_login_applies_user_language() {
         "ja",    // Japanese
         "utf-8", // UTF-8 encoding
     )
+    .await
     .unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -84,6 +85,7 @@ async fn test_login_applies_user_english_language() {
         "en",    // English
         "utf-8", // UTF-8 encoding
     )
+    .await
     .unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 

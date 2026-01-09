@@ -716,10 +716,7 @@ mod tests {
             TerminalProfile::from_name("STANDARD"),
             TerminalProfile::standard()
         );
-        assert_eq!(
-            TerminalProfile::from_name("DOS"),
-            TerminalProfile::dos()
-        );
+        assert_eq!(TerminalProfile::from_name("DOS"), TerminalProfile::dos());
     }
 
     #[test]

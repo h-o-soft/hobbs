@@ -218,9 +218,7 @@ impl ActionRateLimiter {
 
         if let Some(actions) = users.get(&user_id) {
             let count = actions.count_in_window(self.config.window);
-            self.config
-                .max_actions
-                .saturating_sub(count as u32)
+            self.config.max_actions.saturating_sub(count as u32)
         } else {
             self.config.max_actions
         }

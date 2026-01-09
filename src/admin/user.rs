@@ -102,7 +102,7 @@ impl<'a> UserAdminService<'a> {
     ///
     /// Requires SubOp or higher permission.
     /// Returns all users including inactive ones for admin purposes.
-    pub fn list_users(
+    pub async fn list_users(
         &self,
         offset: i64,
         limit: i64,
@@ -110,49 +110,25 @@ impl<'a> UserAdminService<'a> {
     ) -> Result<PaginatedResult<User>, AdminError> {
         require_admin(Some(admin))?;
 
-        let conn = self.db.conn();
+        let pool = self.db.pool();
 
         // Get total count
-        let total: i64 = conn.query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))?;
+        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+            .fetch_one(pool)
+            .await?;
 
         // Get users with pagination
-        let mut stmt = conn.prepare(
+        let users = sqlx::query_as::<_, User>(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
                     encoding, language, auto_paging, created_at, last_login, is_active
              FROM users
              ORDER BY created_at DESC
              LIMIT ? OFFSET ?",
-        )?;
-
-        let users = stmt
-            .query_map([limit, offset], |row| {
-                let role_str: String = row.get(5)?;
-                let role = role_str.parse().unwrap_or(Role::Member);
-                let encoding_str: String = row.get(8)?;
-                let encoding = encoding_str
-                    .parse()
-                    .unwrap_or(crate::server::CharacterEncoding::default());
-                let auto_paging: i64 = row.get(10)?;
-                let is_active: i64 = row.get(13)?;
-
-                Ok(User {
-                    id: row.get(0)?,
-                    username: row.get(1)?,
-                    password: row.get(2)?,
-                    nickname: row.get(3)?,
-                    email: row.get(4)?,
-                    role,
-                    profile: row.get(6)?,
-                    terminal: row.get(7)?,
-                    encoding,
-                    language: row.get(9)?,
-                    auto_paging: auto_paging != 0,
-                    created_at: row.get(11)?,
-                    last_login: row.get(12)?,
-                    is_active: is_active != 0,
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
+        )
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?;
 
         Ok(PaginatedResult {
             items: users,
@@ -166,51 +142,52 @@ impl<'a> UserAdminService<'a> {
     ///
     /// Requires SubOp or higher permission.
     /// Returns user information with activity statistics.
-    pub fn get_user_detail(&self, user_id: i64, admin: &User) -> Result<UserDetail, AdminError> {
+    pub async fn get_user_detail(
+        &self,
+        user_id: i64,
+        admin: &User,
+    ) -> Result<UserDetail, AdminError> {
         require_admin(Some(admin))?;
 
-        let repo = UserRepository::new(self.db);
+        let repo = UserRepository::new(self.db.pool());
         let user = repo
-            .get_by_id(user_id)?
+            .get_by_id(user_id)
+            .await?
             .ok_or_else(|| AdminError::NotFound("ユーザー".to_string()))?;
 
-        let conn = self.db.conn();
+        let pool = self.db.pool();
 
         // Count posts
-        let post_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM posts WHERE author_id = ?",
-                [user_id],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+        let post_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE author_id = ?")
+                .bind(user_id)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
 
         // Count files
-        let file_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM files WHERE uploader_id = ?",
-                [user_id],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+        let file_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM files WHERE uploader_id = ?")
+                .bind(user_id)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
 
         // Count sent mail
-        let mail_sent_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM mail WHERE sender_id = ?",
-                [user_id],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+        let mail_sent_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM mail WHERE sender_id = ?")
+                .bind(user_id)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
 
         // Count received mail
-        let mail_received_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM mail WHERE recipient_id = ?",
-                [user_id],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+        let mail_received_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM mail WHERE recipient_id = ?")
+                .bind(user_id)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
 
         Ok(UserDetail::new(user)
             .with_post_count(post_count)
@@ -224,15 +201,16 @@ impl<'a> UserAdminService<'a> {
     /// Requires SubOp or higher permission.
     /// SubOp can only edit Member or lower.
     /// SysOp can edit anyone.
-    pub fn update_user_nickname(
+    pub async fn update_user_nickname(
         &self,
         user_id: i64,
         nickname: &str,
         admin: &User,
     ) -> Result<User, AdminError> {
-        let repo = UserRepository::new(self.db);
+        let repo = UserRepository::new(self.db.pool());
         let target = repo
-            .get_by_id(user_id)?
+            .get_by_id(user_id)
+            .await?
             .ok_or_else(|| AdminError::NotFound("ユーザー".to_string()))?;
 
         can_edit_user(admin, &target)?;
@@ -252,7 +230,8 @@ impl<'a> UserAdminService<'a> {
 
         let update = UserUpdate::new().nickname(nickname);
         let updated = repo
-            .update(user_id, &update)?
+            .update(user_id, &update)
+            .await?
             .ok_or_else(|| AdminError::NotFound("ユーザー".to_string()))?;
 
         Ok(updated)
@@ -266,10 +245,15 @@ impl<'a> UserAdminService<'a> {
     /// Requires SubOp or higher permission.
     /// SubOp can only reset Member or lower.
     /// SysOp can reset anyone.
-    pub fn reset_user_password(&self, user_id: i64, admin: &User) -> Result<String, AdminError> {
-        let repo = UserRepository::new(self.db);
+    pub async fn reset_user_password(
+        &self,
+        user_id: i64,
+        admin: &User,
+    ) -> Result<String, AdminError> {
+        let repo = UserRepository::new(self.db.pool());
         let target = repo
-            .get_by_id(user_id)?
+            .get_by_id(user_id)
+            .await?
             .ok_or_else(|| AdminError::NotFound("ユーザー".to_string()))?;
 
         can_edit_user(admin, &target)?;
@@ -284,7 +268,8 @@ impl<'a> UserAdminService<'a> {
 
         // Update password
         let update = UserUpdate::new().password(&hashed);
-        repo.update(user_id, &update)?
+        repo.update(user_id, &update)
+            .await?
             .ok_or_else(|| AdminError::NotFound("ユーザー".to_string()))?;
 
         Ok(new_password)
@@ -295,24 +280,28 @@ impl<'a> UserAdminService<'a> {
     /// Requires SysOp permission.
     /// Cannot change own role.
     /// Cannot demote the last SysOp.
-    pub fn change_user_role(
+    pub async fn change_user_role(
         &self,
         user_id: i64,
         new_role: Role,
         admin: &User,
     ) -> Result<User, AdminError> {
-        let repo = UserRepository::new(self.db);
+        let repo = UserRepository::new(self.db.pool());
         let target = repo
-            .get_by_id(user_id)?
+            .get_by_id(user_id)
+            .await?
             .ok_or_else(|| AdminError::NotFound("ユーザー".to_string()))?;
 
         // Use AdminService for full validation
         let admin_service = AdminService::new(self.db);
-        admin_service.validate_role_change(admin, &target, new_role)?;
+        admin_service
+            .validate_role_change(admin, &target, new_role)
+            .await?;
 
         let update = UserUpdate::new().role(new_role);
         let updated = repo
-            .update(user_id, &update)?
+            .update(user_id, &update)
+            .await?
             .ok_or_else(|| AdminError::NotFound("ユーザー".to_string()))?;
 
         Ok(updated)
@@ -324,10 +313,11 @@ impl<'a> UserAdminService<'a> {
     /// SubOp can only suspend Member or lower.
     /// SysOp can suspend anyone (except themselves).
     /// Cannot suspend the last SysOp.
-    pub fn suspend_user(&self, user_id: i64, admin: &User) -> Result<User, AdminError> {
-        let repo = UserRepository::new(self.db);
+    pub async fn suspend_user(&self, user_id: i64, admin: &User) -> Result<User, AdminError> {
+        let repo = UserRepository::new(self.db.pool());
         let target = repo
-            .get_by_id(user_id)?
+            .get_by_id(user_id)
+            .await?
             .ok_or_else(|| AdminError::NotFound("ユーザー".to_string()))?;
 
         can_edit_user(admin, &target)?;
@@ -340,14 +330,15 @@ impl<'a> UserAdminService<'a> {
         // Cannot suspend the last SysOp
         if target.role == Role::SysOp {
             let admin_service = AdminService::new(self.db);
-            if !admin_service.has_multiple_sysops()? {
+            if !admin_service.has_multiple_sysops().await? {
                 return Err(AdminError::LastSysOp);
             }
         }
 
         let update = UserUpdate::new().is_active(false);
         let updated = repo
-            .update(user_id, &update)?
+            .update(user_id, &update)
+            .await?
             .ok_or_else(|| AdminError::NotFound("ユーザー".to_string()))?;
 
         Ok(updated)
@@ -358,17 +349,19 @@ impl<'a> UserAdminService<'a> {
     /// Requires SubOp or higher permission.
     /// SubOp can only activate Member or lower.
     /// SysOp can activate anyone.
-    pub fn activate_user(&self, user_id: i64, admin: &User) -> Result<User, AdminError> {
-        let repo = UserRepository::new(self.db);
+    pub async fn activate_user(&self, user_id: i64, admin: &User) -> Result<User, AdminError> {
+        let repo = UserRepository::new(self.db.pool());
         let target = repo
-            .get_by_id(user_id)?
+            .get_by_id(user_id)
+            .await?
             .ok_or_else(|| AdminError::NotFound("ユーザー".to_string()))?;
 
         can_edit_user(admin, &target)?;
 
         let update = UserUpdate::new().is_active(true);
         let updated = repo
-            .update(user_id, &update)?
+            .update(user_id, &update)
+            .await?
             .ok_or_else(|| AdminError::NotFound("ユーザー".to_string()))?;
 
         Ok(updated)
@@ -377,7 +370,7 @@ impl<'a> UserAdminService<'a> {
     /// Search users by username or nickname.
     ///
     /// Requires SubOp or higher permission.
-    pub fn search_users(
+    pub async fn search_users(
         &self,
         query: &str,
         offset: i64,
@@ -386,58 +379,33 @@ impl<'a> UserAdminService<'a> {
     ) -> Result<PaginatedResult<User>, AdminError> {
         require_admin(Some(admin))?;
 
-        let conn = self.db.conn();
+        let pool = self.db.pool();
         let search_pattern = format!("%{query}%");
 
         // Get total count
-        let total: i64 = conn.query_row(
+        let total: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM users WHERE username LIKE ? OR nickname LIKE ?",
-            [&search_pattern, &search_pattern],
-            |row| row.get(0),
-        )?;
+        )
+        .bind(&search_pattern)
+        .bind(&search_pattern)
+        .fetch_one(pool)
+        .await?;
 
         // Get users with pagination
-        let mut stmt = conn.prepare(
+        let users = sqlx::query_as::<_, User>(
             "SELECT id, username, password, nickname, email, role, profile, terminal,
                     encoding, language, auto_paging, created_at, last_login, is_active
              FROM users
              WHERE username LIKE ? OR nickname LIKE ?
              ORDER BY username
              LIMIT ? OFFSET ?",
-        )?;
-
-        let users = stmt
-            .query_map(
-                rusqlite::params![&search_pattern, &search_pattern, limit, offset],
-                |row| {
-                    let role_str: String = row.get(5)?;
-                    let role = role_str.parse().unwrap_or(Role::Member);
-                    let encoding_str: String = row.get(8)?;
-                    let encoding = encoding_str
-                        .parse()
-                        .unwrap_or(crate::server::CharacterEncoding::default());
-                    let auto_paging: i64 = row.get(10)?;
-                    let is_active: i64 = row.get(13)?;
-
-                    Ok(User {
-                        id: row.get(0)?,
-                        username: row.get(1)?,
-                        password: row.get(2)?,
-                        nickname: row.get(3)?,
-                        email: row.get(4)?,
-                        role,
-                        profile: row.get(6)?,
-                        terminal: row.get(7)?,
-                        encoding,
-                        language: row.get(9)?,
-                        auto_paging: auto_paging != 0,
-                        created_at: row.get(11)?,
-                        last_login: row.get(12)?,
-                        is_active: is_active != 0,
-                    })
-                },
-            )?
-            .collect::<Result<Vec<_>, _>>()?;
+        )
+        .bind(&search_pattern)
+        .bind(&search_pattern)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?;
 
         Ok(PaginatedResult {
             items: users,
@@ -454,8 +422,8 @@ mod tests {
     use crate::db::NewUser;
     use crate::server::CharacterEncoding;
 
-    fn setup_db() -> Database {
-        Database::open_in_memory().unwrap()
+    async fn setup_db() -> Database {
+        Database::open_in_memory().await.unwrap()
     }
 
     fn create_test_user(id: i64, role: Role) -> User {
@@ -477,9 +445,10 @@ mod tests {
         }
     }
 
-    fn create_db_user(db: &Database, username: &str, nickname: &str, role: Role) -> User {
-        let repo = UserRepository::new(db);
+    async fn create_db_user(db: &Database, username: &str, nickname: &str, role: Role) -> User {
+        let repo = UserRepository::new(db.pool());
         repo.create(&NewUser::new(username, "hash", nickname).with_role(role))
+            .await
             .unwrap()
     }
 
@@ -508,216 +477,225 @@ mod tests {
     }
 
     // list_users tests
-    #[test]
-    fn test_list_users_as_subop() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_list_users_as_subop() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp);
+        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp).await;
 
-        create_db_user(&db, "user1", "User 1", Role::Member);
-        create_db_user(&db, "user2", "User 2", Role::Member);
-        create_db_user(&db, "user3", "User 3", Role::Member);
+        create_db_user(&db, "user1", "User 1", Role::Member).await;
+        create_db_user(&db, "user2", "User 2", Role::Member).await;
+        create_db_user(&db, "user3", "User 3", Role::Member).await;
 
-        let result = service.list_users(0, 10, &subop).unwrap();
+        let result = service.list_users(0, 10, &subop).await.unwrap();
         assert_eq!(result.total, 4); // 3 members + 1 subop
         assert_eq!(result.items.len(), 4);
     }
 
-    #[test]
-    fn test_list_users_pagination() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_list_users_pagination() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp);
+        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp).await;
 
         for i in 0..10 {
-            create_db_user(&db, &format!("user{i}"), &format!("User {i}"), Role::Member);
+            create_db_user(&db, &format!("user{i}"), &format!("User {i}"), Role::Member).await;
         }
 
-        let page1 = service.list_users(0, 3, &subop).unwrap();
+        let page1 = service.list_users(0, 3, &subop).await.unwrap();
         assert_eq!(page1.total, 11); // 10 members + 1 subop
         assert_eq!(page1.items.len(), 3);
 
-        let page2 = service.list_users(3, 3, &subop).unwrap();
+        let page2 = service.list_users(3, 3, &subop).await.unwrap();
         assert_eq!(page2.total, 11);
         assert_eq!(page2.items.len(), 3);
     }
 
-    #[test]
-    fn test_list_users_as_member_fails() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_list_users_as_member_fails() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
         let member = create_test_user(1, Role::Member);
 
-        let result = service.list_users(0, 10, &member);
+        let result = service.list_users(0, 10, &member).await;
         assert!(matches!(result, Err(AdminError::Permission(_))));
     }
 
     // get_user_detail tests
-    #[test]
-    fn test_get_user_detail() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_get_user_detail() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp);
-        let member = create_db_user(&db, "member", "Member", Role::Member);
+        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp).await;
+        let member = create_db_user(&db, "member", "Member", Role::Member).await;
 
-        let detail = service.get_user_detail(member.id, &subop).unwrap();
+        let detail = service.get_user_detail(member.id, &subop).await.unwrap();
         assert_eq!(detail.user.username, "member");
         assert_eq!(detail.post_count, 0);
         assert_eq!(detail.file_count, 0);
     }
 
-    #[test]
-    fn test_get_user_detail_not_found() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_get_user_detail_not_found() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp);
+        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp).await;
 
-        let result = service.get_user_detail(999, &subop);
+        let result = service.get_user_detail(999, &subop).await;
         assert!(matches!(result, Err(AdminError::NotFound(_))));
     }
 
     // update_user_nickname tests
-    #[test]
-    fn test_update_nickname_as_subop() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_update_nickname_as_subop() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp);
-        let member = create_db_user(&db, "member", "Member", Role::Member);
+        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp).await;
+        let member = create_db_user(&db, "member", "Member", Role::Member).await;
 
         let updated = service
             .update_user_nickname(member.id, "新しい名前", &subop)
+            .await
             .unwrap();
         assert_eq!(updated.nickname, "新しい名前");
     }
 
-    #[test]
-    fn test_update_nickname_subop_cannot_edit_subop() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_update_nickname_subop_cannot_edit_subop() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let subop1 = create_db_user(&db, "subop1", "SubOp 1", Role::SubOp);
-        let subop2 = create_db_user(&db, "subop2", "SubOp 2", Role::SubOp);
+        let subop1 = create_db_user(&db, "subop1", "SubOp 1", Role::SubOp).await;
+        let subop2 = create_db_user(&db, "subop2", "SubOp 2", Role::SubOp).await;
 
-        let result = service.update_user_nickname(subop2.id, "新しい名前", &subop1);
+        let result = service
+            .update_user_nickname(subop2.id, "新しい名前", &subop1)
+            .await;
         assert!(matches!(result, Err(AdminError::Permission(_))));
     }
 
-    #[test]
-    fn test_update_nickname_sysop_can_edit_subop() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_update_nickname_sysop_can_edit_subop() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let sysop = create_db_user(&db, "sysop", "SysOp", Role::SysOp);
-        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp);
+        let sysop = create_db_user(&db, "sysop", "SysOp", Role::SysOp).await;
+        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp).await;
 
         let updated = service
             .update_user_nickname(subop.id, "新しい名前", &sysop)
+            .await
             .unwrap();
         assert_eq!(updated.nickname, "新しい名前");
     }
 
-    #[test]
-    fn test_update_nickname_empty_fails() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_update_nickname_empty_fails() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let sysop = create_db_user(&db, "sysop", "SysOp", Role::SysOp);
-        let member = create_db_user(&db, "member", "Member", Role::Member);
+        let sysop = create_db_user(&db, "sysop", "SysOp", Role::SysOp).await;
+        let member = create_db_user(&db, "member", "Member", Role::Member).await;
 
-        let result = service.update_user_nickname(member.id, "", &sysop);
+        let result = service.update_user_nickname(member.id, "", &sysop).await;
         assert!(matches!(result, Err(AdminError::InvalidOperation(_))));
     }
 
-    #[test]
-    fn test_update_nickname_too_long_fails() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_update_nickname_too_long_fails() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let sysop = create_db_user(&db, "sysop", "SysOp", Role::SysOp);
-        let member = create_db_user(&db, "member", "Member", Role::Member);
+        let sysop = create_db_user(&db, "sysop", "SysOp", Role::SysOp).await;
+        let member = create_db_user(&db, "member", "Member", Role::Member).await;
 
         let long_name = "a".repeat(21);
-        let result = service.update_user_nickname(member.id, &long_name, &sysop);
+        let result = service
+            .update_user_nickname(member.id, &long_name, &sysop)
+            .await;
         assert!(matches!(result, Err(AdminError::InvalidOperation(_))));
     }
 
     // reset_user_password tests
-    #[test]
-    fn test_reset_password_as_subop() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_reset_password_as_subop() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp);
-        let member = create_db_user(&db, "member", "Member", Role::Member);
+        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp).await;
+        let member = create_db_user(&db, "member", "Member", Role::Member).await;
 
-        let new_password = service.reset_user_password(member.id, &subop).unwrap();
+        let new_password = service.reset_user_password(member.id, &subop).await.unwrap();
         assert_eq!(new_password.len(), DEFAULT_PASSWORD_LENGTH);
 
         // Verify password was changed
-        let repo = UserRepository::new(&db);
-        let updated = repo.get_by_id(member.id).unwrap().unwrap();
+        let repo = UserRepository::new(db.pool());
+        let updated = repo.get_by_id(member.id).await.unwrap().unwrap();
         assert_ne!(updated.password, "hash");
     }
 
-    #[test]
-    fn test_reset_password_subop_cannot_reset_subop() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_reset_password_subop_cannot_reset_subop() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let subop1 = create_db_user(&db, "subop1", "SubOp 1", Role::SubOp);
-        let subop2 = create_db_user(&db, "subop2", "SubOp 2", Role::SubOp);
+        let subop1 = create_db_user(&db, "subop1", "SubOp 1", Role::SubOp).await;
+        let subop2 = create_db_user(&db, "subop2", "SubOp 2", Role::SubOp).await;
 
-        let result = service.reset_user_password(subop2.id, &subop1);
+        let result = service.reset_user_password(subop2.id, &subop1).await;
         assert!(matches!(result, Err(AdminError::Permission(_))));
     }
 
     // change_user_role tests
-    #[test]
-    fn test_change_role_as_sysop() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_change_role_as_sysop() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let sysop = create_db_user(&db, "sysop", "SysOp", Role::SysOp);
-        let member = create_db_user(&db, "member", "Member", Role::Member);
+        let sysop = create_db_user(&db, "sysop", "SysOp", Role::SysOp).await;
+        let member = create_db_user(&db, "member", "Member", Role::Member).await;
 
         let updated = service
             .change_user_role(member.id, Role::SubOp, &sysop)
+            .await
             .unwrap();
         assert_eq!(updated.role, Role::SubOp);
     }
 
-    #[test]
-    fn test_change_role_as_subop_fails() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_change_role_as_subop_fails() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp);
-        let member = create_db_user(&db, "member", "Member", Role::Member);
+        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp).await;
+        let member = create_db_user(&db, "member", "Member", Role::Member).await;
 
-        let result = service.change_user_role(member.id, Role::SubOp, &subop);
+        let result = service.change_user_role(member.id, Role::SubOp, &subop).await;
         assert!(matches!(result, Err(AdminError::Permission(_))));
     }
 
-    #[test]
-    fn test_change_role_self_fails() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_change_role_self_fails() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let sysop = create_db_user(&db, "sysop", "SysOp", Role::SysOp);
+        let sysop = create_db_user(&db, "sysop", "SysOp", Role::SysOp).await;
 
-        let result = service.change_user_role(sysop.id, Role::Member, &sysop);
+        let result = service.change_user_role(sysop.id, Role::Member, &sysop).await;
         assert!(matches!(result, Err(AdminError::CannotModifySelf)));
     }
 
-    #[test]
-    fn test_change_role_demote_last_sysop_fails() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_change_role_demote_last_sysop_fails() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let sysop1 = create_db_user(&db, "sysop1", "SysOp 1", Role::SysOp);
-        let sysop2 = create_db_user(&db, "sysop2", "SysOp 2", Role::SysOp);
+        let sysop1 = create_db_user(&db, "sysop1", "SysOp 1", Role::SysOp).await;
+        let sysop2 = create_db_user(&db, "sysop2", "SysOp 2", Role::SysOp).await;
 
         // Deactivate sysop2 to make sysop1 the "last" active sysop
-        let repo = UserRepository::new(&db);
+        let repo = UserRepository::new(db.pool());
         repo.update(sysop2.id, &UserUpdate::new().is_active(false))
+            .await
             .unwrap();
 
         // Create a new active sysop for testing (sysop1 can't demote self)
-        let sysop3 = create_db_user(&db, "sysop3", "SysOp 3", Role::SysOp);
+        let sysop3 = create_db_user(&db, "sysop3", "SysOp 3", Role::SysOp).await;
 
         // Now sysop1 and sysop3 are active, try to demote sysop3
         // First deactivate sysop1 to make sysop3 the last
         repo.update(sysop1.id, &UserUpdate::new().is_active(false))
+            .await
             .unwrap();
 
         // Create another admin to do the demotion
@@ -738,53 +716,54 @@ mod tests {
             is_active: true,
         };
 
-        let result = service.change_user_role(sysop3.id, Role::Member, &admin);
+        let result = service.change_user_role(sysop3.id, Role::Member, &admin).await;
         assert!(matches!(result, Err(AdminError::LastSysOp)));
     }
 
     // suspend_user tests
-    #[test]
-    fn test_suspend_user_as_subop() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_suspend_user_as_subop() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp);
-        let member = create_db_user(&db, "member", "Member", Role::Member);
+        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp).await;
+        let member = create_db_user(&db, "member", "Member", Role::Member).await;
 
-        let suspended = service.suspend_user(member.id, &subop).unwrap();
+        let suspended = service.suspend_user(member.id, &subop).await.unwrap();
         assert!(!suspended.is_active);
     }
 
-    #[test]
-    fn test_suspend_user_subop_cannot_suspend_subop() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_suspend_user_subop_cannot_suspend_subop() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let subop1 = create_db_user(&db, "subop1", "SubOp 1", Role::SubOp);
-        let subop2 = create_db_user(&db, "subop2", "SubOp 2", Role::SubOp);
+        let subop1 = create_db_user(&db, "subop1", "SubOp 1", Role::SubOp).await;
+        let subop2 = create_db_user(&db, "subop2", "SubOp 2", Role::SubOp).await;
 
-        let result = service.suspend_user(subop2.id, &subop1);
+        let result = service.suspend_user(subop2.id, &subop1).await;
         assert!(matches!(result, Err(AdminError::Permission(_))));
     }
 
-    #[test]
-    fn test_suspend_user_self_fails() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_suspend_user_self_fails() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let sysop = create_db_user(&db, "sysop", "SysOp", Role::SysOp);
+        let sysop = create_db_user(&db, "sysop", "SysOp", Role::SysOp).await;
 
-        let result = service.suspend_user(sysop.id, &sysop);
+        let result = service.suspend_user(sysop.id, &sysop).await;
         assert!(matches!(result, Err(AdminError::CannotModifySelf)));
     }
 
-    #[test]
-    fn test_suspend_last_sysop_fails() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_suspend_last_sysop_fails() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let sysop1 = create_db_user(&db, "sysop1", "SysOp 1", Role::SysOp);
-        let sysop2 = create_db_user(&db, "sysop2", "SysOp 2", Role::SysOp);
+        let sysop1 = create_db_user(&db, "sysop1", "SysOp 1", Role::SysOp).await;
+        let sysop2 = create_db_user(&db, "sysop2", "SysOp 2", Role::SysOp).await;
 
         // Deactivate sysop2 to make sysop1 the last active sysop
-        let repo = UserRepository::new(&db);
+        let repo = UserRepository::new(db.pool());
         repo.update(sysop2.id, &UserUpdate::new().is_active(false))
+            .await
             .unwrap();
 
         // Create another admin who is not the last sysop
@@ -805,53 +784,53 @@ mod tests {
             is_active: true,
         };
 
-        let result = service.suspend_user(sysop1.id, &admin);
+        let result = service.suspend_user(sysop1.id, &admin).await;
         assert!(matches!(result, Err(AdminError::LastSysOp)));
     }
 
     // activate_user tests
-    #[test]
-    fn test_activate_user() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_activate_user() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp);
-        let member = create_db_user(&db, "member", "Member", Role::Member);
+        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp).await;
+        let member = create_db_user(&db, "member", "Member", Role::Member).await;
 
         // First suspend the user
-        service.suspend_user(member.id, &subop).unwrap();
+        service.suspend_user(member.id, &subop).await.unwrap();
 
         // Then activate
-        let activated = service.activate_user(member.id, &subop).unwrap();
+        let activated = service.activate_user(member.id, &subop).await.unwrap();
         assert!(activated.is_active);
     }
 
     // search_users tests
-    #[test]
-    fn test_search_users() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_search_users() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp);
+        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp).await;
 
-        create_db_user(&db, "john_doe", "John Doe", Role::Member);
-        create_db_user(&db, "jane_doe", "Jane Doe", Role::Member);
-        create_db_user(&db, "bob_smith", "Bob Smith", Role::Member);
+        create_db_user(&db, "john_doe", "John Doe", Role::Member).await;
+        create_db_user(&db, "jane_doe", "Jane Doe", Role::Member).await;
+        create_db_user(&db, "bob_smith", "Bob Smith", Role::Member).await;
 
-        let result = service.search_users("doe", 0, 10, &subop).unwrap();
+        let result = service.search_users("doe", 0, 10, &subop).await.unwrap();
         assert_eq!(result.total, 2);
         assert_eq!(result.items.len(), 2);
     }
 
-    #[test]
-    fn test_search_users_by_nickname() {
-        let db = setup_db();
+    #[tokio::test]
+    async fn test_search_users_by_nickname() {
+        let db = setup_db().await;
         let service = UserAdminService::new(&db);
-        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp);
+        let subop = create_db_user(&db, "subop", "SubOp", Role::SubOp).await;
 
-        create_db_user(&db, "user1", "田中太郎", Role::Member);
-        create_db_user(&db, "user2", "田中花子", Role::Member);
-        create_db_user(&db, "user3", "山田太郎", Role::Member);
+        create_db_user(&db, "user1", "田中太郎", Role::Member).await;
+        create_db_user(&db, "user2", "田中花子", Role::Member).await;
+        create_db_user(&db, "user3", "山田太郎", Role::Member).await;
 
-        let result = service.search_users("田中", 0, 10, &subop).unwrap();
+        let result = service.search_users("田中", 0, 10, &subop).await.unwrap();
         assert_eq!(result.total, 2);
     }
 

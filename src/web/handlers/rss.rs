@@ -45,14 +45,14 @@ pub async fn list_feeds(
     State(state): State<Arc<AppState>>,
     AuthUser(claims): AuthUser,
 ) -> Result<Json<ApiResponse<Vec<RssFeedWithUnreadResponse>>>, ApiError> {
-    let feeds = {
-        let db = state.db.lock().await;
-
-        RssFeedRepository::list_with_unread(db.conn(), Some(claims.sub)).map_err(|e| {
+    let feed_repo = RssFeedRepository::new(state.db.pool());
+    let feeds = feed_repo
+        .list_with_unread(Some(claims.sub))
+        .await
+        .map_err(|e| {
             tracing::error!("Failed to list RSS feeds: {}", e);
             ApiError::internal("Failed to list RSS feeds")
-        })?
-    };
+        })?;
 
     let responses: Vec<_> = feeds
         .into_iter()
@@ -79,31 +79,33 @@ pub async fn add_feed(
     AuthUser(claims): AuthUser,
     Json(req): Json<AddFeedRequest>,
 ) -> Result<Json<ApiResponse<RssFeedResponse>>, ApiError> {
-    req.validate()
-        .map_err(ApiError::from_validation_errors)?;
+    req.validate().map_err(ApiError::from_validation_errors)?;
 
     let title = req.title.unwrap_or_else(|| req.url.clone());
     let new_feed = NewRssFeed::new(&req.url, title, claims.sub);
 
-    let feed = {
-        let db = state.db.lock().await;
+    let feed_repo = RssFeedRepository::new(state.db.pool());
 
-        // Check if user already has this feed
-        if RssFeedRepository::get_by_user_url(db.conn(), claims.sub, &req.url)
-            .map_err(|e| {
-                tracing::error!("Failed to check existing feed: {}", e);
-                ApiError::internal("Failed to check existing feed")
-            })?
-            .is_some()
-        {
-            return Err(ApiError::conflict("Feed already exists"));
-        }
+    // Check if user already has this feed
+    if feed_repo
+        .get_by_user_url(claims.sub, &req.url)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to check existing feed: {}", e);
+            ApiError::internal("Failed to check existing feed")
+        })?
+        .is_some()
+    {
+        return Err(ApiError::conflict("Feed already exists"));
+    }
 
-        RssFeedRepository::create(db.conn(), &new_feed).map_err(|e| {
+    let feed = feed_repo
+        .create(&new_feed)
+        .await
+        .map_err(|e| {
             tracing::error!("Failed to add RSS feed: {}", e);
             ApiError::internal("Failed to add RSS feed")
-        })?
-    };
+        })?;
 
     let response = RssFeedResponse {
         id: feed.id,
@@ -124,27 +126,32 @@ pub async fn delete_feed(
     AuthUser(claims): AuthUser,
     Path(feed_id): Path<i64>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    {
-        let db = state.db.lock().await;
+    let feed_repo = RssFeedRepository::new(state.db.pool());
 
-        // Check if feed exists and belongs to user
-        let feed = RssFeedRepository::get_by_id(db.conn(), feed_id)
-            .map_err(|e| {
-                tracing::error!("Failed to get RSS feed: {}", e);
-                ApiError::internal("Failed to get RSS feed")
-            })?
-            .ok_or_else(|| ApiError::not_found("Feed not found"))?;
+    // Check if feed exists and belongs to user
+    let feed = feed_repo
+        .get_by_id(feed_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get RSS feed: {}", e);
+            ApiError::internal("Failed to get RSS feed")
+        })?
+        .ok_or_else(|| ApiError::not_found("Feed not found"))?;
 
-        // Only allow deleting own feeds
-        if feed.created_by != claims.sub {
-            return Err(ApiError::forbidden("Cannot delete feed owned by another user"));
-        }
+    // Only allow deleting own feeds
+    if feed.created_by != claims.sub {
+        return Err(ApiError::forbidden(
+            "Cannot delete feed owned by another user",
+        ));
+    }
 
-        RssFeedRepository::delete(db.conn(), feed_id).map_err(|e| {
+    feed_repo
+        .delete(feed_id)
+        .await
+        .map_err(|e| {
             tracing::error!("Failed to delete RSS feed: {}", e);
             ApiError::internal("Failed to delete RSS feed")
         })?;
-    }
 
     Ok(Json(ApiResponse::new(())))
 }
@@ -155,16 +162,15 @@ pub async fn get_feed(
     AuthUser(claims): AuthUser,
     Path(feed_id): Path<i64>,
 ) -> Result<Json<ApiResponse<RssFeedResponse>>, ApiError> {
-    let feed = {
-        let db = state.db.lock().await;
-
-        RssFeedRepository::get_by_id(db.conn(), feed_id)
-            .map_err(|e| {
-                tracing::error!("Failed to get RSS feed: {}", e);
-                ApiError::internal("Failed to get RSS feed")
-            })?
-            .ok_or_else(|| ApiError::not_found("Feed not found"))?
-    };
+    let feed_repo = RssFeedRepository::new(state.db.pool());
+    let feed = feed_repo
+        .get_by_id(feed_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get RSS feed: {}", e);
+            ApiError::internal("Failed to get RSS feed")
+        })?
+        .ok_or_else(|| ApiError::not_found("Feed not found"))?;
 
     // Only show feeds owned by user
     if feed.created_by != claims.sub {
@@ -197,40 +203,43 @@ pub async fn list_items(
 ) -> Result<Json<PaginatedResponse<RssItemResponse>>, ApiError> {
     let (offset, limit) = pagination.to_offset_limit();
 
-    let (items, total) = {
-        let db = state.db.lock().await;
+    let feed_repo = RssFeedRepository::new(state.db.pool());
+    let item_repo = RssItemRepository::new(state.db.pool());
 
-        // Check if feed exists and belongs to user
-        let feed = RssFeedRepository::get_by_id(db.conn(), feed_id)
-            .map_err(|e| {
-                tracing::error!("Failed to get RSS feed: {}", e);
-                ApiError::internal("Failed to get RSS feed")
-            })?
-            .ok_or_else(|| ApiError::not_found("Feed not found"))?;
+    // Check if feed exists and belongs to user
+    let feed = feed_repo
+        .get_by_id(feed_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get RSS feed: {}", e);
+            ApiError::internal("Failed to get RSS feed")
+        })?
+        .ok_or_else(|| ApiError::not_found("Feed not found"))?;
 
-        // Only allow accessing own feeds
-        if feed.created_by != claims.sub {
-            return Err(ApiError::not_found("Feed not found"));
-        }
+    // Only allow accessing own feeds
+    if feed.created_by != claims.sub {
+        return Err(ApiError::not_found("Feed not found"));
+    }
 
-        if !feed.is_active {
-            return Err(ApiError::not_found("Feed not found"));
-        }
+    if !feed.is_active {
+        return Err(ApiError::not_found("Feed not found"));
+    }
 
-        let total = RssItemRepository::count_by_feed(db.conn(), feed_id).map_err(|e| {
+    let total = item_repo
+        .count_by_feed(feed_id)
+        .await
+        .map_err(|e| {
             tracing::error!("Failed to count RSS items: {}", e);
             ApiError::internal("Failed to count RSS items")
         })?;
 
-        let items =
-            RssItemRepository::list_by_feed(db.conn(), feed_id, limit as usize, offset as usize)
-                .map_err(|e| {
-                    tracing::error!("Failed to list RSS items: {}", e);
-                    ApiError::internal("Failed to list RSS items")
-                })?;
-
-        (items, total)
-    };
+    let items = item_repo
+        .list_by_feed(feed_id, limit as usize, offset as usize)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list RSS items: {}", e);
+            ApiError::internal("Failed to list RSS items")
+        })?;
 
     let responses: Vec<_> = items
         .into_iter()
@@ -259,40 +268,41 @@ pub async fn get_item(
     AuthUser(claims): AuthUser,
     Path((feed_id, item_id)): Path<(i64, i64)>,
 ) -> Result<Json<ApiResponse<RssItemResponse>>, ApiError> {
-    let item = {
-        let db = state.db.lock().await;
+    let feed_repo = RssFeedRepository::new(state.db.pool());
+    let item_repo = RssItemRepository::new(state.db.pool());
 
-        // Check if feed exists and belongs to user
-        let feed = RssFeedRepository::get_by_id(db.conn(), feed_id)
-            .map_err(|e| {
-                tracing::error!("Failed to get RSS feed: {}", e);
-                ApiError::internal("Failed to get RSS feed")
-            })?
-            .ok_or_else(|| ApiError::not_found("Feed not found"))?;
+    // Check if feed exists and belongs to user
+    let feed = feed_repo
+        .get_by_id(feed_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get RSS feed: {}", e);
+            ApiError::internal("Failed to get RSS feed")
+        })?
+        .ok_or_else(|| ApiError::not_found("Feed not found"))?;
 
-        // Only allow accessing own feeds
-        if feed.created_by != claims.sub {
-            return Err(ApiError::not_found("Feed not found"));
-        }
+    // Only allow accessing own feeds
+    if feed.created_by != claims.sub {
+        return Err(ApiError::not_found("Feed not found"));
+    }
 
-        if !feed.is_active {
-            return Err(ApiError::not_found("Feed not found"));
-        }
+    if !feed.is_active {
+        return Err(ApiError::not_found("Feed not found"));
+    }
 
-        let item = RssItemRepository::get_by_id(db.conn(), item_id)
-            .map_err(|e| {
-                tracing::error!("Failed to get RSS item: {}", e);
-                ApiError::internal("Failed to get RSS item")
-            })?
-            .ok_or_else(|| ApiError::not_found("Item not found"))?;
+    let item = item_repo
+        .get_by_id(item_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get RSS item: {}", e);
+            ApiError::internal("Failed to get RSS item")
+        })?
+        .ok_or_else(|| ApiError::not_found("Item not found"))?;
 
-        // Verify item belongs to the feed
-        if item.feed_id != feed_id {
-            return Err(ApiError::not_found("Item not found"));
-        }
-
-        item
-    };
+    // Verify item belongs to the feed
+    if item.feed_id != feed_id {
+        return Err(ApiError::not_found("Item not found"));
+    }
 
     let response = RssItemResponse {
         id: item.id,
@@ -313,33 +323,35 @@ pub async fn mark_as_read(
     AuthUser(claims): AuthUser,
     Path(feed_id): Path<i64>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    {
-        let db = state.db.lock().await;
+    let feed_repo = RssFeedRepository::new(state.db.pool());
+    let read_pos_repo = RssReadPositionRepository::new(state.db.pool());
 
-        // Check if feed exists and belongs to user
-        let feed = RssFeedRepository::get_by_id(db.conn(), feed_id)
-            .map_err(|e| {
-                tracing::error!("Failed to get RSS feed: {}", e);
-                ApiError::internal("Failed to get RSS feed")
-            })?
-            .ok_or_else(|| ApiError::not_found("Feed not found"))?;
+    // Check if feed exists and belongs to user
+    let feed = feed_repo
+        .get_by_id(feed_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get RSS feed: {}", e);
+            ApiError::internal("Failed to get RSS feed")
+        })?
+        .ok_or_else(|| ApiError::not_found("Feed not found"))?;
 
-        // Only allow marking own feeds
-        if feed.created_by != claims.sub {
-            return Err(ApiError::not_found("Feed not found"));
-        }
-
-        if !feed.is_active {
-            return Err(ApiError::not_found("Feed not found"));
-        }
-
-        RssReadPositionRepository::mark_all_as_read(db.conn(), claims.sub, feed_id).map_err(
-            |e| {
-                tracing::error!("Failed to mark RSS items as read: {}", e);
-                ApiError::internal("Failed to mark items as read")
-            },
-        )?;
+    // Only allow marking own feeds
+    if feed.created_by != claims.sub {
+        return Err(ApiError::not_found("Feed not found"));
     }
+
+    if !feed.is_active {
+        return Err(ApiError::not_found("Feed not found"));
+    }
+
+    read_pos_repo
+        .mark_all_as_read(claims.sub, feed_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to mark RSS items as read: {}", e);
+            ApiError::internal("Failed to mark items as read")
+        })?;
 
     Ok(Json(ApiResponse::new(())))
 }

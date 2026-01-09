@@ -55,77 +55,83 @@ fn main() {
 }
 
 async fn run_server(config: Config) -> Result<(), Box<dyn std::error::Error>> {
-    // Ensure data directory exists
-    std::fs::create_dir_all("data")?;
-
-    // Open database
-    let db = Arc::new(Database::open(&config.database.path)?);
-    info!("Database opened: {}", config.database.path);
-
-    // Load I18n
-    let i18n_manager = Arc::new(I18nManager::load_all("locales")?);
-    info!("I18n loaded");
-
-    // Load templates
-    let template_loader = Arc::new(TemplateLoader::new(&config.templates.path));
-    info!("Templates loaded from: {}", config.templates.path);
-
-    // Create session manager
-    let session_manager = Arc::new(SessionManager::new(config.server.idle_timeout_secs));
-
-    // Create chat room manager
-    let chat_manager = Arc::new(ChatRoomManager::with_defaults().await);
-    info!("Chat rooms initialized");
-
-    // Create application
-    let app = Application::new(
-        db,
-        Arc::new(config.clone()),
-        i18n_manager,
-        template_loader,
-        session_manager,
-        Arc::clone(&chat_manager),
-    );
-
-    // Bind server
-    let server = TelnetServer::bind(&config.server).await?;
-    info!(
-        "Server listening on {}:{}",
-        config.server.host, config.server.port
-    );
-    info!("Press Ctrl+C to stop");
-
-    // Start Web server if enabled (runs in separate task with its own DB connection)
-    if config.web.enabled {
-        let web_db = Database::open(&config.database.path)?;
-        let web_chat_manager = Arc::clone(&chat_manager);
-        let web_server =
-            WebServer::from_database_with_configs(&config.web, web_db, &config.files, &config.bbs)
-                .with_chat_manager(web_chat_manager);
-        let web_addr = web_server.addr();
-
-        tokio::spawn(async move {
-            info!("Web server starting on http://{}", web_addr);
-            if let Err(e) = web_server.run().await {
-                error!("Web server error: {}", e);
-            }
-        });
-    }
-
-    // Create LocalSet for non-Send futures (rusqlite is not Send)
+    // Use LocalSet because TelnetSession/ScreenContext contain non-Send types (Cell)
     let local = tokio::task::LocalSet::new();
-
-    // Clone db and config for RSS updater
-    let rss_db = Arc::clone(&app.db());
-    let rss_config = config.rss.clone();
 
     local
         .run_until(async move {
+            // Ensure data directory exists
+            std::fs::create_dir_all("data")?;
+
+            // Open database
+            let db = Arc::new(Database::open(&config.database.path).await?);
+            info!("Database opened: {}", config.database.path);
+
+            // Load I18n
+            let i18n_manager = Arc::new(I18nManager::load_all("locales")?);
+            info!("I18n loaded");
+
+            // Load templates
+            let template_loader = Arc::new(TemplateLoader::new(&config.templates.path));
+            info!("Templates loaded from: {}", config.templates.path);
+
+            // Create session manager
+            let session_manager = Arc::new(SessionManager::new(config.server.idle_timeout_secs));
+
+            // Create chat room manager
+            let chat_manager = Arc::new(ChatRoomManager::with_defaults().await);
+            info!("Chat rooms initialized");
+
+            // Create application
+            let app = Application::new(
+                db,
+                Arc::new(config.clone()),
+                i18n_manager,
+                template_loader,
+                session_manager,
+                Arc::clone(&chat_manager),
+            );
+
+            // Bind server
+            let server = TelnetServer::bind(&config.server).await?;
+            info!(
+                "Server listening on {}:{}",
+                config.server.host, config.server.port
+            );
+            info!("Press Ctrl+C to stop");
+
+            // Start Web server if enabled (runs in separate task with its own DB connection)
+            // Web server uses Send-safe types, so tokio::spawn is fine
+            if config.web.enabled {
+                let web_db = Database::open(&config.database.path).await?;
+                let web_chat_manager = Arc::clone(&chat_manager);
+                let web_server = WebServer::from_database_with_configs(
+                    &config.web,
+                    web_db,
+                    &config.files,
+                    &config.bbs,
+                )
+                .with_chat_manager(web_chat_manager);
+                let web_addr = web_server.addr();
+
+                tokio::spawn(async move {
+                    info!("Web server starting on http://{}", web_addr);
+                    if let Err(e) = web_server.run().await {
+                        error!("Web server error: {}", e);
+                    }
+                });
+            }
+
+            // Clone db and config for RSS updater
+            let rss_db = Arc::clone(&app.db());
+            let rss_config = config.rss.clone();
+
             // Start RSS background updater (if enabled)
             if start_rss_updater_with_config(rss_db, &rss_config) {
                 info!("RSS updater started");
             }
 
+            // Telnet sessions use spawn_local because ScreenContext contains Cell (non-Send)
             loop {
                 match server.accept().await {
                     Ok((stream, addr, permit)) => {
@@ -146,8 +152,8 @@ async fn run_server(config: Config) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-        })
-        .await;
 
-    Ok(())
+            Ok(())
+        })
+        .await
 }
