@@ -506,6 +506,46 @@ impl<'a> BoardService<'a> {
             .ok_or_else(|| HobbsError::NotFound("post".to_string()))
     }
 
+    /// Update a thread by ID.
+    ///
+    /// Permission rules:
+    /// - The thread author can edit their own thread
+    /// - SubOp or higher can edit any thread
+    pub fn update_thread(
+        &self,
+        thread_id: i64,
+        user_id: Option<i64>,
+        user_role: Role,
+        title: String,
+    ) -> Result<Thread> {
+        // Validate input
+        validate_title(&title)?;
+
+        let thread_repo = ThreadRepository::new(self.db);
+        let thread = thread_repo
+            .get_by_id(thread_id)?
+            .ok_or_else(|| HobbsError::NotFound("thread".to_string()))?;
+
+        // Check board access
+        self.get_board(thread.board_id, user_role)?;
+
+        // Check edit permission
+        let is_owner = user_id.is_some() && user_id == Some(thread.author_id);
+        let is_operator = user_role >= Role::SubOp;
+
+        if !is_owner && !is_operator {
+            return Err(HobbsError::Permission(
+                "このスレッドを編集する権限がありません".to_string(),
+            ));
+        }
+
+        let update = super::thread::ThreadUpdate::new().title(title);
+
+        thread_repo
+            .update(thread_id, &update)?
+            .ok_or_else(|| HobbsError::NotFound("thread".to_string()))
+    }
+
     /// Delete a thread by ID.
     ///
     /// Permission rules:
@@ -1441,6 +1481,120 @@ mod tests {
         let post_repo = PostRepository::new(&db);
         assert!(post_repo.get_by_id(post1.id).unwrap().is_none());
         assert!(post_repo.get_by_id(post2.id).unwrap().is_none());
+    }
+
+    // ========== update_thread tests ==========
+
+    #[test]
+    fn test_update_thread_by_owner() {
+        let db = setup_db();
+        let author_id = create_test_user(&db);
+        let board_repo = BoardRepository::new(&db);
+        let board = board_repo
+            .create(&NewBoard::new("test").with_board_type(BoardType::Thread))
+            .unwrap();
+
+        let service = BoardService::new(&db);
+        let thread = service
+            .create_thread(board.id, "Original Title", author_id, Role::Member)
+            .unwrap();
+
+        let updated = service
+            .update_thread(thread.id, Some(author_id), Role::Member, "New Title".to_string())
+            .unwrap();
+
+        assert_eq!(updated.title, "New Title");
+        assert_eq!(updated.id, thread.id);
+    }
+
+    #[test]
+    fn test_update_thread_by_subop() {
+        let db = setup_db();
+        let author_id = create_test_user(&db);
+        let board_repo = BoardRepository::new(&db);
+        let board = board_repo
+            .create(&NewBoard::new("test").with_board_type(BoardType::Thread))
+            .unwrap();
+
+        let service = BoardService::new(&db);
+        let thread = service
+            .create_thread(board.id, "Original Title", author_id, Role::Member)
+            .unwrap();
+
+        // SubOp (not owner) can edit
+        let updated = service
+            .update_thread(thread.id, Some(999), Role::SubOp, "Admin Edit".to_string())
+            .unwrap();
+
+        assert_eq!(updated.title, "Admin Edit");
+    }
+
+    #[test]
+    fn test_update_thread_permission_denied() {
+        let db = setup_db();
+        let author_id = create_test_user(&db);
+        let board_repo = BoardRepository::new(&db);
+        let board = board_repo
+            .create(&NewBoard::new("test").with_board_type(BoardType::Thread))
+            .unwrap();
+
+        let service = BoardService::new(&db);
+        let thread = service
+            .create_thread(board.id, "Original Title", author_id, Role::Member)
+            .unwrap();
+
+        // Other user (not owner, not SubOp) cannot edit
+        let result = service.update_thread(thread.id, Some(999), Role::Member, "Hacked".to_string());
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_thread_not_found() {
+        let db = setup_db();
+        let service = BoardService::new(&db);
+        let result = service.update_thread(999, Some(1), Role::SysOp, "Title".to_string());
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_thread_title_too_long() {
+        let db = setup_db();
+        let author_id = create_test_user(&db);
+        let board_repo = BoardRepository::new(&db);
+        let board = board_repo
+            .create(&NewBoard::new("test").with_board_type(BoardType::Thread))
+            .unwrap();
+
+        let service = BoardService::new(&db);
+        let thread = service
+            .create_thread(board.id, "Original Title", author_id, Role::Member)
+            .unwrap();
+
+        let long_title = "あ".repeat(51);
+        let result = service.update_thread(thread.id, Some(author_id), Role::Member, long_title);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_thread_title_empty() {
+        let db = setup_db();
+        let author_id = create_test_user(&db);
+        let board_repo = BoardRepository::new(&db);
+        let board = board_repo
+            .create(&NewBoard::new("test").with_board_type(BoardType::Thread))
+            .unwrap();
+
+        let service = BoardService::new(&db);
+        let thread = service
+            .create_thread(board.id, "Original Title", author_id, Role::Member)
+            .unwrap();
+
+        let result = service.update_thread(thread.id, Some(author_id), Role::Member, "   ".to_string());
+
+        assert!(result.is_err());
     }
 
     // ========== get_post tests ==========

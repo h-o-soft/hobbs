@@ -82,3 +82,14 @@ export async function updatePost(
 ): Promise<Post> {
   return api.patch<Post>(`/posts/${postId}`, data);
 }
+
+export interface UpdateThreadRequest {
+  title: string;
+}
+
+export async function updateThread(
+  threadId: number,
+  data: UpdateThreadRequest
+): Promise<Thread> {
+  return api.patch<Thread>(`/threads/${threadId}`, data);
+}
