@@ -65,7 +65,8 @@ impl RssUpdater {
         debug!("Checking for feeds due for update");
 
         // Get feeds that need updating
-        let feeds = match RssFeedRepository::list_due_for_fetch(self.db.conn()) {
+        let feed_repo = RssFeedRepository::new(self.db.pool());
+        let feeds = match feed_repo.list_due_for_fetch().await {
             Ok(feeds) => feeds,
             Err(e) => {
                 error!("Failed to list feeds due for update: {}", e);
@@ -89,6 +90,9 @@ impl RssUpdater {
     async fn update_feed(&self, feed_id: i64, url: &str) {
         debug!("Updating feed {}: {}", feed_id, url);
 
+        let feed_repo = RssFeedRepository::new(self.db.pool());
+        let item_repo = RssItemRepository::new(self.db.pool());
+
         match fetch_feed(url).await {
             Ok(parsed) => {
                 let mut new_count = 0;
@@ -109,7 +113,7 @@ impl RssUpdater {
                         new_item = new_item.with_published_at(published_at);
                     }
 
-                    match RssItemRepository::create_or_ignore(self.db.conn(), &new_item) {
+                    match item_repo.create_or_ignore(&new_item).await {
                         Ok(Some(_)) => new_count += 1,
                         Ok(None) => {} // Already exists
                         Err(e) => {
@@ -119,12 +123,12 @@ impl RssUpdater {
                 }
 
                 // Clear error and update last_fetched
-                if let Err(e) = RssFeedRepository::clear_error(self.db.conn(), feed_id) {
+                if let Err(e) = feed_repo.clear_error(feed_id).await {
                     error!("Failed to clear error for feed {}: {}", feed_id, e);
                 }
 
                 // Prune old items
-                if let Err(e) = RssItemRepository::prune_old_items(self.db.conn(), feed_id) {
+                if let Err(e) = item_repo.prune_old_items(feed_id).await {
                     error!("Failed to prune old items for feed {}: {}", feed_id, e);
                 }
 
@@ -138,14 +142,12 @@ impl RssUpdater {
                 warn!("Failed to fetch feed {}: {}", feed_id, e);
 
                 // Increment error count
-                if let Err(err) =
-                    RssFeedRepository::increment_error(self.db.conn(), feed_id, &e.to_string())
-                {
+                if let Err(err) = feed_repo.increment_error(feed_id, &e.to_string()).await {
                     error!("Failed to increment error for feed {}: {}", feed_id, err);
                 }
 
                 // Check if feed should be disabled
-                match RssFeedRepository::get_by_id(self.db.conn(), feed_id) {
+                match feed_repo.get_by_id(feed_id).await {
                     Ok(Some(feed)) => {
                         if feed.error_count >= MAX_CONSECUTIVE_ERRORS {
                             warn!(
@@ -204,9 +206,9 @@ pub fn start_rss_updater_with_config(db: Arc<Database>, config: &RssConfig) -> b
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_rss_updater_new() {
-        let db = Arc::new(Database::open_in_memory().unwrap());
+    #[tokio::test]
+    async fn test_rss_updater_new() {
+        let db = Arc::new(Database::open_in_memory().await.unwrap());
         let updater = RssUpdater::new(db);
         assert_eq!(
             updater.check_interval,
@@ -214,9 +216,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_rss_updater_with_interval() {
-        let db = Arc::new(Database::open_in_memory().unwrap());
+    #[tokio::test]
+    async fn test_rss_updater_with_interval() {
+        let db = Arc::new(Database::open_in_memory().await.unwrap());
         let updater = RssUpdater::with_interval(db, 60);
         assert_eq!(updater.check_interval, Duration::from_secs(60));
     }

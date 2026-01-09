@@ -21,6 +21,7 @@ async fn test_profile_settings_accessible() {
         "en",    // English
         "utf-8", // UTF-8 encoding
     )
+    .await
     .unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -103,6 +104,7 @@ async fn test_change_language_en_to_ja() {
         "en",    // English
         "utf-8", // UTF-8 encoding
     )
+    .await
     .unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -215,6 +217,7 @@ async fn test_change_encoding_utf8_to_shiftjis() {
         "ja",    // Japanese
         "utf-8", // UTF-8 encoding
     )
+    .await
     .unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -323,6 +326,7 @@ async fn test_settings_persist_on_main_menu() {
         "en",    // English
         "utf-8", // UTF-8 encoding
     )
+    .await
     .unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 

@@ -11,7 +11,6 @@ use hobbs::web::router::create_router;
 use hobbs::Database;
 use serde_json::{json, Value};
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 /// Create a test configuration.
 fn create_test_config() -> WebConfig {
@@ -31,12 +30,14 @@ fn create_test_config() -> WebConfig {
 }
 
 /// Create a test server with an in-memory database.
-async fn create_test_server() -> (TestServer, Arc<Mutex<Database>>) {
+async fn create_test_server() -> (TestServer, Arc<Database>) {
     let config = create_test_config();
 
     // Create in-memory database
-    let db = Database::open_in_memory().expect("Failed to create test database");
-    let shared_db = Arc::new(Mutex::new(db));
+    let db = Database::open_in_memory()
+        .await
+        .expect("Failed to create test database");
+    let shared_db = Arc::new(db);
 
     // Create app state
     let app_state = Arc::new(AppState::new(

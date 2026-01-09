@@ -4,7 +4,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use tokio::net::TcpListener;
-use tokio::sync::Mutex;
 use tower_http::compression::CompressionLayer;
 
 use crate::chat::ChatRoomManager;
@@ -53,8 +52,7 @@ impl WebServer {
 
         // Apply BBS config if provided
         if let Some(bbs) = bbs_config {
-            app_state =
-                app_state.with_bbs_config(&bbs.name, &bbs.description, &bbs.sysop_name);
+            app_state = app_state.with_bbs_config(&bbs.name, &bbs.description, &bbs.sysop_name);
         }
 
         // Initialize file storage if files config is provided
@@ -92,7 +90,7 @@ impl WebServer {
 
     /// Create a new web server from a raw Database.
     pub fn from_database(config: &WebConfig, db: Database) -> Self {
-        Self::new(config, Arc::new(Mutex::new(db)), None, None)
+        Self::new(config, Arc::new(db), None, None)
     }
 
     /// Create a new web server from a raw Database with files config.
@@ -101,7 +99,7 @@ impl WebServer {
         db: Database,
         files_config: &FilesConfig,
     ) -> Self {
-        Self::new(config, Arc::new(Mutex::new(db)), Some(files_config), None)
+        Self::new(config, Arc::new(db), Some(files_config), None)
     }
 
     /// Create a new web server from a raw Database with files and BBS config.
@@ -113,7 +111,7 @@ impl WebServer {
     ) -> Self {
         Self::new(
             config,
-            Arc::new(Mutex::new(db)),
+            Arc::new(db),
             Some(files_config),
             Some(bbs_config),
         )
@@ -211,10 +209,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_web_server_new() {
+    #[tokio::test]
+    async fn test_web_server_new() {
         let config = create_test_config();
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_in_memory().await.unwrap();
 
         let server = WebServer::from_database(&config, db);
         assert_eq!(server.addr.ip().to_string(), "127.0.0.1");
@@ -223,7 +221,7 @@ mod tests {
     #[tokio::test]
     async fn test_web_server_run() {
         let config = create_test_config();
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_in_memory().await.unwrap();
 
         let server = WebServer::from_database(&config, db);
         let addr = server.run_with_addr().await.unwrap();

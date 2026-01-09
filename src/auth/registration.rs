@@ -115,17 +115,17 @@ impl RegistrationRequest {
 /// use hobbs::auth::registration::{register, RegistrationRequest};
 /// use hobbs::db::{Database, UserRepository};
 ///
-/// let db = Database::open_in_memory()?;
-/// let repo = UserRepository::new(db.conn());
+/// let db = Database::open_in_memory().await?;
+/// let repo = UserRepository::new(db.pool());
 ///
 /// let request = RegistrationRequest::new("john_doe", "password123", "John Doe")
 ///     .with_email("john@example.com");
 ///
-/// let user = register(&repo, request)?;
+/// let user = register(&repo, request).await?;
 /// println!("Registered user: {}", user.username);
 /// ```
-pub fn register(
-    repo: &UserRepository,
+pub async fn register(
+    repo: &UserRepository<'_>,
     request: RegistrationRequest,
 ) -> std::result::Result<User, RegistrationError> {
     // 1. Validate all fields
@@ -139,6 +139,7 @@ pub fn register(
     // 2. Check if username already exists
     if repo
         .username_exists(&request.username)
+        .await
         .map_err(|e| RegistrationError::Database(e.to_string()))?
     {
         return Err(RegistrationError::UsernameExists);
@@ -168,6 +169,7 @@ pub fn register(
 
     let user = repo
         .create(&new_user)
+        .await
         .map_err(|e| RegistrationError::Database(e.to_string()))?;
 
     info!(
@@ -188,8 +190,8 @@ pub fn register(
 /// * `repo` - The user repository
 /// * `request` - Registration request data
 /// * `role` - The role to assign to the new user
-pub fn register_with_role(
-    repo: &UserRepository,
+pub async fn register_with_role(
+    repo: &UserRepository<'_>,
     request: RegistrationRequest,
     role: Role,
 ) -> std::result::Result<User, RegistrationError> {
@@ -204,6 +206,7 @@ pub fn register_with_role(
     // 2. Check if username already exists
     if repo
         .username_exists(&request.username)
+        .await
         .map_err(|e| RegistrationError::Database(e.to_string()))?
     {
         return Err(RegistrationError::UsernameExists);
@@ -234,6 +237,7 @@ pub fn register_with_role(
 
     let user = repo
         .create(&new_user)
+        .await
         .map_err(|e| RegistrationError::Database(e.to_string()))?;
 
     info!(
@@ -251,13 +255,13 @@ mod tests {
     use super::*;
     use crate::db::Database;
 
-    #[test]
-    fn test_register_success() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_register_success() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
 
         let request = RegistrationRequest::new("testuser", "password123", "Test User");
-        let result = register(&repo, request);
+        let result = register(&repo, request).await;
 
         assert!(result.is_ok());
         let user = result.unwrap();
@@ -267,111 +271,111 @@ mod tests {
         assert!(user.is_active);
     }
 
-    #[test]
-    fn test_register_with_email() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_register_with_email() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
 
         let request = RegistrationRequest::new("testuser", "password123", "Test User")
             .with_email("test@example.com");
-        let result = register(&repo, request);
+        let result = register(&repo, request).await;
 
         assert!(result.is_ok());
         let user = result.unwrap();
         assert_eq!(user.email, Some("test@example.com".to_string()));
     }
 
-    #[test]
-    fn test_register_with_terminal() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_register_with_terminal() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
 
         let request =
             RegistrationRequest::new("testuser", "password123", "Test User").with_terminal("c64");
-        let result = register(&repo, request);
+        let result = register(&repo, request).await;
 
         assert!(result.is_ok());
         let user = result.unwrap();
         assert_eq!(user.terminal, "c64");
     }
 
-    #[test]
-    fn test_register_duplicate_username() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_register_duplicate_username() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
 
         // Register first user
         let request1 = RegistrationRequest::new("testuser", "password123", "Test User 1");
-        register(&repo, request1).unwrap();
+        register(&repo, request1).await.unwrap();
 
         // Try to register with same username
         let request2 = RegistrationRequest::new("testuser", "password456", "Test User 2");
-        let result = register(&repo, request2);
+        let result = register(&repo, request2).await;
 
         assert!(matches!(result, Err(RegistrationError::UsernameExists)));
     }
 
-    #[test]
-    fn test_register_invalid_username() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_register_invalid_username() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
 
         // Too short
         let request = RegistrationRequest::new("abc", "password123", "Test");
-        let result = register(&repo, request);
+        let result = register(&repo, request).await;
         assert!(matches!(result, Err(RegistrationError::Validation(_))));
 
         // Reserved
         let request = RegistrationRequest::new("admin", "password123", "Admin");
-        let result = register(&repo, request);
+        let result = register(&repo, request).await;
         assert!(matches!(result, Err(RegistrationError::Validation(_))));
     }
 
-    #[test]
-    fn test_register_invalid_password() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_register_invalid_password() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
 
         // Too short
         let request = RegistrationRequest::new("testuser", "short", "Test User");
-        let result = register(&repo, request);
+        let result = register(&repo, request).await;
         assert!(matches!(result, Err(RegistrationError::Validation(_))));
 
         // Same as username
         let request = RegistrationRequest::new("testuser", "testuser", "Test User");
-        let result = register(&repo, request);
+        let result = register(&repo, request).await;
         assert!(matches!(result, Err(RegistrationError::Validation(_))));
     }
 
-    #[test]
-    fn test_register_invalid_nickname() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_register_invalid_nickname() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
 
         // Empty
         let request = RegistrationRequest::new("testuser", "password123", "");
-        let result = register(&repo, request);
+        let result = register(&repo, request).await;
         assert!(matches!(result, Err(RegistrationError::Validation(_))));
     }
 
-    #[test]
-    fn test_register_invalid_email() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_register_invalid_email() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
 
         let request = RegistrationRequest::new("testuser", "password123", "Test User")
             .with_email("invalid-email");
-        let result = register(&repo, request);
+        let result = register(&repo, request).await;
         assert!(matches!(result, Err(RegistrationError::Validation(_))));
     }
 
-    #[test]
-    fn test_register_with_role() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_register_with_role() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
 
         let request = RegistrationRequest::new("sysop_user", "password123", "System Operator");
-        let result = register_with_role(&repo, request, Role::SysOp);
+        let result = register_with_role(&repo, request, Role::SysOp).await;
 
         assert!(result.is_ok());
         let user = result.unwrap();
@@ -400,13 +404,13 @@ mod tests {
         assert!(err.to_string().contains("validation"));
     }
 
-    #[test]
-    fn test_password_is_hashed() {
-        let db = Database::open_in_memory().unwrap();
-        let repo = UserRepository::new(&db);
+    #[tokio::test]
+    async fn test_password_is_hashed() {
+        let db = Database::open_in_memory().await.unwrap();
+        let repo = UserRepository::new(db.pool());
 
         let request = RegistrationRequest::new("testuser", "password123", "Test User");
-        let user = register(&repo, request).unwrap();
+        let user = register(&repo, request).await.unwrap();
 
         // Password should be hashed, not plain text
         assert_ne!(user.password, "password123");

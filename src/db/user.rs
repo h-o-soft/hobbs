@@ -21,6 +21,14 @@ pub enum Role {
     SysOp = 3,
 }
 
+impl TryFrom<String> for Role {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Role::from_str(&value)
+    }
+}
+
 impl Role {
     /// Convert role to database string representation.
     pub fn as_str(&self) -> &'static str {
@@ -79,7 +87,7 @@ impl FromStr for Role {
 }
 
 /// User entity representing a registered user.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct User {
     /// Unique user ID.
     pub id: i64,
@@ -92,12 +100,14 @@ pub struct User {
     /// Email address (optional).
     pub email: Option<String>,
     /// User role for permissions.
+    #[sqlx(try_from = "String")]
     pub role: Role,
     /// Self-introduction text (optional).
     pub profile: Option<String>,
     /// Terminal profile preference.
     pub terminal: String,
     /// Character encoding preference.
+    #[sqlx(try_from = "String")]
     pub encoding: CharacterEncoding,
     /// Language preference (e.g., "en", "ja").
     pub language: String,

@@ -8,8 +8,7 @@ pub enum HobbsError {
     /// Database error.
     ///
     /// This is a generic database error that wraps errors from any database backend.
-    /// For backwards compatibility, rusqlite errors are automatically converted.
-    /// In the future, this will also handle sqlx and other database errors.
+    /// Database errors from sqlx are automatically converted.
     #[error("database error: {0}")]
     Database(String),
 
@@ -50,9 +49,9 @@ pub enum HobbsError {
     Rss(String),
 }
 
-// Conversion from rusqlite errors
-impl From<rusqlite::Error> for HobbsError {
-    fn from(e: rusqlite::Error) -> Self {
+// Conversion from sqlx errors
+impl From<sqlx::Error> for HobbsError {
+    fn from(e: sqlx::Error) -> Self {
         HobbsError::Database(e.to_string())
     }
 }

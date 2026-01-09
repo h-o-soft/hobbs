@@ -20,8 +20,8 @@ impl MemberScreen {
             ctx.send_line(session, "").await?;
 
             // Get member list from database
-            let user_repo = UserRepository::new(&ctx.db);
-            let users = user_repo.list_active()?;
+            let user_repo = UserRepository::new(ctx.db.pool());
+            let users = user_repo.list_active().await?;
 
             if users.is_empty() {
                 ctx.send_line(session, ctx.i18n.t("member.no_members"))

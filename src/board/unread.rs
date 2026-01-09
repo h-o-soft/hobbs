@@ -3,9 +3,10 @@
 //! This module provides functionality to track and manage unread posts
 //! for each user per board.
 
-use rusqlite::{params, Row};
+use sqlx::SqlitePool;
 
-use crate::db::{Database, Role};
+use crate::db::Role;
+use crate::HobbsError;
 use crate::Result;
 
 use super::Post;
@@ -20,7 +21,7 @@ pub struct UnreadPostWithBoard {
 }
 
 /// Read position tracking for a user on a board.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ReadPosition {
     /// Unique ID.
     pub id: i64,
@@ -36,29 +37,32 @@ pub struct ReadPosition {
 
 /// Repository for unread management operations.
 pub struct UnreadRepository<'a> {
-    db: &'a Database,
+    pool: &'a SqlitePool,
 }
 
 impl<'a> UnreadRepository<'a> {
-    /// Create a new UnreadRepository with the given database reference.
-    pub fn new(db: &'a Database) -> Self {
-        Self { db }
+    /// Create a new UnreadRepository with the given pool reference.
+    pub fn new(pool: &'a SqlitePool) -> Self {
+        Self { pool }
     }
 
     /// Get the read position for a user on a board.
-    pub fn get_read_position(&self, user_id: i64, board_id: i64) -> Result<Option<ReadPosition>> {
-        let result = self.db.conn().query_row(
+    pub async fn get_read_position(
+        &self,
+        user_id: i64,
+        board_id: i64,
+    ) -> Result<Option<ReadPosition>> {
+        let result = sqlx::query_as::<_, ReadPosition>(
             "SELECT id, user_id, board_id, last_read_post_id, last_read_at
              FROM read_positions WHERE user_id = ? AND board_id = ?",
-            params![user_id, board_id],
-            Self::row_to_read_position,
-        );
+        )
+        .bind(user_id)
+        .bind(board_id)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        match result {
-            Ok(pos) => Ok(Some(pos)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        Ok(result)
     }
 
     /// Mark a board as read up to a specific post.
@@ -66,16 +70,22 @@ impl<'a> UnreadRepository<'a> {
     /// This updates the read position for the user on the board.
     /// If no read position exists, one is created.
     /// Only updates if the new post_id is greater than the current last_read_post_id.
-    pub fn mark_as_read(&self, user_id: i64, board_id: i64, post_id: i64) -> Result<()> {
-        self.db.conn().execute(
+    pub async fn mark_as_read(&self, user_id: i64, board_id: i64, post_id: i64) -> Result<()> {
+        sqlx::query(
             "INSERT INTO read_positions (user_id, board_id, last_read_post_id, last_read_at)
              VALUES (?, ?, ?, datetime('now'))
              ON CONFLICT(user_id, board_id) DO UPDATE SET
                  last_read_post_id = excluded.last_read_post_id,
                  last_read_at = datetime('now')
              WHERE excluded.last_read_post_id > last_read_post_id",
-            params![user_id, board_id, post_id],
-        )?;
+        )
+        .bind(user_id)
+        .bind(board_id)
+        .bind(post_id)
+        .execute(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
         Ok(())
     }
 
@@ -83,20 +93,23 @@ impl<'a> UnreadRepository<'a> {
     ///
     /// Returns the number of posts with ID greater than the last read post ID.
     /// If the user has no read position for this board, returns the total post count.
-    pub fn get_unread_count(&self, user_id: i64, board_id: i64) -> Result<i64> {
-        let read_position = self.get_read_position(user_id, board_id)?;
+    pub async fn get_unread_count(&self, user_id: i64, board_id: i64) -> Result<i64> {
+        let read_position = self.get_read_position(user_id, board_id).await?;
 
         let count: i64 = match read_position {
-            Some(pos) => self.db.conn().query_row(
-                "SELECT COUNT(*) FROM posts WHERE board_id = ? AND id > ?",
-                params![board_id, pos.last_read_post_id],
-                |row| row.get(0),
-            )?,
-            None => self.db.conn().query_row(
-                "SELECT COUNT(*) FROM posts WHERE board_id = ?",
-                [board_id],
-                |row| row.get(0),
-            )?,
+            Some(pos) => {
+                sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE board_id = ? AND id > ?")
+                    .bind(board_id)
+                    .bind(pos.last_read_post_id)
+                    .fetch_one(self.pool)
+                    .await
+                    .map_err(|e| HobbsError::Database(e.to_string()))?
+            }
+            None => sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE board_id = ?")
+                .bind(board_id)
+                .fetch_one(self.pool)
+                .await
+                .map_err(|e| HobbsError::Database(e.to_string()))?,
         };
 
         Ok(count)
@@ -105,9 +118,8 @@ impl<'a> UnreadRepository<'a> {
     /// Get unread counts for all boards for a user.
     ///
     /// Returns a list of (board_id, unread_count) tuples.
-    pub fn get_all_unread_counts(&self, user_id: i64) -> Result<Vec<(i64, i64)>> {
-        // Get all active boards
-        let mut stmt = self.db.conn().prepare(
+    pub async fn get_all_unread_counts(&self, user_id: i64) -> Result<Vec<(i64, i64)>> {
+        let counts: Vec<(i64, i64)> = sqlx::query_as(
             "SELECT b.id,
                     (SELECT COUNT(*) FROM posts p WHERE p.board_id = b.id
                      AND p.id > COALESCE(
@@ -118,11 +130,11 @@ impl<'a> UnreadRepository<'a> {
              FROM boards b
              WHERE b.is_active = 1
              ORDER BY b.sort_order, b.id",
-        )?;
-
-        let counts = stmt
-            .query_map([user_id], |row| Ok((row.get(0)?, row.get(1)?)))?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        )
+        .bind(user_id)
+        .fetch_all(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(counts)
     }
@@ -131,88 +143,88 @@ impl<'a> UnreadRepository<'a> {
     ///
     /// Returns posts with ID greater than the last read post ID.
     /// If the user has no read position, returns all posts.
-    pub fn get_unread_posts(&self, user_id: i64, board_id: i64) -> Result<Vec<Post>> {
-        let read_position = self.get_read_position(user_id, board_id)?;
+    pub async fn get_unread_posts(&self, user_id: i64, board_id: i64) -> Result<Vec<Post>> {
+        let read_position = self.get_read_position(user_id, board_id).await?;
 
-        let mut stmt = match read_position {
-            Some(pos) => {
-                let mut stmt = self.db.conn().prepare(
-                    "SELECT id, board_id, thread_id, author_id, title, body, created_at
+        let posts = match read_position {
+            Some(pos) => sqlx::query_as::<_, PostRow>(
+                "SELECT id, board_id, thread_id, author_id, title, body, created_at
                      FROM posts WHERE board_id = ? AND id > ?
                      ORDER BY id ASC",
-                )?;
-                let posts = stmt
-                    .query_map(params![board_id, pos.last_read_post_id], Self::row_to_post)?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
-                return Ok(posts);
-            }
-            None => self.db.conn().prepare(
+            )
+            .bind(board_id)
+            .bind(pos.last_read_post_id)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?,
+            None => sqlx::query_as::<_, PostRow>(
                 "SELECT id, board_id, thread_id, author_id, title, body, created_at
-                 FROM posts WHERE board_id = ?
-                 ORDER BY id ASC",
-            )?,
+                     FROM posts WHERE board_id = ?
+                     ORDER BY id ASC",
+            )
+            .bind(board_id)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?,
         };
 
-        let posts = stmt
-            .query_map([board_id], Self::row_to_post)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-
-        Ok(posts)
+        Ok(posts.into_iter().map(|r| r.into()).collect())
     }
 
     /// Get unread posts with pagination.
-    pub fn get_unread_posts_paginated(
+    pub async fn get_unread_posts_paginated(
         &self,
         user_id: i64,
         board_id: i64,
         offset: i64,
         limit: i64,
     ) -> Result<Vec<Post>> {
-        let read_position = self.get_read_position(user_id, board_id)?;
+        let read_position = self.get_read_position(user_id, board_id).await?;
 
-        match read_position {
-            Some(pos) => {
-                let mut stmt = self.db.conn().prepare(
-                    "SELECT id, board_id, thread_id, author_id, title, body, created_at
+        let posts = match read_position {
+            Some(pos) => sqlx::query_as::<_, PostRow>(
+                "SELECT id, board_id, thread_id, author_id, title, body, created_at
                      FROM posts WHERE board_id = ? AND id > ?
                      ORDER BY id ASC LIMIT ? OFFSET ?",
-                )?;
-                let posts = stmt
-                    .query_map(
-                        params![board_id, pos.last_read_post_id, limit, offset],
-                        Self::row_to_post,
-                    )?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
-                Ok(posts)
-            }
-            None => {
-                let mut stmt = self.db.conn().prepare(
-                    "SELECT id, board_id, thread_id, author_id, title, body, created_at
+            )
+            .bind(board_id)
+            .bind(pos.last_read_post_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?,
+            None => sqlx::query_as::<_, PostRow>(
+                "SELECT id, board_id, thread_id, author_id, title, body, created_at
                      FROM posts WHERE board_id = ?
                      ORDER BY id ASC LIMIT ? OFFSET ?",
-                )?;
-                let posts = stmt
-                    .query_map(params![board_id, limit, offset], Self::row_to_post)?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
-                Ok(posts)
-            }
-        }
+            )
+            .bind(board_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?,
+        };
+
+        Ok(posts.into_iter().map(|r| r.into()).collect())
     }
 
     /// Mark all posts in a board as read for a user.
     ///
     /// This sets the read position to the latest post ID.
-    pub fn mark_all_as_read(&self, user_id: i64, board_id: i64) -> Result<bool> {
+    pub async fn mark_all_as_read(&self, user_id: i64, board_id: i64) -> Result<bool> {
         // Get the latest post ID in the board
-        let latest_post_id: Option<i64> = self.db.conn().query_row(
-            "SELECT MAX(id) FROM posts WHERE board_id = ?",
-            [board_id],
-            |row| row.get(0),
-        )?;
+        let latest_post_id: Option<i64> =
+            sqlx::query_scalar("SELECT MAX(id) FROM posts WHERE board_id = ?")
+                .bind(board_id)
+                .fetch_one(self.pool)
+                .await
+                .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         match latest_post_id {
             Some(post_id) => {
-                self.mark_as_read(user_id, board_id, post_id)?;
+                self.mark_as_read(user_id, board_id, post_id).await?;
                 Ok(true)
             }
             None => Ok(false), // No posts in board
@@ -222,28 +234,33 @@ impl<'a> UnreadRepository<'a> {
     /// Delete read position for a user on a board.
     ///
     /// This effectively marks all posts as unread.
-    pub fn delete_read_position(&self, user_id: i64, board_id: i64) -> Result<bool> {
-        let affected = self.db.conn().execute(
-            "DELETE FROM read_positions WHERE user_id = ? AND board_id = ?",
-            params![user_id, board_id],
-        )?;
-        Ok(affected > 0)
+    pub async fn delete_read_position(&self, user_id: i64, board_id: i64) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM read_positions WHERE user_id = ? AND board_id = ?")
+            .bind(user_id)
+            .bind(board_id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     /// Delete all read positions for a user.
-    pub fn delete_all_read_positions(&self, user_id: i64) -> Result<i64> {
-        let affected = self
-            .db
-            .conn()
-            .execute("DELETE FROM read_positions WHERE user_id = ?", [user_id])?;
-        Ok(affected as i64)
+    pub async fn delete_all_read_positions(&self, user_id: i64) -> Result<i64> {
+        let result = sqlx::query("DELETE FROM read_positions WHERE user_id = ?")
+            .bind(user_id)
+            .execute(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() as i64)
     }
 
     /// Get thread IDs that have unread posts.
     ///
     /// Returns a set of thread IDs that have at least one post newer than
     /// the user's last read position.
-    pub fn get_unread_thread_ids(
+    pub async fn get_unread_thread_ids(
         &self,
         user_id: i64,
         board_id: i64,
@@ -253,7 +270,7 @@ impl<'a> UnreadRepository<'a> {
             return Ok(std::collections::HashSet::new());
         }
 
-        let read_position = self.get_read_position(user_id, board_id)?;
+        let read_position = self.get_read_position(user_id, board_id).await?;
         let last_read_id = read_position.map(|p| p.last_read_post_id).unwrap_or(0);
 
         // Build query with placeholders for thread IDs
@@ -264,30 +281,25 @@ impl<'a> UnreadRepository<'a> {
             placeholders.join(",")
         );
 
-        let mut stmt = self.db.conn().prepare(&query)?;
+        let mut query_builder = sqlx::query_scalar::<_, i64>(&query);
+        for thread_id in thread_ids {
+            query_builder = query_builder.bind(*thread_id);
+        }
+        query_builder = query_builder.bind(last_read_id);
 
-        // Build params: thread_ids + last_read_id
-        let mut params: Vec<Box<dyn rusqlite::ToSql>> = thread_ids
-            .iter()
-            .map(|id| Box::new(*id) as Box<dyn rusqlite::ToSql>)
-            .collect();
-        params.push(Box::new(last_read_id));
+        let unread_ids: Vec<i64> = query_builder
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-        let unread_ids = stmt
-            .query_map(
-                rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())),
-                |row| row.get::<_, i64>(0),
-            )?
-            .collect::<rusqlite::Result<std::collections::HashSet<_>>>()?;
-
-        Ok(unread_ids)
+        Ok(unread_ids.into_iter().collect())
     }
 
     /// Get the last read post ID for a user on a board.
     ///
     /// Returns 0 if no read position exists (meaning all posts are unread).
-    pub fn get_last_read_post_id(&self, user_id: i64, board_id: i64) -> Result<i64> {
-        let read_position = self.get_read_position(user_id, board_id)?;
+    pub async fn get_last_read_post_id(&self, user_id: i64, board_id: i64) -> Result<i64> {
+        let read_position = self.get_read_position(user_id, board_id).await?;
         Ok(read_position.map(|p| p.last_read_post_id).unwrap_or(0))
     }
 
@@ -296,13 +308,13 @@ impl<'a> UnreadRepository<'a> {
     /// Returns posts from all accessible boards that the user hasn't read,
     /// ordered by board sort order, then by post ID.
     /// Each post includes the board name for display purposes.
-    pub fn get_all_unread_posts(
+    pub async fn get_all_unread_posts(
         &self,
         user_id: i64,
         user_role: Role,
     ) -> Result<Vec<UnreadPostWithBoard>> {
         // Get all active boards with their read positions
-        let mut stmt = self.db.conn().prepare(
+        let boards: Vec<(i64, String, String, i64)> = sqlx::query_as(
             "SELECT b.id, b.name, b.min_read_role,
                     COALESCE(
                         (SELECT last_read_post_id FROM read_positions
@@ -312,13 +324,11 @@ impl<'a> UnreadRepository<'a> {
              FROM boards b
              WHERE b.is_active = 1
              ORDER BY b.sort_order, b.id",
-        )?;
-
-        let boards: Vec<(i64, String, String, i64)> = stmt
-            .query_map(params![user_id], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        )
+        .bind(user_id)
+        .fetch_all(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         let mut all_unread = Vec::new();
 
@@ -330,19 +340,20 @@ impl<'a> UnreadRepository<'a> {
                 continue;
             }
 
-            let mut post_stmt = self.db.conn().prepare(
+            let posts: Vec<PostRow> = sqlx::query_as(
                 "SELECT id, board_id, thread_id, author_id, title, body, created_at
                  FROM posts WHERE board_id = ? AND id > ?
                  ORDER BY id ASC",
-            )?;
+            )
+            .bind(board_id)
+            .bind(last_read_post_id)
+            .fetch_all(self.pool)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
 
-            let posts = post_stmt
-                .query_map(params![board_id, last_read_post_id], Self::row_to_post)?
-                .collect::<rusqlite::Result<Vec<_>>>()?;
-
-            for post in posts {
+            for post_row in posts {
                 all_unread.push(UnreadPostWithBoard {
-                    post,
+                    post: post_row.into(),
                     board_name: board_name.clone(),
                 });
             }
@@ -352,9 +363,9 @@ impl<'a> UnreadRepository<'a> {
     }
 
     /// Get total unread count across all boards for a user.
-    pub fn get_total_unread_count(&self, user_id: i64, user_role: Role) -> Result<i64> {
+    pub async fn get_total_unread_count(&self, user_id: i64, user_role: Role) -> Result<i64> {
         // Get all active boards with their read positions
-        let mut stmt = self.db.conn().prepare(
+        let boards: Vec<(i64, String, i64)> = sqlx::query_as(
             "SELECT b.id, b.min_read_role,
                     COALESCE(
                         (SELECT last_read_post_id FROM read_positions
@@ -363,13 +374,11 @@ impl<'a> UnreadRepository<'a> {
                     ) as last_read
              FROM boards b
              WHERE b.is_active = 1",
-        )?;
-
-        let boards: Vec<(i64, String, i64)> = stmt
-            .query_map(params![user_id], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        )
+        .bind(user_id)
+        .fetch_all(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
 
         let mut total_count: i64 = 0;
 
@@ -380,242 +389,359 @@ impl<'a> UnreadRepository<'a> {
                 continue;
             }
 
-            let count: i64 = self.db.conn().query_row(
-                "SELECT COUNT(*) FROM posts WHERE board_id = ? AND id > ?",
-                params![board_id, last_read_post_id],
-                |row| row.get(0),
-            )?;
+            let count: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE board_id = ? AND id > ?")
+                    .bind(board_id)
+                    .bind(last_read_post_id)
+                    .fetch_one(self.pool)
+                    .await
+                    .map_err(|e| HobbsError::Database(e.to_string()))?;
 
             total_count += count;
         }
 
         Ok(total_count)
     }
+}
 
-    /// Convert a database row to a ReadPosition struct.
-    fn row_to_read_position(row: &Row<'_>) -> rusqlite::Result<ReadPosition> {
-        Ok(ReadPosition {
-            id: row.get(0)?,
-            user_id: row.get(1)?,
-            board_id: row.get(2)?,
-            last_read_post_id: row.get(3)?,
-            last_read_at: row.get(4)?,
-        })
-    }
+/// Internal struct for mapping post rows from sqlx.
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct PostRow {
+    id: i64,
+    board_id: i64,
+    thread_id: Option<i64>,
+    author_id: i64,
+    title: Option<String>,
+    body: String,
+    created_at: String,
+}
 
-    /// Convert a database row to a Post struct.
-    fn row_to_post(row: &Row<'_>) -> rusqlite::Result<Post> {
-        Ok(Post {
-            id: row.get(0)?,
-            board_id: row.get(1)?,
-            thread_id: row.get(2)?,
-            author_id: row.get(3)?,
-            title: row.get(4)?,
-            body: row.get(5)?,
-            created_at: row.get(6)?,
-        })
+impl From<PostRow> for Post {
+    fn from(row: PostRow) -> Self {
+        Post {
+            id: row.id,
+            board_id: row.board_id,
+            thread_id: row.thread_id,
+            author_id: row.author_id,
+            title: row.title,
+            body: row.body,
+            created_at: row.created_at,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::board::{
-        BoardRepository, NewBoard, NewFlatPost, NewThread, NewThreadPost, PostRepository,
-        ThreadRepository,
-    };
-    use crate::db::{NewUser, UserRepository};
+    use crate::Database;
 
-    fn setup_db() -> Database {
-        Database::open_in_memory().unwrap()
+    async fn setup_db() -> Database {
+        Database::open_in_memory().await.unwrap()
     }
 
-    fn create_test_user(db: &Database) -> i64 {
-        let repo = UserRepository::new(db);
-        let user = repo
-            .create(&NewUser::new("testuser", "hash", "Test User"))
+    async fn create_test_user(pool: &SqlitePool) -> i64 {
+        sqlx::query("INSERT INTO users (username, password, nickname, role) VALUES (?, ?, ?, ?)")
+            .bind("testuser")
+            .bind("hash")
+            .bind("Test User")
+            .bind("member")
+            .execute(pool)
+            .await
             .unwrap();
-        user.id
+
+        sqlx::query_scalar::<_, i64>("SELECT last_insert_rowid()")
+            .fetch_one(pool)
+            .await
+            .unwrap()
     }
 
-    fn create_test_board(db: &Database) -> i64 {
-        let repo = BoardRepository::new(db);
-        let board = repo.create(&NewBoard::new("test-board")).unwrap();
-        board.id
+    async fn create_test_board(pool: &SqlitePool) -> i64 {
+        sqlx::query(
+            "INSERT INTO boards (name, board_type, min_read_role, min_write_role) VALUES (?, ?, ?, ?)",
+        )
+        .bind("test-board")
+        .bind("flat")
+        .bind("guest")
+        .bind("member")
+        .execute(pool)
+        .await
+        .unwrap();
+
+        sqlx::query_scalar::<_, i64>("SELECT last_insert_rowid()")
+            .fetch_one(pool)
+            .await
+            .unwrap()
     }
 
-    fn create_test_post(db: &Database, board_id: i64, author_id: i64) -> i64 {
-        let repo = PostRepository::new(db);
-        let post = repo
-            .create_flat_post(&NewFlatPost::new(board_id, author_id, "Title", "Body"))
+    async fn create_test_board_with_name(pool: &SqlitePool, name: &str) -> i64 {
+        sqlx::query(
+            "INSERT INTO boards (name, board_type, min_read_role, min_write_role) VALUES (?, ?, ?, ?)",
+        )
+        .bind(name)
+        .bind("flat")
+        .bind("guest")
+        .bind("member")
+        .execute(pool)
+        .await
+        .unwrap();
+
+        sqlx::query_scalar::<_, i64>("SELECT last_insert_rowid()")
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    async fn create_test_post(pool: &SqlitePool, board_id: i64, author_id: i64) -> i64 {
+        sqlx::query("INSERT INTO posts (board_id, author_id, title, body) VALUES (?, ?, ?, ?)")
+            .bind(board_id)
+            .bind(author_id)
+            .bind("Title")
+            .bind("Body")
+            .execute(pool)
+            .await
             .unwrap();
-        post.id
+
+        sqlx::query_scalar::<_, i64>("SELECT last_insert_rowid()")
+            .fetch_one(pool)
+            .await
+            .unwrap()
     }
 
-    #[test]
-    fn test_mark_as_read() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
-        let post_id = create_test_post(&db, board_id, user_id);
+    async fn create_test_thread(pool: &SqlitePool, board_id: i64, author_id: i64) -> i64 {
+        sqlx::query("INSERT INTO threads (board_id, title, author_id) VALUES (?, ?, ?)")
+            .bind(board_id)
+            .bind("Test Thread")
+            .bind(author_id)
+            .execute(pool)
+            .await
+            .unwrap();
 
-        let repo = UnreadRepository::new(&db);
-        repo.mark_as_read(user_id, board_id, post_id).unwrap();
+        sqlx::query_scalar::<_, i64>("SELECT last_insert_rowid()")
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
 
-        let position = repo.get_read_position(user_id, board_id).unwrap().unwrap();
+    async fn create_test_thread_post(
+        pool: &SqlitePool,
+        board_id: i64,
+        thread_id: i64,
+        author_id: i64,
+    ) -> i64 {
+        sqlx::query("INSERT INTO posts (board_id, thread_id, author_id, body) VALUES (?, ?, ?, ?)")
+            .bind(board_id)
+            .bind(thread_id)
+            .bind(author_id)
+            .bind("Body")
+            .execute(pool)
+            .await
+            .unwrap();
+
+        sqlx::query_scalar::<_, i64>("SELECT last_insert_rowid()")
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_mark_as_read() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
+        let post_id = create_test_post(pool, board_id, user_id).await;
+
+        let repo = UnreadRepository::new(pool);
+        repo.mark_as_read(user_id, board_id, post_id).await.unwrap();
+
+        let position = repo
+            .get_read_position(user_id, board_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(position.user_id, user_id);
         assert_eq!(position.board_id, board_id);
         assert_eq!(position.last_read_post_id, post_id);
     }
 
-    #[test]
-    fn test_mark_as_read_update() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
-        let post1_id = create_test_post(&db, board_id, user_id);
-        let post2_id = create_test_post(&db, board_id, user_id);
+    #[tokio::test]
+    async fn test_mark_as_read_update() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
+        let post1_id = create_test_post(pool, board_id, user_id).await;
+        let post2_id = create_test_post(pool, board_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
+        let repo = UnreadRepository::new(pool);
 
         // Mark first post as read
-        repo.mark_as_read(user_id, board_id, post1_id).unwrap();
-        let pos1 = repo.get_read_position(user_id, board_id).unwrap().unwrap();
+        repo.mark_as_read(user_id, board_id, post1_id)
+            .await
+            .unwrap();
+        let pos1 = repo
+            .get_read_position(user_id, board_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(pos1.last_read_post_id, post1_id);
 
         // Update to second post
-        repo.mark_as_read(user_id, board_id, post2_id).unwrap();
-        let pos2 = repo.get_read_position(user_id, board_id).unwrap().unwrap();
+        repo.mark_as_read(user_id, board_id, post2_id)
+            .await
+            .unwrap();
+        let pos2 = repo
+            .get_read_position(user_id, board_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(pos2.last_read_post_id, post2_id);
 
         // Re-reading an older post should NOT move the pointer back
-        repo.mark_as_read(user_id, board_id, post1_id).unwrap();
-        let pos3 = repo.get_read_position(user_id, board_id).unwrap().unwrap();
+        repo.mark_as_read(user_id, board_id, post1_id)
+            .await
+            .unwrap();
+        let pos3 = repo
+            .get_read_position(user_id, board_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(pos3.last_read_post_id, post2_id); // Still at post2
     }
 
-    #[test]
-    fn test_get_read_position_not_found() {
-        let db = setup_db();
-        let repo = UnreadRepository::new(&db);
+    #[tokio::test]
+    async fn test_get_read_position_not_found() {
+        let db = setup_db().await;
+        let repo = UnreadRepository::new(db.pool());
 
-        let position = repo.get_read_position(999, 999).unwrap();
+        let position = repo.get_read_position(999, 999).await.unwrap();
         assert!(position.is_none());
     }
 
-    #[test]
-    fn test_get_unread_count_no_position() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
+    #[tokio::test]
+    async fn test_get_unread_count_no_position() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
 
         // Create some posts
-        create_test_post(&db, board_id, user_id);
-        create_test_post(&db, board_id, user_id);
-        create_test_post(&db, board_id, user_id);
+        create_test_post(pool, board_id, user_id).await;
+        create_test_post(pool, board_id, user_id).await;
+        create_test_post(pool, board_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
-        let count = repo.get_unread_count(user_id, board_id).unwrap();
+        let repo = UnreadRepository::new(pool);
+        let count = repo.get_unread_count(user_id, board_id).await.unwrap();
 
         // All posts should be unread
         assert_eq!(count, 3);
     }
 
-    #[test]
-    fn test_get_unread_count_with_position() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
+    #[tokio::test]
+    async fn test_get_unread_count_with_position() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
 
         // Create posts
-        let post1_id = create_test_post(&db, board_id, user_id);
-        create_test_post(&db, board_id, user_id);
-        create_test_post(&db, board_id, user_id);
+        let post1_id = create_test_post(pool, board_id, user_id).await;
+        create_test_post(pool, board_id, user_id).await;
+        create_test_post(pool, board_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
+        let repo = UnreadRepository::new(pool);
 
         // Mark first post as read
-        repo.mark_as_read(user_id, board_id, post1_id).unwrap();
+        repo.mark_as_read(user_id, board_id, post1_id)
+            .await
+            .unwrap();
 
-        let count = repo.get_unread_count(user_id, board_id).unwrap();
+        let count = repo.get_unread_count(user_id, board_id).await.unwrap();
         assert_eq!(count, 2); // 2 posts after the read position
     }
 
-    #[test]
-    fn test_get_unread_count_all_read() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
+    #[tokio::test]
+    async fn test_get_unread_count_all_read() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
 
-        create_test_post(&db, board_id, user_id);
-        create_test_post(&db, board_id, user_id);
-        let post3_id = create_test_post(&db, board_id, user_id);
+        create_test_post(pool, board_id, user_id).await;
+        create_test_post(pool, board_id, user_id).await;
+        let post3_id = create_test_post(pool, board_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
-        repo.mark_as_read(user_id, board_id, post3_id).unwrap();
+        let repo = UnreadRepository::new(pool);
+        repo.mark_as_read(user_id, board_id, post3_id)
+            .await
+            .unwrap();
 
-        let count = repo.get_unread_count(user_id, board_id).unwrap();
+        let count = repo.get_unread_count(user_id, board_id).await.unwrap();
         assert_eq!(count, 0);
     }
 
-    #[test]
-    fn test_get_all_unread_counts() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_get_all_unread_counts() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
 
         // Create two boards
-        let board_repo = BoardRepository::new(&db);
-        let board1 = board_repo.create(&NewBoard::new("board1")).unwrap();
-        let board2 = board_repo.create(&NewBoard::new("board2")).unwrap();
+        let board1_id = create_test_board_with_name(pool, "board1").await;
+        let board2_id = create_test_board_with_name(pool, "board2").await;
 
         // Create posts in each board
-        create_test_post(&db, board1.id, user_id);
-        create_test_post(&db, board1.id, user_id);
-        create_test_post(&db, board2.id, user_id);
-        create_test_post(&db, board2.id, user_id);
-        create_test_post(&db, board2.id, user_id);
+        create_test_post(pool, board1_id, user_id).await;
+        create_test_post(pool, board1_id, user_id).await;
+        create_test_post(pool, board2_id, user_id).await;
+        create_test_post(pool, board2_id, user_id).await;
+        create_test_post(pool, board2_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
-        let counts = repo.get_all_unread_counts(user_id).unwrap();
+        let repo = UnreadRepository::new(pool);
+        let counts = repo.get_all_unread_counts(user_id).await.unwrap();
 
         assert_eq!(counts.len(), 2);
         // Find the counts for each board
-        let board1_count = counts.iter().find(|(id, _)| *id == board1.id).unwrap().1;
-        let board2_count = counts.iter().find(|(id, _)| *id == board2.id).unwrap().1;
+        let board1_count = counts.iter().find(|(id, _)| *id == board1_id).unwrap().1;
+        let board2_count = counts.iter().find(|(id, _)| *id == board2_id).unwrap().1;
         assert_eq!(board1_count, 2);
         assert_eq!(board2_count, 3);
     }
 
-    #[test]
-    fn test_get_unread_posts_no_position() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
+    #[tokio::test]
+    async fn test_get_unread_posts_no_position() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
 
-        create_test_post(&db, board_id, user_id);
-        create_test_post(&db, board_id, user_id);
-        create_test_post(&db, board_id, user_id);
+        create_test_post(pool, board_id, user_id).await;
+        create_test_post(pool, board_id, user_id).await;
+        create_test_post(pool, board_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
-        let posts = repo.get_unread_posts(user_id, board_id).unwrap();
+        let repo = UnreadRepository::new(pool);
+        let posts = repo.get_unread_posts(user_id, board_id).await.unwrap();
 
         assert_eq!(posts.len(), 3);
     }
 
-    #[test]
-    fn test_get_unread_posts_with_position() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
+    #[tokio::test]
+    async fn test_get_unread_posts_with_position() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
 
-        let post1_id = create_test_post(&db, board_id, user_id);
-        create_test_post(&db, board_id, user_id);
-        create_test_post(&db, board_id, user_id);
+        let post1_id = create_test_post(pool, board_id, user_id).await;
+        create_test_post(pool, board_id, user_id).await;
+        create_test_post(pool, board_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
-        repo.mark_as_read(user_id, board_id, post1_id).unwrap();
+        let repo = UnreadRepository::new(pool);
+        repo.mark_as_read(user_id, board_id, post1_id)
+            .await
+            .unwrap();
 
-        let posts = repo.get_unread_posts(user_id, board_id).unwrap();
+        let posts = repo.get_unread_posts(user_id, board_id).await.unwrap();
         assert_eq!(posts.len(), 2);
         // All returned posts should have ID > post1_id
         for post in &posts {
@@ -623,212 +749,224 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_get_unread_posts_paginated() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
+    #[tokio::test]
+    async fn test_get_unread_posts_paginated() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
 
         for _ in 0..5 {
-            create_test_post(&db, board_id, user_id);
+            create_test_post(pool, board_id, user_id).await;
         }
 
-        let repo = UnreadRepository::new(&db);
+        let repo = UnreadRepository::new(pool);
 
         // Get first page
         let page1 = repo
             .get_unread_posts_paginated(user_id, board_id, 0, 2)
+            .await
             .unwrap();
         assert_eq!(page1.len(), 2);
 
         // Get second page
         let page2 = repo
             .get_unread_posts_paginated(user_id, board_id, 2, 2)
+            .await
             .unwrap();
         assert_eq!(page2.len(), 2);
 
         // Get third page
         let page3 = repo
             .get_unread_posts_paginated(user_id, board_id, 4, 2)
+            .await
             .unwrap();
         assert_eq!(page3.len(), 1);
     }
 
-    #[test]
-    fn test_mark_all_as_read() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
+    #[tokio::test]
+    async fn test_mark_all_as_read() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
 
-        create_test_post(&db, board_id, user_id);
-        create_test_post(&db, board_id, user_id);
-        let post3_id = create_test_post(&db, board_id, user_id);
+        create_test_post(pool, board_id, user_id).await;
+        create_test_post(pool, board_id, user_id).await;
+        let post3_id = create_test_post(pool, board_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
+        let repo = UnreadRepository::new(pool);
 
         // Initially 3 unread
-        assert_eq!(repo.get_unread_count(user_id, board_id).unwrap(), 3);
+        assert_eq!(repo.get_unread_count(user_id, board_id).await.unwrap(), 3);
 
         // Mark all as read
-        let result = repo.mark_all_as_read(user_id, board_id).unwrap();
+        let result = repo.mark_all_as_read(user_id, board_id).await.unwrap();
         assert!(result);
 
         // Now 0 unread
-        assert_eq!(repo.get_unread_count(user_id, board_id).unwrap(), 0);
+        assert_eq!(repo.get_unread_count(user_id, board_id).await.unwrap(), 0);
 
         // Check read position
-        let pos = repo.get_read_position(user_id, board_id).unwrap().unwrap();
+        let pos = repo
+            .get_read_position(user_id, board_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(pos.last_read_post_id, post3_id);
     }
 
-    #[test]
-    fn test_mark_all_as_read_empty_board() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
+    #[tokio::test]
+    async fn test_mark_all_as_read_empty_board() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
 
-        let repo = UnreadRepository::new(&db);
-        let result = repo.mark_all_as_read(user_id, board_id).unwrap();
+        let repo = UnreadRepository::new(pool);
+        let result = repo.mark_all_as_read(user_id, board_id).await.unwrap();
 
         assert!(!result); // No posts to mark
     }
 
-    #[test]
-    fn test_delete_read_position() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
-        let post_id = create_test_post(&db, board_id, user_id);
+    #[tokio::test]
+    async fn test_delete_read_position() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
+        let post_id = create_test_post(pool, board_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
-        repo.mark_as_read(user_id, board_id, post_id).unwrap();
+        let repo = UnreadRepository::new(pool);
+        repo.mark_as_read(user_id, board_id, post_id).await.unwrap();
 
         // Verify position exists
-        assert!(repo.get_read_position(user_id, board_id).unwrap().is_some());
+        assert!(repo
+            .get_read_position(user_id, board_id)
+            .await
+            .unwrap()
+            .is_some());
 
         // Delete position
-        let deleted = repo.delete_read_position(user_id, board_id).unwrap();
+        let deleted = repo.delete_read_position(user_id, board_id).await.unwrap();
         assert!(deleted);
 
         // Verify position is gone
-        assert!(repo.get_read_position(user_id, board_id).unwrap().is_none());
+        assert!(repo
+            .get_read_position(user_id, board_id)
+            .await
+            .unwrap()
+            .is_none());
     }
 
-    #[test]
-    fn test_delete_read_position_not_found() {
-        let db = setup_db();
-        let repo = UnreadRepository::new(&db);
+    #[tokio::test]
+    async fn test_delete_read_position_not_found() {
+        let db = setup_db().await;
+        let repo = UnreadRepository::new(db.pool());
 
-        let deleted = repo.delete_read_position(999, 999).unwrap();
+        let deleted = repo.delete_read_position(999, 999).await.unwrap();
         assert!(!deleted);
     }
 
-    #[test]
-    fn test_delete_all_read_positions() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_delete_all_read_positions() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
 
-        let board_repo = BoardRepository::new(&db);
-        let board1 = board_repo.create(&NewBoard::new("board1")).unwrap();
-        let board2 = board_repo.create(&NewBoard::new("board2")).unwrap();
+        let board1_id = create_test_board_with_name(pool, "board1").await;
+        let board2_id = create_test_board_with_name(pool, "board2").await;
 
-        let post1_id = create_test_post(&db, board1.id, user_id);
-        let post2_id = create_test_post(&db, board2.id, user_id);
+        let post1_id = create_test_post(pool, board1_id, user_id).await;
+        let post2_id = create_test_post(pool, board2_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
-        repo.mark_as_read(user_id, board1.id, post1_id).unwrap();
-        repo.mark_as_read(user_id, board2.id, post2_id).unwrap();
+        let repo = UnreadRepository::new(pool);
+        repo.mark_as_read(user_id, board1_id, post1_id)
+            .await
+            .unwrap();
+        repo.mark_as_read(user_id, board2_id, post2_id)
+            .await
+            .unwrap();
 
         // Delete all positions
-        let deleted = repo.delete_all_read_positions(user_id).unwrap();
+        let deleted = repo.delete_all_read_positions(user_id).await.unwrap();
         assert_eq!(deleted, 2);
 
         // Verify all positions are gone
         assert!(repo
-            .get_read_position(user_id, board1.id)
+            .get_read_position(user_id, board1_id)
+            .await
             .unwrap()
             .is_none());
         assert!(repo
-            .get_read_position(user_id, board2.id)
+            .get_read_position(user_id, board2_id)
+            .await
             .unwrap()
             .is_none());
     }
 
-    #[test]
-    fn test_get_last_read_post_id_no_position() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
+    #[tokio::test]
+    async fn test_get_last_read_post_id_no_position() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
 
-        let repo = UnreadRepository::new(&db);
-        let last_read = repo.get_last_read_post_id(user_id, board_id).unwrap();
+        let repo = UnreadRepository::new(pool);
+        let last_read = repo.get_last_read_post_id(user_id, board_id).await.unwrap();
 
         // Should return 0 when no position exists
         assert_eq!(last_read, 0);
     }
 
-    #[test]
-    fn test_get_last_read_post_id_with_position() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
-        let post_id = create_test_post(&db, board_id, user_id);
+    #[tokio::test]
+    async fn test_get_last_read_post_id_with_position() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
+        let post_id = create_test_post(pool, board_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
-        repo.mark_as_read(user_id, board_id, post_id).unwrap();
+        let repo = UnreadRepository::new(pool);
+        repo.mark_as_read(user_id, board_id, post_id).await.unwrap();
 
-        let last_read = repo.get_last_read_post_id(user_id, board_id).unwrap();
+        let last_read = repo.get_last_read_post_id(user_id, board_id).await.unwrap();
         assert_eq!(last_read, post_id);
     }
 
-    fn create_test_thread(db: &Database, board_id: i64, author_id: i64) -> i64 {
-        let thread_repo = ThreadRepository::new(db);
-        let thread = thread_repo
-            .create(&NewThread::new(board_id, "Test Thread", author_id))
+    #[tokio::test]
+    async fn test_get_unread_thread_ids_empty() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
+
+        let repo = UnreadRepository::new(pool);
+        let unread_ids = repo
+            .get_unread_thread_ids(user_id, board_id, &[])
+            .await
             .unwrap();
-        thread.id
-    }
-
-    fn create_test_thread_post(
-        db: &Database,
-        board_id: i64,
-        thread_id: i64,
-        author_id: i64,
-    ) -> i64 {
-        let post_repo = PostRepository::new(db);
-        let post = post_repo
-            .create_thread_post(&NewThreadPost::new(board_id, thread_id, author_id, "Body"))
-            .unwrap();
-        post.id
-    }
-
-    #[test]
-    fn test_get_unread_thread_ids_empty() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
-
-        let repo = UnreadRepository::new(&db);
-        let unread_ids = repo.get_unread_thread_ids(user_id, board_id, &[]).unwrap();
 
         assert!(unread_ids.is_empty());
     }
 
-    #[test]
-    fn test_get_unread_thread_ids_no_position() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
+    #[tokio::test]
+    async fn test_get_unread_thread_ids_no_position() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
 
         // Create threads with posts
-        let thread1_id = create_test_thread(&db, board_id, user_id);
-        let thread2_id = create_test_thread(&db, board_id, user_id);
-        create_test_thread_post(&db, board_id, thread1_id, user_id);
-        create_test_thread_post(&db, board_id, thread2_id, user_id);
+        let thread1_id = create_test_thread(pool, board_id, user_id).await;
+        let thread2_id = create_test_thread(pool, board_id, user_id).await;
+        create_test_thread_post(pool, board_id, thread1_id, user_id).await;
+        create_test_thread_post(pool, board_id, thread2_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
+        let repo = UnreadRepository::new(pool);
         let unread_ids = repo
             .get_unread_thread_ids(user_id, board_id, &[thread1_id, thread2_id])
+            .await
             .unwrap();
 
         // All threads should have unread posts (no read position)
@@ -837,24 +975,28 @@ mod tests {
         assert!(unread_ids.contains(&thread2_id));
     }
 
-    #[test]
-    fn test_get_unread_thread_ids_with_position() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
+    #[tokio::test]
+    async fn test_get_unread_thread_ids_with_position() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
 
         // Create threads with posts
-        let thread1_id = create_test_thread(&db, board_id, user_id);
-        let thread2_id = create_test_thread(&db, board_id, user_id);
-        let post1_id = create_test_thread_post(&db, board_id, thread1_id, user_id);
-        let _post2_id = create_test_thread_post(&db, board_id, thread2_id, user_id);
+        let thread1_id = create_test_thread(pool, board_id, user_id).await;
+        let thread2_id = create_test_thread(pool, board_id, user_id).await;
+        let post1_id = create_test_thread_post(pool, board_id, thread1_id, user_id).await;
+        let _post2_id = create_test_thread_post(pool, board_id, thread2_id, user_id).await;
 
         // Mark post1 as read (should mark thread1 as read)
-        let repo = UnreadRepository::new(&db);
-        repo.mark_as_read(user_id, board_id, post1_id).unwrap();
+        let repo = UnreadRepository::new(pool);
+        repo.mark_as_read(user_id, board_id, post1_id)
+            .await
+            .unwrap();
 
         let unread_ids = repo
             .get_unread_thread_ids(user_id, board_id, &[thread1_id, thread2_id])
+            .await
             .unwrap();
 
         // Only thread2 should have unread posts (post2 > post1)
@@ -863,49 +1005,57 @@ mod tests {
         assert!(!unread_ids.contains(&thread1_id));
     }
 
-    #[test]
-    fn test_get_unread_thread_ids_all_read() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
+    #[tokio::test]
+    async fn test_get_unread_thread_ids_all_read() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
 
         // Create threads with posts
-        let thread1_id = create_test_thread(&db, board_id, user_id);
-        let thread2_id = create_test_thread(&db, board_id, user_id);
-        create_test_thread_post(&db, board_id, thread1_id, user_id);
-        let post2_id = create_test_thread_post(&db, board_id, thread2_id, user_id);
+        let thread1_id = create_test_thread(pool, board_id, user_id).await;
+        let thread2_id = create_test_thread(pool, board_id, user_id).await;
+        create_test_thread_post(pool, board_id, thread1_id, user_id).await;
+        let post2_id = create_test_thread_post(pool, board_id, thread2_id, user_id).await;
 
         // Mark last post as read (should mark all as read)
-        let repo = UnreadRepository::new(&db);
-        repo.mark_as_read(user_id, board_id, post2_id).unwrap();
+        let repo = UnreadRepository::new(pool);
+        repo.mark_as_read(user_id, board_id, post2_id)
+            .await
+            .unwrap();
 
         let unread_ids = repo
             .get_unread_thread_ids(user_id, board_id, &[thread1_id, thread2_id])
+            .await
             .unwrap();
 
         // No threads should have unread posts
         assert!(unread_ids.is_empty());
     }
 
-    #[test]
-    fn test_get_unread_thread_ids_new_post_in_read_thread() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
-        let board_id = create_test_board(&db);
+    #[tokio::test]
+    async fn test_get_unread_thread_ids_new_post_in_read_thread() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
+        let board_id = create_test_board(pool).await;
 
         // Create thread with post
-        let thread_id = create_test_thread(&db, board_id, user_id);
-        let post1_id = create_test_thread_post(&db, board_id, thread_id, user_id);
+        let thread_id = create_test_thread(pool, board_id, user_id).await;
+        let post1_id = create_test_thread_post(pool, board_id, thread_id, user_id).await;
 
         // Mark as read
-        let repo = UnreadRepository::new(&db);
-        repo.mark_as_read(user_id, board_id, post1_id).unwrap();
+        let repo = UnreadRepository::new(pool);
+        repo.mark_as_read(user_id, board_id, post1_id)
+            .await
+            .unwrap();
 
         // Add new post to thread
-        create_test_thread_post(&db, board_id, thread_id, user_id);
+        create_test_thread_post(pool, board_id, thread_id, user_id).await;
 
         let unread_ids = repo
             .get_unread_thread_ids(user_id, board_id, &[thread_id])
+            .await
             .unwrap();
 
         // Thread should now have unread posts
@@ -913,127 +1063,154 @@ mod tests {
         assert!(unread_ids.contains(&thread_id));
     }
 
-    #[test]
-    fn test_get_all_unread_posts_empty() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_get_all_unread_posts_empty() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
 
-        let repo = UnreadRepository::new(&db);
-        let unread_posts = repo.get_all_unread_posts(user_id, Role::Member).unwrap();
+        let repo = UnreadRepository::new(pool);
+        let unread_posts = repo
+            .get_all_unread_posts(user_id, Role::Member)
+            .await
+            .unwrap();
 
         assert!(unread_posts.is_empty());
     }
 
-    #[test]
-    fn test_get_all_unread_posts_no_position() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_get_all_unread_posts_no_position() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
 
         // Create two boards with posts
-        let board_repo = BoardRepository::new(&db);
-        let board1 = board_repo.create(&NewBoard::new("board1")).unwrap();
-        let board2 = board_repo.create(&NewBoard::new("board2")).unwrap();
+        let board1_id = create_test_board_with_name(pool, "board1").await;
+        let board2_id = create_test_board_with_name(pool, "board2").await;
 
-        create_test_post(&db, board1.id, user_id);
-        create_test_post(&db, board1.id, user_id);
-        create_test_post(&db, board2.id, user_id);
+        create_test_post(pool, board1_id, user_id).await;
+        create_test_post(pool, board1_id, user_id).await;
+        create_test_post(pool, board2_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
-        let unread_posts = repo.get_all_unread_posts(user_id, Role::Member).unwrap();
+        let repo = UnreadRepository::new(pool);
+        let unread_posts = repo
+            .get_all_unread_posts(user_id, Role::Member)
+            .await
+            .unwrap();
 
         // All posts should be unread
         assert_eq!(unread_posts.len(), 3);
     }
 
-    #[test]
-    fn test_get_all_unread_posts_with_position() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_get_all_unread_posts_with_position() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
 
         // Create boards with posts
-        let board_repo = BoardRepository::new(&db);
-        let board1 = board_repo.create(&NewBoard::new("board1")).unwrap();
-        let board2 = board_repo.create(&NewBoard::new("board2")).unwrap();
+        let board1_id = create_test_board_with_name(pool, "board1").await;
+        let board2_id = create_test_board_with_name(pool, "board2").await;
 
-        let post1_id = create_test_post(&db, board1.id, user_id);
-        create_test_post(&db, board1.id, user_id); // post 2
-        create_test_post(&db, board2.id, user_id); // post 3
+        let post1_id = create_test_post(pool, board1_id, user_id).await;
+        create_test_post(pool, board1_id, user_id).await; // post 2
+        create_test_post(pool, board2_id, user_id).await; // post 3
 
-        let repo = UnreadRepository::new(&db);
+        let repo = UnreadRepository::new(pool);
         // Mark post1 as read in board1
-        repo.mark_as_read(user_id, board1.id, post1_id).unwrap();
+        repo.mark_as_read(user_id, board1_id, post1_id)
+            .await
+            .unwrap();
 
-        let unread_posts = repo.get_all_unread_posts(user_id, Role::Member).unwrap();
+        let unread_posts = repo
+            .get_all_unread_posts(user_id, Role::Member)
+            .await
+            .unwrap();
 
         // Should have 2 unread posts (post2 from board1, post3 from board2)
         assert_eq!(unread_posts.len(), 2);
     }
 
-    #[test]
-    fn test_get_all_unread_posts_includes_board_name() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_get_all_unread_posts_includes_board_name() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
 
-        let board_repo = BoardRepository::new(&db);
-        let board = board_repo.create(&NewBoard::new("TestBoard")).unwrap();
-        create_test_post(&db, board.id, user_id);
+        let board_id = create_test_board_with_name(pool, "TestBoard").await;
+        create_test_post(pool, board_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
-        let unread_posts = repo.get_all_unread_posts(user_id, Role::Member).unwrap();
+        let repo = UnreadRepository::new(pool);
+        let unread_posts = repo
+            .get_all_unread_posts(user_id, Role::Member)
+            .await
+            .unwrap();
 
         assert_eq!(unread_posts.len(), 1);
         assert_eq!(unread_posts[0].board_name, "TestBoard");
     }
 
-    #[test]
-    fn test_get_total_unread_count_empty() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_get_total_unread_count_empty() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
 
-        let repo = UnreadRepository::new(&db);
-        let count = repo.get_total_unread_count(user_id, Role::Member).unwrap();
+        let repo = UnreadRepository::new(pool);
+        let count = repo
+            .get_total_unread_count(user_id, Role::Member)
+            .await
+            .unwrap();
 
         assert_eq!(count, 0);
     }
 
-    #[test]
-    fn test_get_total_unread_count_multiple_boards() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_get_total_unread_count_multiple_boards() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
 
-        let board_repo = BoardRepository::new(&db);
-        let board1 = board_repo.create(&NewBoard::new("board1")).unwrap();
-        let board2 = board_repo.create(&NewBoard::new("board2")).unwrap();
+        let board1_id = create_test_board_with_name(pool, "board1").await;
+        let board2_id = create_test_board_with_name(pool, "board2").await;
 
-        create_test_post(&db, board1.id, user_id);
-        create_test_post(&db, board1.id, user_id);
-        create_test_post(&db, board2.id, user_id);
-        create_test_post(&db, board2.id, user_id);
-        create_test_post(&db, board2.id, user_id);
+        create_test_post(pool, board1_id, user_id).await;
+        create_test_post(pool, board1_id, user_id).await;
+        create_test_post(pool, board2_id, user_id).await;
+        create_test_post(pool, board2_id, user_id).await;
+        create_test_post(pool, board2_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
-        let count = repo.get_total_unread_count(user_id, Role::Member).unwrap();
+        let repo = UnreadRepository::new(pool);
+        let count = repo
+            .get_total_unread_count(user_id, Role::Member)
+            .await
+            .unwrap();
 
         assert_eq!(count, 5);
     }
 
-    #[test]
-    fn test_get_total_unread_count_with_position() {
-        let db = setup_db();
-        let user_id = create_test_user(&db);
+    #[tokio::test]
+    async fn test_get_total_unread_count_with_position() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let user_id = create_test_user(pool).await;
 
-        let board_repo = BoardRepository::new(&db);
-        let board1 = board_repo.create(&NewBoard::new("board1")).unwrap();
-        let board2 = board_repo.create(&NewBoard::new("board2")).unwrap();
+        let board1_id = create_test_board_with_name(pool, "board1").await;
+        let board2_id = create_test_board_with_name(pool, "board2").await;
 
-        let post1_id = create_test_post(&db, board1.id, user_id);
-        create_test_post(&db, board1.id, user_id);
-        create_test_post(&db, board2.id, user_id);
+        let post1_id = create_test_post(pool, board1_id, user_id).await;
+        create_test_post(pool, board1_id, user_id).await;
+        create_test_post(pool, board2_id, user_id).await;
 
-        let repo = UnreadRepository::new(&db);
-        repo.mark_as_read(user_id, board1.id, post1_id).unwrap();
+        let repo = UnreadRepository::new(pool);
+        repo.mark_as_read(user_id, board1_id, post1_id)
+            .await
+            .unwrap();
 
-        let count = repo.get_total_unread_count(user_id, Role::Member).unwrap();
+        let count = repo
+            .get_total_unread_count(user_id, Role::Member)
+            .await
+            .unwrap();
 
         // 1 unread in board1 (post2) + 1 unread in board2 (post3)
         assert_eq!(count, 2);

@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use mlua::Table;
+use sqlx::SqlitePool;
 
 use super::api::BbsApi;
 use super::data_repository::ScriptDataRepository;
@@ -31,14 +32,16 @@ pub struct ExecutionResult {
 
 /// Service for managing and executing scripts.
 pub struct ScriptService<'a> {
+    pool: &'a SqlitePool,
     db: &'a Database,
     scripts_dir: Option<std::path::PathBuf>,
 }
 
 impl<'a> ScriptService<'a> {
     /// Create a new ScriptService.
-    pub fn new(db: &'a Database) -> Self {
+    pub fn new(pool: &'a SqlitePool, db: &'a Database) -> Self {
         Self {
+            pool,
             db,
             scripts_dir: None,
         }
@@ -51,27 +54,27 @@ impl<'a> ScriptService<'a> {
     }
 
     /// List all scripts that a user with the given role can execute.
-    pub fn list_scripts(&self, user_role: i32) -> Result<Vec<Script>> {
-        let repo = ScriptRepository::new(self.db);
-        repo.list(user_role)
+    pub async fn list_scripts(&self, user_role: i32) -> Result<Vec<Script>> {
+        let repo = ScriptRepository::new(self.pool);
+        repo.list(user_role).await
     }
 
     /// List all scripts (including disabled) for admin.
-    pub fn list_all_scripts(&self) -> Result<Vec<Script>> {
-        let repo = ScriptRepository::new(self.db);
-        repo.list_all()
+    pub async fn list_all_scripts(&self) -> Result<Vec<Script>> {
+        let repo = ScriptRepository::new(self.pool);
+        repo.list_all().await
     }
 
     /// Get a script by its slug.
-    pub fn get_script(&self, slug: &str) -> Result<Option<Script>> {
-        let repo = ScriptRepository::new(self.db);
-        repo.get_by_slug(slug)
+    pub async fn get_script(&self, slug: &str) -> Result<Option<Script>> {
+        let repo = ScriptRepository::new(self.pool);
+        repo.get_by_slug(slug).await
     }
 
     /// Get a script by its ID.
-    pub fn get_script_by_id(&self, id: i64) -> Result<Option<Script>> {
-        let repo = ScriptRepository::new(self.db);
-        repo.get_by_id(id)
+    pub async fn get_script_by_id(&self, id: i64) -> Result<Option<Script>> {
+        let repo = ScriptRepository::new(self.pool);
+        repo.get_by_id(id).await
     }
 
     /// Check if a user can execute a specific script.
@@ -134,13 +137,19 @@ impl<'a> ScriptService<'a> {
         let engine = ScriptEngine::with_limits(limits)?;
 
         // Load existing data from database
-        let data_repo = ScriptDataRepository::new(self.db);
-        let global_data = Arc::new(Mutex::new(self.load_global_data(&data_repo, script.id)?));
-        let user_data = Arc::new(Mutex::new(self.load_user_data(
-            &data_repo,
-            script.id,
-            context.user_id,
-        )?));
+        // Note: We use block_in_place + block_on to safely call async functions
+        // from a synchronous context that may already be in a tokio runtime.
+        let data_repo = ScriptDataRepository::new(self.pool);
+        let rt = tokio::runtime::Handle::try_current()
+            .expect("Must be called from within a tokio runtime");
+        let global_data_loaded = tokio::task::block_in_place(|| {
+            rt.block_on(self.load_global_data(&data_repo, script.id))
+        })?;
+        let user_data_loaded = tokio::task::block_in_place(|| {
+            rt.block_on(self.load_user_data(&data_repo, script.id, context.user_id))
+        })?;
+        let global_data = Arc::new(Mutex::new(global_data_loaded));
+        let user_data = Arc::new(Mutex::new(user_data_loaded));
 
         // Register BBS API with optional script handle
         let mut api = BbsApi::new(context.clone());
@@ -171,9 +180,22 @@ impl<'a> ScriptService<'a> {
         let execution_ms = start_time.elapsed().as_millis() as i64;
 
         // Save data changes back to database
-        self.save_global_data(&data_repo, script.id, &global_data.lock().unwrap())?;
+        tokio::task::block_in_place(|| {
+            rt.block_on(self.save_global_data(
+                &data_repo,
+                script.id,
+                &global_data.lock().unwrap(),
+            ))
+        })?;
         if let Some(user_id) = context.user_id {
-            self.save_user_data(&data_repo, script.id, user_id, &user_data.lock().unwrap())?;
+            tokio::task::block_in_place(|| {
+                rt.block_on(self.save_user_data(
+                    &data_repo,
+                    script.id,
+                    user_id,
+                    &user_data.lock().unwrap(),
+                ))
+            })?;
         }
 
         // Get output regardless of success/failure
@@ -196,28 +218,30 @@ impl<'a> ScriptService<'a> {
         };
 
         // Log the execution
-        let log_repo = ScriptLogRepository::new(self.db);
-        let _ = log_repo.log_execution(
-            script.id,
-            context.user_id,
-            execution_ms,
-            exec_result.success,
-            exec_result.error.as_deref(),
-        );
+        let log_repo = ScriptLogRepository::new(self.pool);
+        let _ = tokio::task::block_in_place(|| {
+            rt.block_on(log_repo.log_execution(
+                script.id,
+                context.user_id,
+                execution_ms,
+                exec_result.success,
+                exec_result.error.as_deref(),
+            ))
+        });
 
         Ok(exec_result)
     }
 
     /// Load global data for a script.
-    fn load_global_data(
+    async fn load_global_data(
         &self,
-        repo: &ScriptDataRepository,
+        repo: &ScriptDataRepository<'_>,
         script_id: i64,
     ) -> Result<HashMap<String, String>> {
-        let keys = repo.list_global_keys(script_id)?;
+        let keys = repo.list_global_keys(script_id).await?;
         let mut data = HashMap::new();
         for key in keys {
-            if let Some(value) = repo.get_global(script_id, &key)? {
+            if let Some(value) = repo.get_global(script_id, &key).await? {
                 data.insert(key, value);
             }
         }
@@ -225,19 +249,19 @@ impl<'a> ScriptService<'a> {
     }
 
     /// Load user-specific data for a script.
-    fn load_user_data(
+    async fn load_user_data(
         &self,
-        repo: &ScriptDataRepository,
+        repo: &ScriptDataRepository<'_>,
         script_id: i64,
         user_id: Option<i64>,
     ) -> Result<HashMap<String, String>> {
         let Some(user_id) = user_id else {
             return Ok(HashMap::new());
         };
-        let keys = repo.list_user_keys(script_id, user_id)?;
+        let keys = repo.list_user_keys(script_id, user_id).await?;
         let mut data = HashMap::new();
         for key in keys {
-            if let Some(value) = repo.get_user(script_id, user_id, &key)? {
+            if let Some(value) = repo.get_user(script_id, user_id, &key).await? {
                 data.insert(key, value);
             }
         }
@@ -245,28 +269,28 @@ impl<'a> ScriptService<'a> {
     }
 
     /// Save global data for a script.
-    fn save_global_data(
+    async fn save_global_data(
         &self,
-        repo: &ScriptDataRepository,
+        repo: &ScriptDataRepository<'_>,
         script_id: i64,
         data: &HashMap<String, String>,
     ) -> Result<()> {
         for (key, value) in data {
-            repo.set_global(script_id, key, value)?;
+            repo.set_global(script_id, key, value).await?;
         }
         Ok(())
     }
 
     /// Save user-specific data for a script.
-    fn save_user_data(
+    async fn save_user_data(
         &self,
-        repo: &ScriptDataRepository,
+        repo: &ScriptDataRepository<'_>,
         script_id: i64,
         user_id: i64,
         data: &HashMap<String, String>,
     ) -> Result<()> {
         for (key, value) in data {
-            repo.set_user(script_id, user_id, key, value)?;
+            repo.set_user(script_id, user_id, key, value).await?;
         }
         Ok(())
     }
@@ -275,7 +299,7 @@ impl<'a> ScriptService<'a> {
     fn register_data_api(
         &self,
         lua: &mlua::Lua,
-        script_id: i64,
+        _script_id: i64,
         user_id: Option<i64>,
         global_data: &Arc<Mutex<HashMap<String, String>>>,
         user_data: &Arc<Mutex<HashMap<String, String>>>,
@@ -394,28 +418,28 @@ impl<'a> ScriptService<'a> {
     }
 
     /// Sync scripts from the file system to the database.
-    pub fn sync_scripts(&self) -> Result<super::types::SyncResult> {
+    pub async fn sync_scripts(&self) -> Result<super::types::SyncResult> {
         let scripts_dir = self
             .scripts_dir
             .as_ref()
             .ok_or_else(|| HobbsError::Script("Scripts directory not configured".to_string()))?;
 
         let loader = ScriptLoader::new(scripts_dir);
-        loader.sync(self.db)
+        loader.sync(self.pool).await
     }
 
     /// Enable or disable a script.
-    pub fn set_enabled(&self, script_id: i64, enabled: bool) -> Result<()> {
-        let repo = ScriptRepository::new(self.db);
-        repo.update_enabled(script_id, enabled)
+    pub async fn set_enabled(&self, script_id: i64, enabled: bool) -> Result<()> {
+        let repo = ScriptRepository::new(self.pool);
+        repo.update_enabled(script_id, enabled).await
     }
 
     /// Delete a script from the database.
     ///
     /// Note: This only removes from DB cache, not from file system.
-    pub fn delete_script(&self, script_id: i64) -> Result<()> {
-        let repo = ScriptRepository::new(self.db);
-        repo.delete(script_id)
+    pub async fn delete_script(&self, script_id: i64) -> Result<()> {
+        let repo = ScriptRepository::new(self.pool);
+        repo.delete(script_id).await
     }
 }
 
@@ -425,13 +449,11 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
-    fn create_test_db() -> Database {
-        let dir = tempdir().unwrap();
-        let db_path = dir.path().join("test.db");
-        Database::open(db_path).unwrap()
+    async fn setup_db() -> Database {
+        Database::open_in_memory().await.unwrap()
     }
 
-    fn create_test_script(db: &Database, scripts_dir: &std::path::Path) -> Script {
+    async fn create_test_script(db: &Database, scripts_dir: &std::path::Path) -> Script {
         // Create script file
         let script_content = r#"-- @name Test Game
 -- @description A test game script
@@ -447,16 +469,16 @@ bbs.println("Random: " .. bbs.random(1, 100))
 
         // Sync to database
         let loader = ScriptLoader::new(scripts_dir);
-        loader.sync(db).unwrap();
+        loader.sync(db.pool()).await.unwrap();
 
         // Get the script
-        let repo = ScriptRepository::new(db);
-        repo.get_by_slug("test").unwrap().unwrap()
+        let repo = ScriptRepository::new(db.pool());
+        repo.get_by_slug("test").await.unwrap().unwrap()
     }
 
-    #[test]
-    fn test_list_scripts() {
-        let db = create_test_db();
+    #[tokio::test]
+    async fn test_list_scripts() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
 
         // Create two scripts with different min_role
@@ -473,43 +495,43 @@ bbs.println("member only")
 
         // Sync
         let loader = ScriptLoader::new(dir.path());
-        loader.sync(&db).unwrap();
+        loader.sync(db.pool()).await.unwrap();
 
-        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
+        let service = ScriptService::new(db.pool(), &db).with_scripts_dir(dir.path());
 
         // Guest (role 0) should see only public script
-        let scripts = service.list_scripts(0).unwrap();
+        let scripts = service.list_scripts(0).await.unwrap();
         assert_eq!(scripts.len(), 1);
         assert_eq!(scripts[0].name, "Public Game");
 
         // Member (role 1) should see both
-        let scripts = service.list_scripts(1).unwrap();
+        let scripts = service.list_scripts(1).await.unwrap();
         assert_eq!(scripts.len(), 2);
     }
 
-    #[test]
-    fn test_get_script() {
-        let db = create_test_db();
+    #[tokio::test]
+    async fn test_get_script() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
-        let _script = create_test_script(&db, dir.path());
+        let _script = create_test_script(&db, dir.path()).await;
 
-        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
+        let service = ScriptService::new(db.pool(), &db).with_scripts_dir(dir.path());
 
-        let found = service.get_script("test").unwrap();
+        let found = service.get_script("test").await.unwrap();
         assert!(found.is_some());
         assert_eq!(found.unwrap().name, "Test Game");
 
-        let not_found = service.get_script("nonexistent").unwrap();
+        let not_found = service.get_script("nonexistent").await.unwrap();
         assert!(not_found.is_none());
     }
 
-    #[test]
-    fn test_execute_script() {
-        let db = create_test_db();
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_execute_script() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
-        let script = create_test_script(&db, dir.path());
+        let script = create_test_script(&db, dir.path()).await;
 
-        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
+        let service = ScriptService::new(db.pool(), &db).with_scripts_dir(dir.path());
 
         let context = ScriptContext {
             script_id: None, // Set by execute()
@@ -529,18 +551,18 @@ bbs.println("member only")
         // Note: output verification might not work due to the Rc/RefCell issue
     }
 
-    #[test]
-    fn test_execute_disabled_script() {
-        let db = create_test_db();
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_execute_disabled_script() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
-        let mut script = create_test_script(&db, dir.path());
+        let mut script = create_test_script(&db, dir.path()).await;
 
         // Disable the script
-        let repo = ScriptRepository::new(&db);
-        repo.update_enabled(script.id, false).unwrap();
+        let repo = ScriptRepository::new(db.pool());
+        repo.update_enabled(script.id, false).await.unwrap();
         script.enabled = false;
 
-        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
+        let service = ScriptService::new(db.pool(), &db).with_scripts_dir(dir.path());
 
         let context = ScriptContext::default();
         let result = service.execute(&script, context);
@@ -549,9 +571,9 @@ bbs.println("member only")
         assert!(result.unwrap_err().to_string().contains("disabled"));
     }
 
-    #[test]
-    fn test_execute_permission_denied() {
-        let db = create_test_db();
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_execute_permission_denied() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
 
         // Create a SubOp-only script
@@ -562,12 +584,12 @@ bbs.println("admin only")
         fs::write(dir.path().join("admin.lua"), script_content).unwrap();
 
         let loader = ScriptLoader::new(dir.path());
-        loader.sync(&db).unwrap();
+        loader.sync(db.pool()).await.unwrap();
 
-        let repo = ScriptRepository::new(&db);
-        let script = repo.get_by_slug("admin").unwrap().unwrap();
+        let repo = ScriptRepository::new(db.pool());
+        let script = repo.get_by_slug("admin").await.unwrap().unwrap();
 
-        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
+        let service = ScriptService::new(db.pool(), &db).with_scripts_dir(dir.path());
 
         // Guest (role 0) should not be able to execute
         let context = ScriptContext {
@@ -583,42 +605,42 @@ bbs.println("admin only")
             .contains("Insufficient role"));
     }
 
-    #[test]
-    fn test_sync_scripts() {
-        let db = create_test_db();
+    #[tokio::test]
+    async fn test_sync_scripts() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
 
         fs::write(dir.path().join("game.lua"), "bbs.println('hello')").unwrap();
 
-        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
-        let result = service.sync_scripts().unwrap();
+        let service = ScriptService::new(db.pool(), &db).with_scripts_dir(dir.path());
+        let result = service.sync_scripts().await.unwrap();
 
         assert_eq!(result.added, 1);
         assert!(result.has_changes());
     }
 
-    #[test]
-    fn test_set_enabled() {
-        let db = create_test_db();
+    #[tokio::test]
+    async fn test_set_enabled() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
-        let script = create_test_script(&db, dir.path());
+        let script = create_test_script(&db, dir.path()).await;
 
-        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
+        let service = ScriptService::new(db.pool(), &db).with_scripts_dir(dir.path());
 
         // Disable
-        service.set_enabled(script.id, false).unwrap();
-        let updated = service.get_script_by_id(script.id).unwrap().unwrap();
+        service.set_enabled(script.id, false).await.unwrap();
+        let updated = service.get_script_by_id(script.id).await.unwrap().unwrap();
         assert!(!updated.enabled);
 
         // Enable
-        service.set_enabled(script.id, true).unwrap();
-        let updated = service.get_script_by_id(script.id).unwrap().unwrap();
+        service.set_enabled(script.id, true).await.unwrap();
+        let updated = service.get_script_by_id(script.id).await.unwrap().unwrap();
         assert!(updated.enabled);
     }
 
-    #[test]
-    fn test_list_all_scripts_includes_disabled() {
-        let db = create_test_db();
+    #[tokio::test]
+    async fn test_list_all_scripts_includes_disabled() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
 
         // Create two scripts
@@ -636,17 +658,17 @@ bbs.println("disabled")
 
         // Sync
         let loader = ScriptLoader::new(dir.path());
-        loader.sync(&db).unwrap();
+        loader.sync(db.pool()).await.unwrap();
 
-        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
+        let service = ScriptService::new(db.pool(), &db).with_scripts_dir(dir.path());
 
         // list_scripts should only show enabled scripts
-        let enabled_scripts = service.list_scripts(3).unwrap();
+        let enabled_scripts = service.list_scripts(3).await.unwrap();
         assert_eq!(enabled_scripts.len(), 1);
         assert_eq!(enabled_scripts[0].name, "Enabled Script");
 
         // list_all_scripts should show all scripts including disabled
-        let all_scripts = service.list_all_scripts().unwrap();
+        let all_scripts = service.list_all_scripts().await.unwrap();
         assert_eq!(all_scripts.len(), 2);
 
         // Verify one is enabled and one is disabled
@@ -656,9 +678,9 @@ bbs.println("disabled")
         assert_eq!(disabled_count, 1);
     }
 
-    #[test]
-    fn test_execute_script_with_error() {
-        let db = create_test_db();
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_execute_script_with_error() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
 
         // Create a script that will error
@@ -669,12 +691,12 @@ error("Intentional error")
         fs::write(dir.path().join("broken.lua"), script_content).unwrap();
 
         let loader = ScriptLoader::new(dir.path());
-        loader.sync(&db).unwrap();
+        loader.sync(db.pool()).await.unwrap();
 
-        let repo = ScriptRepository::new(&db);
-        let script = repo.get_by_slug("broken").unwrap().unwrap();
+        let repo = ScriptRepository::new(db.pool());
+        let script = repo.get_by_slug("broken").await.unwrap().unwrap();
 
-        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
+        let service = ScriptService::new(db.pool(), &db).with_scripts_dir(dir.path());
 
         let context = ScriptContext::default();
         let result = service.execute(&script, context).unwrap();
@@ -684,9 +706,9 @@ error("Intentional error")
         assert!(result.error.unwrap().contains("Intentional error"));
     }
 
-    #[test]
-    fn test_execute_script_with_global_data() {
-        let db = create_test_db();
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_execute_script_with_global_data() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
 
         // Create a script that uses global data
@@ -702,12 +724,12 @@ bbs.println("Counter: " .. count)
         fs::write(dir.path().join("data_test.lua"), script_content).unwrap();
 
         let loader = ScriptLoader::new(dir.path());
-        loader.sync(&db).unwrap();
+        loader.sync(db.pool()).await.unwrap();
 
-        let repo = ScriptRepository::new(&db);
-        let script = repo.get_by_slug("data_test").unwrap().unwrap();
+        let repo = ScriptRepository::new(db.pool());
+        let script = repo.get_by_slug("data_test").await.unwrap().unwrap();
 
-        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
+        let service = ScriptService::new(db.pool(), &db).with_scripts_dir(dir.path());
         let context = ScriptContext::default();
 
         // First execution - counter should be 1
@@ -719,24 +741,28 @@ bbs.println("Counter: " .. count)
         assert!(result.success);
 
         // Verify data was persisted
-        let data_repo = ScriptDataRepository::new(&db);
-        let counter = data_repo.get_global(script.id, "counter").unwrap();
+        let data_repo = ScriptDataRepository::new(db.pool());
+        let counter = data_repo.get_global(script.id, "counter").await.unwrap();
         assert_eq!(counter, Some("2".to_string()));
     }
 
-    #[test]
-    fn test_execute_script_with_user_data() {
-        let db = create_test_db();
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_execute_script_with_user_data() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
 
         // Create a user
-        db.conn()
-            .execute(
-                "INSERT INTO users (username, password, nickname, role) VALUES ('testuser', 'hash', 'Test', 'member')",
-                [],
-            )
+        sqlx::query(
+            "INSERT INTO users (username, password, nickname, role) VALUES ('testuser', 'hash', 'Test', 'member')",
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let user_id: i64 = sqlx::query_scalar("SELECT last_insert_rowid()")
+            .fetch_one(db.pool())
+            .await
             .unwrap();
-        let user_id = db.conn().last_insert_rowid();
 
         // Create a script that uses user data
         let script_content = r#"-- @name User Data Test
@@ -752,12 +778,12 @@ end
         fs::write(dir.path().join("user_data_test.lua"), script_content).unwrap();
 
         let loader = ScriptLoader::new(dir.path());
-        loader.sync(&db).unwrap();
+        loader.sync(db.pool()).await.unwrap();
 
-        let repo = ScriptRepository::new(&db);
-        let script = repo.get_by_slug("user_data_test").unwrap().unwrap();
+        let repo = ScriptRepository::new(db.pool());
+        let script = repo.get_by_slug("user_data_test").await.unwrap().unwrap();
 
-        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
+        let service = ScriptService::new(db.pool(), &db).with_scripts_dir(dir.path());
 
         // Execute as logged-in user
         let context = ScriptContext {
@@ -778,14 +804,14 @@ end
         assert!(result.success);
 
         // Verify user data was persisted
-        let data_repo = ScriptDataRepository::new(&db);
-        let wins = data_repo.get_user(script.id, user_id, "wins").unwrap();
+        let data_repo = ScriptDataRepository::new(db.pool());
+        let wins = data_repo.get_user(script.id, user_id, "wins").await.unwrap();
         assert_eq!(wins, Some("2".to_string()));
     }
 
-    #[test]
-    fn test_execute_script_guest_user_data() {
-        let db = create_test_db();
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_execute_script_guest_user_data() {
+        let db = setup_db().await;
         let dir = tempdir().unwrap();
 
         // Create a script that tries to use user data as guest
@@ -803,12 +829,12 @@ end
         fs::write(dir.path().join("guest_data_test.lua"), script_content).unwrap();
 
         let loader = ScriptLoader::new(dir.path());
-        loader.sync(&db).unwrap();
+        loader.sync(db.pool()).await.unwrap();
 
-        let repo = ScriptRepository::new(&db);
-        let script = repo.get_by_slug("guest_data_test").unwrap().unwrap();
+        let repo = ScriptRepository::new(db.pool());
+        let script = repo.get_by_slug("guest_data_test").await.unwrap().unwrap();
 
-        let service = ScriptService::new(&db).with_scripts_dir(dir.path());
+        let service = ScriptService::new(db.pool(), &db).with_scripts_dir(dir.path());
 
         // Execute as guest
         let context = ScriptContext::default();
