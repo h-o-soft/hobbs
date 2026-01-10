@@ -295,6 +295,8 @@ profile_dos = "DOS/IBM PC (80x25, CP437)"
 profile_c64 = "C64 Plain (40x25, no escape)"
 profile_c64_petscii = "C64 PETSCII (40x25, PETSCII ctrl)"
 profile_c64_ansi = "C64 ANSI (40x25)"
+profile_40col_sjis = "40-column (ShiftJIS)"
+profile_40col_utf8 = "40-column (UTF-8)"
 profile_changed = "Terminal profile changed to {{profile}}"
 current_profile = "Current: {{profile}}"
 
