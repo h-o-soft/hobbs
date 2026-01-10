@@ -12,6 +12,12 @@ use super::thread_repository::ThreadRepository;
 use super::types::{Board, BoardType};
 use super::{Post, Thread};
 
+// SQL datetime function for current timestamp
+#[cfg(feature = "sqlite")]
+const SQL_NOW: &str = "datetime('now')";
+#[cfg(feature = "postgres")]
+const SQL_NOW: &str = "NOW()";
+
 /// Maximum length for post/thread titles (in characters).
 pub const MAX_TITLE_LENGTH: usize = 50;
 
@@ -356,6 +362,8 @@ impl<'a> BoardService<'a> {
     /// Create a new post in a thread.
     ///
     /// This automatically updates the thread's `updated_at` and `post_count`.
+    /// The post creation and thread update are performed atomically within a transaction.
+    #[cfg(feature = "sqlite")]
     pub async fn create_thread_post(
         &self,
         thread_id: i64,
@@ -379,16 +387,106 @@ impl<'a> BoardService<'a> {
             ));
         }
 
-        // Create the post
+        // Start transaction
+        let mut tx = self.db.begin().await?;
+
+        // Create the post within transaction
+        let post_id: i64 = sqlx::query_scalar(
+            "INSERT INTO posts (board_id, thread_id, author_id, body) VALUES (?, ?, ?, ?) RETURNING id",
+        )
+        .bind(thread.board_id)
+        .bind(thread_id)
+        .bind(author_id)
+        .bind(&body)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        // Update thread's updated_at and post_count within transaction
+        let update_sql = format!(
+            "UPDATE threads SET post_count = post_count + 1, updated_at = {} WHERE id = ?",
+            SQL_NOW
+        );
+        sqlx::query(&update_sql)
+            .bind(thread_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        // Commit transaction
+        tx.commit().await.map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        // Fetch the created post
         let post_repo = PostRepository::new(self.db.pool());
-        let new_post = super::NewThreadPost::new(thread.board_id, thread_id, author_id, body);
-        let post = post_repo.create_thread_post(&new_post).await?;
+        post_repo
+            .get_by_id(post_id)
+            .await?
+            .ok_or_else(|| HobbsError::NotFound("post".to_string()))
+    }
 
-        // Update thread's updated_at and post_count
-        let thread_repo = ThreadRepository::new(self.db.pool());
-        thread_repo.touch_and_increment(thread_id).await?;
+    /// Create a new post in a thread.
+    ///
+    /// This automatically updates the thread's `updated_at` and `post_count`.
+    /// The post creation and thread update are performed atomically within a transaction.
+    #[cfg(feature = "postgres")]
+    pub async fn create_thread_post(
+        &self,
+        thread_id: i64,
+        author_id: i64,
+        body: impl Into<String>,
+        user_role: Role,
+    ) -> Result<Post> {
+        let body = body.into();
 
-        Ok(post)
+        // Validate body
+        validate_body(&body)?;
+
+        // Get thread to check permissions and get board_id
+        let thread = self.get_thread(thread_id, user_role).await?;
+
+        // Check write permission on the board
+        let board = self.get_board(thread.board_id, user_role).await?;
+        if !board.can_write(user_role) {
+            return Err(HobbsError::Permission(
+                "この掲示板に書き込む権限がありません".to_string(),
+            ));
+        }
+
+        // Start transaction
+        let mut tx = self.db.begin().await?;
+
+        // Create the post within transaction
+        let post_id: i64 = sqlx::query_scalar(
+            "INSERT INTO posts (board_id, thread_id, author_id, body) VALUES ($1, $2, $3, $4) RETURNING id",
+        )
+        .bind(thread.board_id)
+        .bind(thread_id)
+        .bind(author_id)
+        .bind(&body)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        // Update thread's updated_at and post_count within transaction
+        let update_sql = format!(
+            "UPDATE threads SET post_count = post_count + 1, updated_at = {} WHERE id = $1",
+            SQL_NOW
+        );
+        sqlx::query(&update_sql)
+            .bind(thread_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        // Commit transaction
+        tx.commit().await.map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        // Fetch the created post
+        let post_repo = PostRepository::new(self.db.pool());
+        post_repo
+            .get_by_id(post_id)
+            .await?
+            .ok_or_else(|| HobbsError::NotFound("post".to_string()))
     }
 
     /// Create a new post in a flat board.
@@ -436,6 +534,8 @@ impl<'a> BoardService<'a> {
     /// - SubOp or higher can delete any post
     ///
     /// If the post is in a thread, this automatically decrements the thread's `post_count`.
+    /// The thread update and post deletion are performed atomically within a transaction.
+    #[cfg(feature = "sqlite")]
     pub async fn delete_post(
         &self,
         post_id: i64,
@@ -461,13 +561,88 @@ impl<'a> BoardService<'a> {
             ));
         }
 
-        // If this is a thread post, decrement the thread's post count
+        // Start transaction
+        let mut tx = self.db.begin().await?;
+
+        // If this is a thread post, decrement the thread's post count within transaction
         if let Some(thread_id) = post.thread_id {
-            let thread_repo = ThreadRepository::new(self.db.pool());
-            thread_repo.decrement_post_count(thread_id).await?;
+            sqlx::query("UPDATE threads SET post_count = post_count - 1 WHERE id = ?")
+                .bind(thread_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| HobbsError::Database(e.to_string()))?;
         }
 
-        post_repo.delete(post_id).await
+        // Delete the post within transaction
+        let result = sqlx::query("DELETE FROM posts WHERE id = ?")
+            .bind(post_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        // Commit transaction
+        tx.commit().await.map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Delete a post by ID.
+    ///
+    /// Permission rules:
+    /// - The post author can delete their own post
+    /// - SubOp or higher can delete any post
+    ///
+    /// If the post is in a thread, this automatically decrements the thread's `post_count`.
+    /// The thread update and post deletion are performed atomically within a transaction.
+    #[cfg(feature = "postgres")]
+    pub async fn delete_post(
+        &self,
+        post_id: i64,
+        user_id: Option<i64>,
+        user_role: Role,
+    ) -> Result<bool> {
+        let post_repo = PostRepository::new(self.db.pool());
+        let post = post_repo
+            .get_by_id(post_id)
+            .await?
+            .ok_or_else(|| HobbsError::NotFound("post".to_string()))?;
+
+        // Check board access
+        self.get_board(post.board_id, user_role).await?;
+
+        // Check delete permission
+        let is_owner = user_id.is_some() && user_id == Some(post.author_id);
+        let is_operator = user_role >= Role::SubOp;
+
+        if !is_owner && !is_operator {
+            return Err(HobbsError::Permission(
+                "この投稿を削除する権限がありません".to_string(),
+            ));
+        }
+
+        // Start transaction
+        let mut tx = self.db.begin().await?;
+
+        // If this is a thread post, decrement the thread's post count within transaction
+        if let Some(thread_id) = post.thread_id {
+            sqlx::query("UPDATE threads SET post_count = post_count - 1 WHERE id = $1")
+                .bind(thread_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| HobbsError::Database(e.to_string()))?;
+        }
+
+        // Delete the post within transaction
+        let result = sqlx::query("DELETE FROM posts WHERE id = $1")
+            .bind(post_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        // Commit transaction
+        tx.commit().await.map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     // ========== Update Operations ==========

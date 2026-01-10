@@ -60,30 +60,26 @@ async fn run_server(config: Config) -> Result<(), Box<dyn std::error::Error>> {
 
     local
         .run_until(async move {
-            // Open database
+            // Open database with pool configuration
             #[cfg(feature = "sqlite")]
             let db = {
                 // Ensure data directory exists for SQLite
                 std::fs::create_dir_all("data")?;
-                Arc::new(Database::open(&config.database.path).await?)
+                Arc::new(Database::open_with_config(&config.database).await?)
             };
             #[cfg(feature = "postgres")]
-            let db = {
-                // For PostgreSQL, use url from config or DATABASE_URL env var
-                let url = if !config.database.url.is_empty() {
-                    config.database.url.clone()
-                } else {
-                    std::env::var("DATABASE_URL")
-                        .map_err(|_| HobbsError::Config(
-                            "PostgreSQL requires database.url in config or DATABASE_URL environment variable".to_string()
-                        ))?
-                };
-                Arc::new(Database::open(&url).await?)
-            };
+            let db = Arc::new(Database::open_with_config(&config.database).await?);
+
             #[cfg(feature = "sqlite")]
-            info!("Database opened: {}", config.database.path);
+            info!(
+                "Database opened: {} (pool_size={}, min_connections={})",
+                config.database.path, config.database.pool_size, config.database.min_connections
+            );
             #[cfg(feature = "postgres")]
-            info!("PostgreSQL database connected");
+            info!(
+                "PostgreSQL database connected (pool_size={}, min_connections={})",
+                config.database.pool_size, config.database.min_connections
+            );
 
             // Load I18n
             let i18n_manager = Arc::new(I18nManager::load_all("locales")?);
