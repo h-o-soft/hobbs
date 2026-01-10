@@ -3,7 +3,7 @@
 //! This module provides high-level mail operations with business logic
 //! including recipient validation, automatic read marking, and access control.
 
-use crate::db::{Database, UserRepository};
+use crate::db::{Database, UserRepository, SQL_TRUE};
 use crate::{HobbsError, Result};
 
 use super::repository::MailRepository;
@@ -184,12 +184,14 @@ impl<'a> MailService<'a> {
     ///
     /// Marks the mail as deleted by the user. The mail is only physically
     /// deleted when both sender and recipient have deleted it.
+    /// The logical deletion and potential physical purge are performed atomically within a transaction.
     ///
     /// # Errors
     ///
     /// Returns an error if:
     /// - Mail doesn't exist
     /// - User is neither sender nor recipient
+    #[cfg(feature = "sqlite")]
     pub async fn delete_mail(&self, mail_id: i64, user_id: i64) -> Result<()> {
         let mail_repo = MailRepository::new(self.db.pool());
         let mail = mail_repo
@@ -207,16 +209,115 @@ impl<'a> MailService<'a> {
             ));
         }
 
-        // Delete by user
-        mail_repo.delete_by_user(mail_id, user_id).await?;
+        // Start transaction
+        let mut tx = self.db.begin().await?;
 
-        // Check if both have deleted - if so, purge
-        let updated_mail = mail_repo.get_by_id(mail_id).await?;
-        if let Some(m) = updated_mail {
-            if m.can_be_purged() {
-                mail_repo.purge(mail_id).await?;
+        // Determine which deletion flag to set
+        let update_sql = if is_sender {
+            format!("UPDATE mails SET is_deleted_by_sender = {} WHERE id = ?", SQL_TRUE)
+        } else {
+            format!("UPDATE mails SET is_deleted_by_recipient = {} WHERE id = ?", SQL_TRUE)
+        };
+
+        sqlx::query(&update_sql)
+            .bind(mail_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        // Check if both have deleted within transaction - if so, purge
+        let check_both_deleted = format!(
+            "SELECT is_deleted_by_sender, is_deleted_by_recipient FROM mails WHERE id = ?"
+        );
+        let result: Option<(bool, bool)> = sqlx::query_as(&check_both_deleted)
+            .bind(mail_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        if let Some((sender_deleted, recipient_deleted)) = result {
+            if sender_deleted && recipient_deleted {
+                sqlx::query("DELETE FROM mails WHERE id = ?")
+                    .bind(mail_id)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| HobbsError::Database(e.to_string()))?;
             }
         }
+
+        // Commit transaction
+        tx.commit().await.map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Delete a mail (logical deletion).
+    ///
+    /// Marks the mail as deleted by the user. The mail is only physically
+    /// deleted when both sender and recipient have deleted it.
+    /// The logical deletion and potential physical purge are performed atomically within a transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Mail doesn't exist
+    /// - User is neither sender nor recipient
+    #[cfg(feature = "postgres")]
+    pub async fn delete_mail(&self, mail_id: i64, user_id: i64) -> Result<()> {
+        let mail_repo = MailRepository::new(self.db.pool());
+        let mail = mail_repo
+            .get_by_id(mail_id)
+            .await?
+            .ok_or_else(|| HobbsError::NotFound("メール".to_string()))?;
+
+        // Check if user is sender or recipient
+        let is_sender = mail.sender_id == user_id;
+        let is_recipient = mail.recipient_id == user_id;
+
+        if !is_sender && !is_recipient {
+            return Err(HobbsError::Permission(
+                "このメールを削除する権限がありません".to_string(),
+            ));
+        }
+
+        // Start transaction
+        let mut tx = self.db.begin().await?;
+
+        // Determine which deletion flag to set
+        let update_sql = if is_sender {
+            format!("UPDATE mails SET is_deleted_by_sender = {} WHERE id = $1", SQL_TRUE)
+        } else {
+            format!("UPDATE mails SET is_deleted_by_recipient = {} WHERE id = $1", SQL_TRUE)
+        };
+
+        sqlx::query(&update_sql)
+            .bind(mail_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        // Check if both have deleted within transaction - if so, purge
+        let check_both_deleted = format!(
+            "SELECT is_deleted_by_sender, is_deleted_by_recipient FROM mails WHERE id = $1"
+        );
+        let result: Option<(bool, bool)> = sqlx::query_as(&check_both_deleted)
+            .bind(mail_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        if let Some((sender_deleted, recipient_deleted)) = result {
+            if sender_deleted && recipient_deleted {
+                sqlx::query("DELETE FROM mails WHERE id = $1")
+                    .bind(mail_id)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| HobbsError::Database(e.to_string()))?;
+            }
+        }
+
+        // Commit transaction
+        tx.commit().await.map_err(|e| HobbsError::Database(e.to_string()))?;
 
         Ok(())
     }

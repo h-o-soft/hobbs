@@ -39,6 +39,13 @@ pub type DbPool = sqlx::sqlite::SqlitePool;
 #[cfg(feature = "postgres")]
 pub type DbPool = sqlx::postgres::PgPool;
 
+// Type aliases for database transaction based on feature
+#[cfg(feature = "sqlite")]
+pub type DbTransaction<'a> = sqlx::Transaction<'a, sqlx::Sqlite>;
+
+#[cfg(feature = "postgres")]
+pub type DbTransaction<'a> = sqlx::Transaction<'a, sqlx::Postgres>;
+
 /// Database wrapper for managing database connections with connection pooling.
 pub struct Database {
     pool: DbPool,
@@ -48,6 +55,7 @@ pub struct Database {
 #[cfg(feature = "sqlite")]
 mod sqlite_impl {
     use super::*;
+    use crate::config::DatabaseConfig;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use sqlx::ConnectOptions;
     use std::path::Path;
@@ -79,6 +87,45 @@ mod sqlite_impl {
 
             let pool = SqlitePoolOptions::new()
                 .max_connections(5)
+                .connect_with(options)
+                .await
+                .map_err(|e| crate::HobbsError::DatabaseConnection(e.to_string()))?;
+
+            let db = Self { pool };
+            db.migrate().await?;
+
+            Ok(db)
+        }
+
+        /// Open a database connection pool with the specified configuration.
+        ///
+        /// Uses the path from config, applying pool settings like max_connections,
+        /// min_connections, acquire_timeout, and idle_timeout.
+        /// Migrations are automatically applied.
+        pub async fn open_with_config(config: &DatabaseConfig) -> Result<Self> {
+            let path = std::path::Path::new(&config.path);
+            info!("Opening SQLite database at {:?} with config", path);
+
+            // Create parent directories if they don't exist
+            if let Some(parent) = path.parent() {
+                if !parent.exists() {
+                    std::fs::create_dir_all(parent)?;
+                }
+            }
+
+            let options = SqliteConnectOptions::new()
+                .filename(path)
+                .create_if_missing(true)
+                .foreign_keys(true)
+                .busy_timeout(Duration::from_secs(5))
+                .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+                .disable_statement_logging();
+
+            let pool = SqlitePoolOptions::new()
+                .max_connections(config.pool_size)
+                .min_connections(config.min_connections)
+                .acquire_timeout(Duration::from_secs(config.connect_timeout_secs))
+                .idle_timeout(Duration::from_secs(config.idle_timeout_secs))
                 .connect_with(options)
                 .await
                 .map_err(|e| crate::HobbsError::DatabaseConnection(e.to_string()))?;
@@ -258,7 +305,9 @@ mod sqlite_impl {
 #[cfg(feature = "postgres")]
 mod postgres_impl {
     use super::*;
+    use crate::config::DatabaseConfig;
     use sqlx::postgres::PgPoolOptions;
+    use std::time::Duration;
 
     impl Database {
         /// Open a database connection pool with the specified URL.
@@ -271,6 +320,37 @@ mod postgres_impl {
             let pool = PgPoolOptions::new()
                 .max_connections(10)
                 .connect(url)
+                .await
+                .map_err(|e| crate::HobbsError::DatabaseConnection(e.to_string()))?;
+
+            let db = Self { pool };
+            db.migrate().await?;
+
+            Ok(db)
+        }
+
+        /// Open a database connection pool with the specified configuration.
+        ///
+        /// Uses the URL from config (or DATABASE_URL env var), applying pool settings
+        /// like max_connections, min_connections, acquire_timeout, and idle_timeout.
+        /// Migrations are automatically applied.
+        pub async fn open_with_config(config: &DatabaseConfig) -> Result<Self> {
+            let url = if !config.url.is_empty() {
+                config.url.clone()
+            } else {
+                std::env::var("DATABASE_URL")
+                    .map_err(|_| crate::HobbsError::Config(
+                        "DATABASE_URL environment variable not set and database.url not configured".to_string()
+                    ))?
+            };
+            info!("Opening PostgreSQL database with config");
+
+            let pool = PgPoolOptions::new()
+                .max_connections(config.pool_size)
+                .min_connections(config.min_connections)
+                .acquire_timeout(Duration::from_secs(config.connect_timeout_secs))
+                .idle_timeout(Duration::from_secs(config.idle_timeout_secs))
+                .connect(&url)
                 .await
                 .map_err(|e| crate::HobbsError::DatabaseConnection(e.to_string()))?;
 
@@ -386,6 +466,16 @@ impl Database {
     /// Get a reference to the underlying connection pool.
     pub fn pool(&self) -> &DbPool {
         &self.pool
+    }
+
+    /// Start a new database transaction.
+    ///
+    /// The transaction will be rolled back if not explicitly committed.
+    pub async fn begin(&self) -> Result<DbTransaction<'_>> {
+        self.pool
+            .begin()
+            .await
+            .map_err(|e| crate::HobbsError::Database(e.to_string()))
     }
 
     /// Close the database connection pool.
