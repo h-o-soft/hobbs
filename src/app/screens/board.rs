@@ -942,7 +942,17 @@ impl BoardScreen {
                     .unwrap_or_else(|| "Unknown".to_string())
             };
 
-            let title = post.title.as_deref().unwrap_or("(no title)");
+            // Get title: for thread posts, fetch thread title; for flat posts, use post title
+            let title = if let Some(thread_id) = post.thread_id {
+                let thread_repo = ThreadRepository::new(ctx.db.pool());
+                thread_repo
+                    .get_by_id(thread_id)
+                    .await?
+                    .map(|t| t.title)
+                    .unwrap_or_else(|| "(no thread)".to_string())
+            } else {
+                post.title.clone().unwrap_or_else(|| "(no title)".to_string())
+            };
 
             ctx.send_line(
                 session,
@@ -1107,7 +1117,17 @@ impl BoardScreen {
                     .unwrap_or_else(|| "Unknown".to_string())
             };
 
-            let title = post.title.as_deref().unwrap_or("(no title)");
+            // Get title: for thread posts, fetch thread title; for flat posts, use post title
+            let title = if let Some(thread_id) = post.thread_id {
+                let thread_repo = ThreadRepository::new(ctx.db.pool());
+                thread_repo
+                    .get_by_id(thread_id)
+                    .await?
+                    .map(|t| t.title)
+                    .unwrap_or_else(|| "(no thread)".to_string())
+            } else {
+                post.title.clone().unwrap_or_else(|| "(no title)".to_string())
+            };
 
             // Show board name and post info
             ctx.send_line(
