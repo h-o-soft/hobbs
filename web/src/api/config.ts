@@ -4,6 +4,7 @@ export interface SiteConfig {
   name: string;
   description: string;
   sysop_name: string;
+  telnet_enabled: boolean;
 }
 
 /**

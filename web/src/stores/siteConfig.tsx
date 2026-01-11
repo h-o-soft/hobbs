@@ -19,6 +19,7 @@ const DEFAULT_CONFIG: SiteConfig = {
   name: 'HOBBS',
   description: 'A retro BBS system',
   sysop_name: 'SysOp',
+  telnet_enabled: true,
 };
 
 export const SiteConfigProvider: ParentComponent = (props) => {

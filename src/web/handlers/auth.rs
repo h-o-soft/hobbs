@@ -47,6 +47,8 @@ pub struct AppState {
     pub bbs_description: String,
     /// SysOp name (from config).
     pub sysop_name: String,
+    /// Whether Telnet server is enabled.
+    pub telnet_enabled: bool,
 }
 
 impl AppState {
@@ -68,6 +70,7 @@ impl AppState {
             bbs_name: "HOBBS".to_string(),
             bbs_description: "A retro BBS system".to_string(),
             sysop_name: "SysOp".to_string(),
+            telnet_enabled: true, // Default to true
         }
     }
 
@@ -94,6 +97,12 @@ impl AppState {
     /// Set chat room manager.
     pub fn with_chat_manager(mut self, chat_manager: Arc<ChatRoomManager>) -> Self {
         self.chat_manager = Some(chat_manager);
+        self
+    }
+
+    /// Set telnet enabled flag.
+    pub fn with_telnet_enabled(mut self, enabled: bool) -> Self {
+        self.telnet_enabled = enabled;
         self
     }
 

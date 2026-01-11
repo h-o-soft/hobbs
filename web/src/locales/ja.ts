@@ -61,6 +61,7 @@ export const dict = {
     hasAccount: 'すでにアカウントをお持ちの方は',
     loginHere: 'ログイン',
     subtitle: 'Powered by HOBBS',
+    telnetPasswordWarning: '警告: このBBSはTelnet（平文）接続に対応しています。パスワードは暗号化されずにネットワーク上を流れる可能性があります。他のサービスと同じパスワードは絶対に使用しないでください。',
   },
 
   // Home

@@ -68,6 +68,7 @@ account_disabled = "This account has been disabled."
 
 [register]
 title = "=== Registration ==="
+password_warning = "[WARNING] Telnet transmits passwords unencrypted. NEVER use the same password as other services."
 username = "Username"
 password = "Password"
 confirm_password = "Confirm Password"
