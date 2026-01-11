@@ -137,6 +137,7 @@ async fn run_server(config: Config) -> Result<(), Box<dyn std::error::Error>> {
                     web_db,
                     &config.files,
                     &config.bbs,
+                    config.server.enabled,
                 )
                 .with_chat_manager(web_chat_manager);
                 let web_addr = web_server.addr();

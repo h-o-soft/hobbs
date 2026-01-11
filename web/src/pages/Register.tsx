@@ -65,6 +65,15 @@ export const RegisterPage: Component = () => {
         <div class="card">
           <h2 class="text-xl font-medium text-neon-cyan mb-6">{t('auth.createAccount')}</h2>
 
+          {/* Telnet Password Warning */}
+          {siteConfig.config.telnet_enabled && (
+            <div class="mb-4">
+              <Alert type="warning">
+                {t('auth.telnetPasswordWarning')}
+              </Alert>
+            </div>
+          )}
+
           {error() && (
             <div class="mb-4">
               <Alert type="error" onClose={() => setError('')}>

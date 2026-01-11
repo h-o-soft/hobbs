@@ -14,47 +14,55 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 
 use crate::chat::{ChatMessage, ChatParticipant, ChatRoom, ChatRoomManager, MessageType};
-use crate::web::middleware::JwtState;
+use crate::db::{DbPool, OneTimeTokenRepository, TokenPurpose, UserRepository};
 
 use super::messages::{ClientMessage, ParticipantInfo, RoomInfo, ServerMessage};
 
 /// Query parameters for WebSocket connection.
 #[derive(Debug, serde::Deserialize)]
 pub struct WsQuery {
-    /// JWT access token for authentication.
+    /// One-time token for authentication.
     pub token: String,
 }
 
 /// State for WebSocket chat handler.
 #[derive(Clone)]
 pub struct ChatWsState {
-    /// JWT state for token validation.
-    pub jwt_state: Arc<JwtState>,
+    /// Database pool for token validation.
+    pub db_pool: DbPool,
     /// Chat room manager.
     pub chat_manager: Arc<ChatRoomManager>,
 }
 
 impl ChatWsState {
     /// Create a new chat WebSocket state.
-    pub fn new(jwt_state: Arc<JwtState>, chat_manager: Arc<ChatRoomManager>) -> Self {
+    pub fn new(db_pool: DbPool, chat_manager: Arc<ChatRoomManager>) -> Self {
         Self {
-            jwt_state,
+            db_pool,
             chat_manager,
         }
     }
 }
 
+/// User info extracted from one-time token validation.
+struct TokenUserInfo {
+    user_id: i64,
+    username: String,
+}
+
 /// WebSocket chat handler.
 ///
-/// GET /api/chat/ws?token={access_token}
+/// GET /api/chat/ws?token={one_time_token}
+///
+/// The token must be obtained from POST /api/auth/one-time-token with purpose "websocket".
 pub async fn chat_ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<ChatWsState>>,
     Query(query): Query<WsQuery>,
 ) -> Response {
-    // Validate JWT token
-    let claims = match validate_token(&state.jwt_state, &query.token) {
-        Ok(claims) => claims,
+    // Validate one-time token
+    let user_info = match validate_one_time_token(&state.db_pool, &query.token).await {
+        Ok(info) => info,
         Err(e) => {
             tracing::debug!("WebSocket connection rejected: {}", e);
             return Response::builder()
@@ -66,39 +74,51 @@ pub async fn chat_ws_handler(
 
     tracing::info!(
         "WebSocket connection from user {} ({})",
-        claims.username,
-        claims.sub
+        user_info.username,
+        user_info.user_id
     );
 
     // Upgrade to WebSocket
-    ws.on_upgrade(move |socket| handle_socket(socket, state, claims))
+    ws.on_upgrade(move |socket| handle_socket(socket, state, user_info))
 }
 
-/// Validate a JWT token and return claims.
-fn validate_token(
-    jwt_state: &JwtState,
+/// Validate a one-time token and return user info.
+async fn validate_one_time_token(
+    db_pool: &DbPool,
     token: &str,
-) -> Result<crate::web::middleware::JwtClaims, String> {
-    use jsonwebtoken::decode;
+) -> Result<TokenUserInfo, String> {
+    let repo = OneTimeTokenRepository::new(db_pool);
 
-    decode::<crate::web::middleware::JwtClaims>(
-        token,
-        &jwt_state.decoding_key,
-        &jwt_state.validation,
-    )
-    .map(|data| data.claims)
-    .map_err(|e| format!("Invalid token: {}", e))
+    // Consume the token (marks it as used atomically)
+    let token_data = repo
+        .consume_token(token, TokenPurpose::WebSocket, None)
+        .await
+        .map_err(|e| format!("Database error: {}", e))?
+        .ok_or_else(|| "Invalid or expired token".to_string())?;
+
+    // Get user info
+    let user_repo = UserRepository::new(db_pool);
+    let user = user_repo
+        .get_by_id(token_data.user_id)
+        .await
+        .map_err(|e| format!("Database error: {}", e))?
+        .ok_or_else(|| "User not found".to_string())?;
+
+    Ok(TokenUserInfo {
+        user_id: user.id,
+        username: user.username,
+    })
 }
 
 /// Handle a WebSocket connection.
 async fn handle_socket(
     socket: WebSocket,
     state: Arc<ChatWsState>,
-    claims: crate::web::middleware::JwtClaims,
+    user_info: TokenUserInfo,
 ) {
-    let session_id = format!("web-{}-{}", claims.sub, uuid::Uuid::new_v4());
-    let user_id = claims.sub;
-    let username = claims.username.clone();
+    let session_id = format!("web-{}-{}", user_info.user_id, uuid::Uuid::new_v4());
+    let user_id = user_info.user_id;
+    let username = user_info.username.clone();
 
     tracing::debug!(
         "WebSocket session started: {} for user {}",
@@ -349,18 +369,20 @@ fn chat_message_to_server_message(msg: &ChatMessage) -> ServerMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Database;
 
-    #[test]
-    fn test_chat_ws_state_new() {
-        let jwt_state = Arc::new(JwtState::new("test-secret"));
+    #[tokio::test]
+    async fn test_chat_ws_state_new() {
+        let db = Database::open_in_memory().await.unwrap();
+        let db_pool = db.pool().clone();
         let chat_manager = Arc::new(ChatRoomManager::new());
-        let _state = ChatWsState::new(jwt_state, chat_manager);
+        let _state = ChatWsState::new(db_pool, chat_manager);
     }
 
-    #[test]
-    fn test_validate_token_invalid() {
-        let jwt_state = JwtState::new("test-secret");
-        let result = validate_token(&jwt_state, "invalid-token");
+    #[tokio::test]
+    async fn test_validate_one_time_token_invalid() {
+        let db = Database::open_in_memory().await.unwrap();
+        let result = validate_one_time_token(db.pool(), "invalid-token").await;
         assert!(result.is_err());
     }
 

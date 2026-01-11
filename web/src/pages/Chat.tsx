@@ -111,7 +111,10 @@ export const ChatPage: Component = () => {
       }
     });
 
-    ws.connect();
+    ws.connect().catch((error) => {
+      console.error('Failed to connect to chat:', error);
+      setError(t('chat.connectionError'));
+    });
 
     onCleanup(() => {
       ws.disconnect();

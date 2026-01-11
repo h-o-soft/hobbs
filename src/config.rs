@@ -8,6 +8,9 @@ use crate::{HobbsError, Result};
 /// Server configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerConfig {
+    /// Whether Telnet server is enabled.
+    #[serde(default = "default_telnet_enabled")]
+    pub enabled: bool,
     /// Host address to bind.
     #[serde(default = "default_host")]
     pub host: String,
@@ -29,6 +32,10 @@ pub struct ServerConfig {
     /// Timezone for displaying dates (e.g., "Asia/Tokyo", "UTC").
     #[serde(default = "default_timezone")]
     pub timezone: String,
+}
+
+fn default_telnet_enabled() -> bool {
+    true
 }
 
 fn default_host() -> String {
@@ -62,6 +69,7 @@ fn default_timezone() -> String {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
+            enabled: default_telnet_enabled(),
             host: default_host(),
             port: default_port(),
             max_connections: default_max_connections(),
@@ -737,6 +745,7 @@ mod tests {
     fn test_default_config() {
         let config = Config::default();
 
+        assert!(config.server.enabled);
         assert_eq!(config.server.host, "0.0.0.0");
         assert_eq!(config.server.port, 2323);
         assert_eq!(config.server.max_connections, 20);

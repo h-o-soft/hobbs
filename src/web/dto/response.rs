@@ -92,6 +92,17 @@ pub struct RefreshResponse {
     pub expires_in: u64,
 }
 
+/// One-time token response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OneTimeTokenResponse {
+    /// One-time token.
+    pub token: String,
+    /// Token purpose.
+    pub purpose: String,
+    /// Expiry in seconds.
+    pub expires_in: u64,
+}
+
 /// Current user response (for /api/auth/me).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct MeResponse {

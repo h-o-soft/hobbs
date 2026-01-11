@@ -7,12 +7,15 @@ use utoipa;
 
 use crate::chat::ChatRoomManager;
 use crate::datetime::to_rfc3339;
-use crate::db::{NewRefreshToken, NewUser, RefreshTokenRepository, UserRepository};
+use crate::db::{
+    hash_token, NewOneTimeToken, NewRefreshToken, NewUser, OneTimeTokenRepository,
+    RefreshTokenRepository, TokenPurpose, UserRepository,
+};
 use crate::file::FileStorage;
 use crate::mail::MailRepository;
 use crate::web::dto::{
-    ApiResponse, LoginRequest, LoginResponse, LogoutRequest, MeResponse, RefreshRequest,
-    RefreshResponse, RegisterRequest, UserInfo,
+    ApiResponse, LoginRequest, LoginResponse, LogoutRequest, MeResponse, OneTimeTokenRequest,
+    OneTimeTokenResponse, RefreshRequest, RefreshResponse, RegisterRequest, UserInfo,
 };
 use crate::web::error::ApiError;
 use crate::web::middleware::{AuthUser, JwtClaims};
@@ -44,6 +47,8 @@ pub struct AppState {
     pub bbs_description: String,
     /// SysOp name (from config).
     pub sysop_name: String,
+    /// Whether Telnet server is enabled.
+    pub telnet_enabled: bool,
 }
 
 impl AppState {
@@ -65,6 +70,7 @@ impl AppState {
             bbs_name: "HOBBS".to_string(),
             bbs_description: "A retro BBS system".to_string(),
             sysop_name: "SysOp".to_string(),
+            telnet_enabled: true, // Default to true
         }
     }
 
@@ -91,6 +97,12 @@ impl AppState {
     /// Set chat room manager.
     pub fn with_chat_manager(mut self, chat_manager: Arc<ChatRoomManager>) -> Self {
         self.chat_manager = Some(chat_manager);
+        self
+    }
+
+    /// Set telnet enabled flag.
+    pub fn with_telnet_enabled(mut self, enabled: bool) -> Self {
+        self.telnet_enabled = enabled;
         self
     }
 
@@ -165,13 +177,13 @@ pub async fn login(
     let access_token = state.generate_access_token(user.id, &user.username, &user.role)?;
     let refresh_token = state.generate_refresh_token();
 
-    // Store refresh token in database
+    // Store refresh token in database (hashed)
     let token_repo = RefreshTokenRepository::new(state.db.pool());
     let expires_at =
         chrono::Utc::now() + chrono::Duration::days(state.refresh_token_expiry as i64);
     let new_token = NewRefreshToken {
         user_id: user.id,
-        token: refresh_token.clone(),
+        token_hash: hash_token(&refresh_token),
         expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
     };
     token_repo.create(&new_token).await.map_err(|e| {
@@ -263,12 +275,12 @@ pub async fn refresh(
     let access_token = state.generate_access_token(user.id, &user.username, &user.role)?;
     let new_refresh_token = state.generate_refresh_token();
 
-    // Store new refresh token
+    // Store new refresh token (hashed)
     let expires_at =
         chrono::Utc::now() + chrono::Duration::days(state.refresh_token_expiry as i64);
     let new_token = NewRefreshToken {
         user_id: user.id,
-        token: new_refresh_token.clone(),
+        token_hash: hash_token(&new_refresh_token),
         expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
     };
     token_repo.create(&new_token).await.map_err(|e| {
@@ -352,13 +364,13 @@ pub async fn register(
     let access_token = state.generate_access_token(user.id, &user.username, &user.role)?;
     let refresh_token = state.generate_refresh_token();
 
-    // Store refresh token in database
+    // Store refresh token in database (hashed)
     let token_repo = RefreshTokenRepository::new(state.db.pool());
     let expires_at =
         chrono::Utc::now() + chrono::Duration::days(state.refresh_token_expiry as i64);
     let new_token = NewRefreshToken {
         user_id: user.id,
-        token: refresh_token.clone(),
+        token_hash: hash_token(&refresh_token),
         expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
     };
     token_repo.create(&new_token).await.map_err(|e| {
@@ -419,6 +431,73 @@ pub async fn me(
         unread_mail_count: unread_count as u64,
         created_at: to_rfc3339(&user.created_at),
         last_login_at: user.last_login.as_ref().map(|dt| to_rfc3339(dt)),
+    };
+
+    Ok(Json(ApiResponse::new(response)))
+}
+
+/// Default one-time token expiry in seconds (30 seconds).
+const ONE_TIME_TOKEN_EXPIRY_SECS: u64 = 30;
+
+/// POST /api/auth/one-time-token - Get a one-time token for WebSocket or file downloads.
+///
+/// This endpoint issues a short-lived token that can be used in URL query parameters
+/// for WebSocket connections or file downloads where Authorization headers cannot be used.
+#[utoipa::path(
+    post,
+    path = "/auth/one-time-token",
+    tag = "auth",
+    request_body = OneTimeTokenRequest,
+    responses(
+        (status = 200, description = "One-time token issued", body = OneTimeTokenResponse),
+        (status = 400, description = "Invalid request"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn one_time_token(
+    State(state): State<Arc<AppState>>,
+    AuthUser(claims): AuthUser,
+    Json(req): Json<OneTimeTokenRequest>,
+) -> Result<Json<ApiResponse<OneTimeTokenResponse>>, ApiError> {
+    // Parse purpose
+    let purpose = match req.purpose.as_str() {
+        "websocket" => TokenPurpose::WebSocket,
+        "download" => TokenPurpose::Download,
+        _ => return Err(ApiError::bad_request("Invalid purpose. Use 'websocket' or 'download'")),
+    };
+
+    // For download tokens, target_id is required
+    if purpose == TokenPurpose::Download && req.target_id.is_none() {
+        return Err(ApiError::bad_request("target_id is required for download tokens"));
+    }
+
+    // Generate token
+    let token = uuid::Uuid::new_v4().to_string();
+    let expires_at =
+        chrono::Utc::now() + chrono::Duration::seconds(ONE_TIME_TOKEN_EXPIRY_SECS as i64);
+
+    // Store token
+    let repo = OneTimeTokenRepository::new(state.db.pool());
+    let new_token = NewOneTimeToken {
+        user_id: claims.sub,
+        token: token.clone(),
+        purpose,
+        target_id: req.target_id,
+        expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+    };
+
+    repo.create(&new_token).await.map_err(|e| {
+        tracing::error!("Failed to create one-time token: {}", e);
+        ApiError::internal("Failed to create token")
+    })?;
+
+    let response = OneTimeTokenResponse {
+        token,
+        purpose: req.purpose,
+        expires_in: ONE_TIME_TOKEN_EXPIRY_SECS,
     };
 
     Ok(Json(ApiResponse::new(response)))

@@ -548,6 +548,8 @@ impl ProfileScreen {
             "c64" => ctx.i18n.t("terminal.profile_c64").to_string(),
             "c64_petscii" => ctx.i18n.t("terminal.profile_c64_petscii").to_string(),
             "c64_ansi" => ctx.i18n.t("terminal.profile_c64_ansi").to_string(),
+            "40col_sjis" => ctx.i18n.t("terminal.profile_40col_sjis").to_string(),
+            "40col_utf8" => ctx.i18n.t("terminal.profile_40col_utf8").to_string(),
             _ => ctx.i18n.t("terminal.profile_standard").to_string(),
         }
     }

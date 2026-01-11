@@ -61,6 +61,7 @@ export const dict = {
     hasAccount: 'Already have an account?',
     loginHere: 'Login',
     subtitle: 'Powered by HOBBS',
+    telnetPasswordWarning: 'Warning: This BBS supports Telnet (plaintext) connections. Your password may be transmitted unencrypted over the network. NEVER use the same password as other services.',
   },
 
   // Home

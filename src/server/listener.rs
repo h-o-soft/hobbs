@@ -116,6 +116,7 @@ mod tests {
 
     fn test_config(port: u16, max_connections: usize) -> ServerConfig {
         ServerConfig {
+            enabled: true,
             host: "127.0.0.1".to_string(),
             port,
             max_connections,
