@@ -78,40 +78,16 @@ where
         Self: 'async_trait,
     {
         Box::pin(async move {
-            // Try to get token from Authorization header first
-            let token = if let Some(auth_header) = parts
+            // Get token from Authorization header only
+            // Note: For URL-based authentication (WebSocket, file downloads),
+            // use the one-time token endpoints instead.
+            let token = parts
                 .headers
                 .get(AUTHORIZATION)
                 .and_then(|value| value.to_str().ok())
-            {
-                // Check Bearer prefix
-                auth_header.strip_prefix("Bearer ").map(|t| t.to_string())
-            } else {
-                None
-            };
-
-            // If no header token, try query parameter (for file downloads)
-            let token = match token {
-                Some(t) => t,
-                None => {
-                    // Parse query string for token parameter
-                    let query = parts.uri.query().unwrap_or("");
-                    query
-                        .split('&')
-                        .find_map(|pair| {
-                            let mut parts = pair.splitn(2, '=');
-                            let key = parts.next()?;
-                            let value = parts.next()?;
-                            if key == "token" {
-                                // URL decode the token
-                                urlencoding::decode(value).ok().map(|s| s.into_owned())
-                            } else {
-                                None
-                            }
-                        })
-                        .ok_or_else(|| ApiError::unauthorized("Missing authorization"))?
-                }
-            };
+                .and_then(|auth_header| auth_header.strip_prefix("Bearer "))
+                .map(|t| t.to_string())
+                .ok_or_else(|| ApiError::unauthorized("Missing authorization"))?;
 
             // Get JWT state from extensions (set by middleware)
             let jwt_state = parts

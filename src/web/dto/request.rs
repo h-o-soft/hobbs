@@ -38,6 +38,27 @@ pub struct RefreshRequest {
     pub refresh_token: String,
 }
 
+/// One-time token request.
+///
+/// Used to obtain a short-lived token for WebSocket connections or file downloads.
+#[derive(Debug, Deserialize, ToSchema, Validate)]
+pub struct OneTimeTokenRequest {
+    /// Token purpose: "websocket" or "download".
+    #[validate(custom(function = "validate_token_purpose"))]
+    pub purpose: String,
+    /// Optional target ID (e.g., file_id for downloads).
+    #[serde(default)]
+    pub target_id: Option<i64>,
+}
+
+/// Validate token purpose.
+fn validate_token_purpose(purpose: &str) -> Result<(), validator::ValidationError> {
+    match purpose {
+        "websocket" | "download" => Ok(()),
+        _ => Err(validator::ValidationError::new("invalid_purpose")),
+    }
+}
+
 /// User registration request.
 #[derive(Debug, Deserialize, ToSchema, Validate)]
 pub struct RegisterRequest {

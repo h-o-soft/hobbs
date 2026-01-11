@@ -149,13 +149,13 @@ export const FolderDetailPage: Component = () => {
                         </div>
                       </div>
                       <div class="flex items-center space-x-2 ml-4">
-                        <a
-                          href={fileApi.getDownloadUrl(file.id)}
-                          class="btn-primary text-sm"
-                          download={file.filename}
+                        <Button
+                          variant="primary"
+                          onClick={() => fileApi.downloadFile(file.id, file.filename)}
+                          class="text-sm"
                         >
                           {t('files.download')}
-                        </a>
+                        </Button>
                         <Button
                           variant="danger"
                           onClick={() => handleDelete(file.id)}

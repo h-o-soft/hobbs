@@ -1,4 +1,5 @@
-import { api, buildQueryString, getAccessToken, type PaginationParams } from './client';
+import { api, buildQueryString, type PaginationParams } from './client';
+import { getOneTimeToken } from './auth';
 import type { Folder, FileInfo, PaginatedResponse } from '../types';
 
 export async function getFolders(): Promise<Folder[]> {
@@ -38,10 +39,16 @@ export async function deleteFile(id: number): Promise<void> {
   await api.delete(`/files/${id}`);
 }
 
-export function getDownloadUrl(id: number): string {
-  const token = getAccessToken();
-  if (token) {
-    return `/api/files/${id}/download?token=${encodeURIComponent(token)}`;
-  }
-  return `/api/files/${id}/download`;
+export async function downloadFile(id: number, filename: string): Promise<void> {
+  // Get one-time token for download
+  const tokenResponse = await getOneTimeToken('download', id);
+  const url = `/api/files/${id}/download-with-token?token=${encodeURIComponent(tokenResponse.token)}`;
+
+  // Create a temporary link and trigger download
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }

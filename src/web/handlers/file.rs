@@ -11,7 +11,7 @@ use std::sync::Arc;
 use utoipa;
 
 use crate::datetime::to_rfc3339;
-use crate::db::{Role, UserRepository};
+use crate::db::{OneTimeTokenRepository, Role, TokenPurpose, UserRepository};
 use crate::file::{FileRepository, FolderRepository, NewFile};
 use crate::web::dto::{
     ApiResponse, AuthorInfo, FileResponse, FileUploadResponse, FolderResponse, PaginatedResponse,
@@ -20,6 +20,13 @@ use crate::web::dto::{
 use crate::web::error::ApiError;
 use crate::web::handlers::AppState;
 use crate::web::middleware::AuthUser;
+
+/// Query parameters for one-time token download.
+#[derive(Debug, serde::Deserialize)]
+pub struct DownloadTokenQuery {
+    /// One-time token for authentication.
+    pub token: String,
+}
 
 /// GET /api/folders - List all accessible folders.
 #[utoipa::path(
@@ -519,6 +526,115 @@ pub async fn download_file(
     Path(file_id): Path<i64>,
 ) -> Result<Response<Body>, ApiError> {
     let user_role: Role = claims.role.parse().unwrap_or(Role::Guest);
+
+    // Check if file storage is available
+    let storage = state
+        .file_storage
+        .as_ref()
+        .ok_or_else(|| ApiError::internal("File storage not configured"))?;
+
+    let file_repo = FileRepository::new(state.db.pool());
+    let folder_repo = FolderRepository::new(state.db.pool());
+
+    let file = file_repo
+        .get_by_id(file_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get file: {}", e);
+            ApiError::internal("Failed to get file")
+        })?
+        .ok_or_else(|| ApiError::not_found("File not found"))?;
+
+    let folder = folder_repo
+        .get_by_id(file.folder_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get folder: {}", e);
+            ApiError::internal("Failed to get folder")
+        })?
+        .ok_or_else(|| ApiError::not_found("Folder not found"))?;
+
+    // Check read permission
+    if user_role < folder.permission {
+        return Err(ApiError::forbidden("Access denied"));
+    }
+
+    // Load file content
+    let content = storage.load(&file.stored_name).map_err(|e| {
+        tracing::error!("Failed to load file: {}", e);
+        ApiError::internal("Failed to load file")
+    })?;
+
+    // Increment download count
+    let _ = file_repo.increment_downloads(file_id).await;
+
+    // Determine content type
+    let content_type = mime_guess::from_path(&file.filename)
+        .first_or_octet_stream()
+        .to_string();
+
+    // Build response with headers
+    let response = Response::builder()
+        .header(header::CONTENT_TYPE, content_type)
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{}\"", file.filename),
+        )
+        .header(header::CONTENT_LENGTH, content.len())
+        .body(Body::from(content))
+        .map_err(|e| {
+            tracing::error!("Failed to build response: {}", e);
+            ApiError::internal("Failed to build response")
+        })?;
+
+    Ok(response)
+}
+
+/// GET /api/files/:id/download-with-token - Download a file using one-time token.
+///
+/// This endpoint is for browser direct downloads where Authorization headers cannot be used.
+/// The token must be obtained from POST /api/auth/one-time-token with purpose "download"
+/// and target_id set to the file ID.
+#[utoipa::path(
+    get,
+    path = "/files/{id}/download-with-token",
+    tag = "files",
+    params(
+        ("id" = i64, Path, description = "File ID"),
+        ("token" = String, Query, description = "One-time token")
+    ),
+    responses(
+        (status = 200, description = "File content", content_type = "application/octet-stream"),
+        (status = 401, description = "Invalid or expired token"),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "File not found")
+    )
+)]
+pub async fn download_file_with_token(
+    State(state): State<Arc<AppState>>,
+    Path(file_id): Path<i64>,
+    Query(query): Query<DownloadTokenQuery>,
+) -> Result<Response<Body>, ApiError> {
+    // Validate one-time token
+    let repo = OneTimeTokenRepository::new(state.db.pool());
+    let token_data = repo
+        .consume_token(&query.token, TokenPurpose::Download, Some(file_id))
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to validate token: {}", e);
+            ApiError::internal("Token validation failed")
+        })?
+        .ok_or_else(|| ApiError::unauthorized("Invalid or expired token"))?;
+
+    // Get user role
+    let user_repo = UserRepository::new(state.db.pool());
+    let user = user_repo
+        .get_by_id(token_data.user_id)
+        .await
+        .map_err(|_| ApiError::internal("Database error"))?
+        .ok_or_else(|| ApiError::unauthorized("User not found"))?;
+
+    let user_role = user.role;
 
     // Check if file storage is available
     let storage = state
