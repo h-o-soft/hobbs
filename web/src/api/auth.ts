@@ -4,6 +4,8 @@ import type {
   LoginResponse,
   RegisterRequest,
   MeResponse,
+  OneTimeTokenRequest,
+  OneTimeTokenResponse,
 } from '../types';
 
 export async function login(credentials: LoginRequest): Promise<LoginResponse> {
@@ -28,4 +30,15 @@ export async function logout(): Promise<void> {
 
 export async function getMe(): Promise<MeResponse> {
   return api.get<MeResponse>('/auth/me');
+}
+
+export async function getOneTimeToken(
+  purpose: 'websocket' | 'download',
+  targetId?: number
+): Promise<OneTimeTokenResponse> {
+  const request: OneTimeTokenRequest = { purpose };
+  if (targetId !== undefined) {
+    request.target_id = targetId;
+  }
+  return api.post<OneTimeTokenResponse>('/auth/one-time-token', request);
 }

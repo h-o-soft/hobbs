@@ -1,4 +1,5 @@
-import { api, getAccessToken } from './client';
+import { api } from './client';
+import { getOneTimeToken } from './auth';
 import type { ChatRoom, ClientMessage, ServerMessage } from '../types';
 
 export async function getRooms(): Promise<ChatRoom[]> {
@@ -16,19 +17,24 @@ export class ChatWebSocket {
   private onDisconnectHandler: (() => void) | null = null;
   private onErrorHandler: ((error: Event) => void) | null = null;
 
-  connect(): void {
+  async connect(): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) {
       return;
     }
 
-    const token = getAccessToken();
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const url = token
-      ? `${protocol}//${host}/api/chat/ws?token=${encodeURIComponent(token)}`
-      : `${protocol}//${host}/api/chat/ws`;
+    try {
+      // Get one-time token for WebSocket connection
+      const tokenResponse = await getOneTimeToken('websocket');
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      const url = `${protocol}//${host}/api/chat/ws?token=${encodeURIComponent(tokenResponse.token)}`;
 
-    this.ws = new WebSocket(url);
+      this.ws = new WebSocket(url);
+    } catch (error) {
+      console.error('Failed to get one-time token for WebSocket:', error);
+      this.onErrorHandler?.(new Event('token_error'));
+      return;
+    }
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0;
@@ -129,7 +135,9 @@ export class ChatWebSocket {
     const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
 
     setTimeout(() => {
-      this.connect();
+      this.connect().catch((error) => {
+        console.error('Reconnect failed:', error);
+      });
     }, delay);
   }
 }

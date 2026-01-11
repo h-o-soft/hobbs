@@ -62,6 +62,16 @@ export interface RefreshResponse {
   expires_in: number;
 }
 
+export interface OneTimeTokenRequest {
+  purpose: 'websocket' | 'download';
+  target_id?: number;
+}
+
+export interface OneTimeTokenResponse {
+  token: string;
+  expires_at: string;
+}
+
 // Board types
 export interface Board {
   id: number;
