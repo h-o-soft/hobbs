@@ -28,6 +28,44 @@ pub struct DownloadTokenQuery {
     pub token: String,
 }
 
+/// Generate a safe Content-Disposition header value for file downloads.
+///
+/// This function sanitizes the filename to prevent header injection attacks
+/// and uses RFC 5987 encoding for non-ASCII filenames.
+///
+/// # Security
+///
+/// The function:
+/// - Removes control characters (including CR, LF which could cause header injection)
+/// - Escapes double quotes and backslashes
+/// - Uses RFC 5987 filename* parameter for proper Unicode support
+fn content_disposition_header(filename: &str) -> String {
+    // Sanitize filename for the basic filename parameter (ASCII fallback)
+    let sanitized: String = filename
+        .chars()
+        .filter(|c| !c.is_control()) // Remove control characters (CR, LF, etc.)
+        .map(|c| match c {
+            '"' => '_',  // Replace double quotes
+            '\\' => '_', // Replace backslashes
+            _ => c,
+        })
+        .collect();
+
+    // For ASCII-only filenames, use simple format
+    if filename.is_ascii() && !filename.chars().any(|c| c.is_control() || c == '"' || c == '\\') {
+        return format!("attachment; filename=\"{}\"", filename);
+    }
+
+    // Use RFC 5987 encoding for non-ASCII or special characters
+    // filename* parameter with UTF-8 encoding
+    let encoded = urlencoding::encode(filename);
+
+    format!(
+        "attachment; filename=\"{}\"; filename*=UTF-8''{}",
+        sanitized, encoded
+    )
+}
+
 /// GET /api/folders - List all accessible folders.
 #[utoipa::path(
     get,
@@ -578,7 +616,7 @@ pub async fn download_file(
         .header(header::CONTENT_TYPE, content_type)
         .header(
             header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", file.filename),
+            content_disposition_header(&file.filename),
         )
         .header(header::CONTENT_LENGTH, content.len())
         .body(Body::from(content))
@@ -687,7 +725,7 @@ pub async fn download_file_with_token(
         .header(header::CONTENT_TYPE, content_type)
         .header(
             header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", file.filename),
+            content_disposition_header(&file.filename),
         )
         .header(header::CONTENT_LENGTH, content.len())
         .body(Body::from(content))
@@ -758,4 +796,79 @@ pub async fn delete_file(
     })?;
 
     Ok(Json(ApiResponse::new(())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_content_disposition_header_simple_ascii() {
+        let result = content_disposition_header("document.txt");
+        assert_eq!(result, "attachment; filename=\"document.txt\"");
+    }
+
+    #[test]
+    fn test_content_disposition_header_with_spaces() {
+        let result = content_disposition_header("my document.txt");
+        assert_eq!(result, "attachment; filename=\"my document.txt\"");
+    }
+
+    #[test]
+    fn test_content_disposition_header_japanese() {
+        let result = content_disposition_header("日本語ファイル.txt");
+        assert!(result.starts_with("attachment; filename=\""));
+        assert!(result.contains("filename*=UTF-8''"));
+        // Check that the encoded version is present
+        assert!(result.contains("%E6%97%A5%E6%9C%AC%E8%AA%9E"));
+    }
+
+    #[test]
+    fn test_content_disposition_header_double_quote() {
+        let result = content_disposition_header("test\"file.txt");
+        // Should sanitize the quote in the fallback filename
+        assert!(result.contains("filename=\"test_file.txt\""));
+        // And encode it in filename*
+        assert!(result.contains("filename*=UTF-8''"));
+        assert!(result.contains("%22")); // URL-encoded double quote
+    }
+
+    #[test]
+    fn test_content_disposition_header_backslash() {
+        let result = content_disposition_header("test\\file.txt");
+        // Should sanitize the backslash in the fallback filename
+        assert!(result.contains("filename=\"test_file.txt\""));
+        // And encode it in filename*
+        assert!(result.contains("filename*=UTF-8''"));
+    }
+
+    #[test]
+    fn test_content_disposition_header_control_characters() {
+        // Test with carriage return and line feed (header injection attempt)
+        let result = content_disposition_header("test\r\nX-Injected: bad.txt");
+        // Control characters should be removed
+        assert!(!result.contains('\r'));
+        assert!(!result.contains('\n'));
+        // Should still produce valid output
+        assert!(result.starts_with("attachment; filename="));
+    }
+
+    #[test]
+    fn test_content_disposition_header_null_character() {
+        let result = content_disposition_header("test\x00null.txt");
+        // Null character should be removed
+        assert!(!result.contains('\x00'));
+        assert!(result.starts_with("attachment; filename="));
+    }
+
+    #[test]
+    fn test_content_disposition_header_mixed_attack() {
+        // Complex attack vector
+        let result = content_disposition_header("file\"\r\nX-Evil: header\r\n\r\n<script>.txt");
+        // Should not contain any control characters
+        assert!(!result.contains('\r'));
+        assert!(!result.contains('\n'));
+        // Should still be a valid header
+        assert!(result.starts_with("attachment; filename="));
+    }
 }
