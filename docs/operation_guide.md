@@ -815,6 +815,54 @@ RUST_LOG=debug ./hobbs
    sudo ufw allow 2323/tcp
    ```
 
+### ネットワークセキュリティ
+
+#### Telnet接続のセキュリティ
+
+Telnetは平文プロトコルのため、以下の情報が盗聴される可能性があります：
+
+- ログイン時のパスワード
+- 投稿内容
+- プライベートメッセージ
+
+**推奨される対策:**
+
+1. **ローカルネットワーク限定での使用**
+   - インターネットに直接公開しない
+   - ファイアウォールで外部アクセスをブロック
+
+2. **VPN/トンネル経由での接続**
+   - Tailscale、WireGuard等のVPNを使用
+   - SSHポートフォワーディングを使用
+
+   ```bash
+   # SSHトンネルの例
+   ssh -L 2323:localhost:2323 user@bbs-server
+   telnet localhost 2323
+   ```
+
+3. **stunnel等でのTLS終端**
+   - TLS対応のtelnetプロキシを前段に配置
+
+   ```bash
+   # stunnel設定例 (/etc/stunnel/hobbs.conf)
+   [hobbs-telnet]
+   accept = 0.0.0.0:23230
+   connect = 127.0.0.1:2323
+   cert = /etc/stunnel/hobbs.pem
+   ```
+
+#### HTTP APIのセキュリティ
+
+インターネット公開時は**必ず**リバースプロキシでHTTPSを終端してください。
+平文HTTPでの公開は認証情報（JWTトークン等）の漏洩につながります。
+
+Web UI設定セクションのnginx/Caddyの設定例を参照してください。
+
+**警告:** 以下の設定での公開は危険です：
+- `web.bind = "0.0.0.0"` でHTTPS終端なし
+- Docker Composeのポートを `0.0.0.0` にバインド
+
 ### パスワードポリシー
 
 - 最小長: 8文字
