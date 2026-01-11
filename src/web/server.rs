@@ -38,6 +38,7 @@ impl WebServer {
         db: SharedDatabase,
         files_config: Option<&FilesConfig>,
         bbs_config: Option<&BbsConfig>,
+        telnet_enabled: bool,
     ) -> Self {
         let addr = format!("{}:{}", config.host, config.port)
             .parse()
@@ -48,7 +49,8 @@ impl WebServer {
             &config.jwt_secret,
             config.jwt_access_token_expiry_secs,
             config.jwt_refresh_token_expiry_days,
-        );
+        )
+        .with_telnet_enabled(telnet_enabled);
 
         // Apply BBS config if provided
         if let Some(bbs) = bbs_config {
@@ -90,7 +92,7 @@ impl WebServer {
 
     /// Create a new web server from a raw Database.
     pub fn from_database(config: &WebConfig, db: Database) -> Self {
-        Self::new(config, Arc::new(db), None, None)
+        Self::new(config, Arc::new(db), None, None, true)
     }
 
     /// Create a new web server from a raw Database with files config.
@@ -99,7 +101,7 @@ impl WebServer {
         db: Database,
         files_config: &FilesConfig,
     ) -> Self {
-        Self::new(config, Arc::new(db), Some(files_config), None)
+        Self::new(config, Arc::new(db), Some(files_config), None, true)
     }
 
     /// Create a new web server from a raw Database with files and BBS config.
@@ -108,12 +110,14 @@ impl WebServer {
         db: Database,
         files_config: &FilesConfig,
         bbs_config: &BbsConfig,
+        telnet_enabled: bool,
     ) -> Self {
         Self::new(
             config,
             Arc::new(db),
             Some(files_config),
             Some(bbs_config),
+            telnet_enabled,
         )
     }
 

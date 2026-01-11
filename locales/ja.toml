@@ -71,6 +71,7 @@ account_disabled = "This account has been disabled."
 
 [register]
 title = "=== 新規登録 ==="
+password_warning = "【警告】Telnet接続ではパスワードは暗号化されません。他のサービスと同じパスワードは絶対に使用しないでください。"
 username = "ユーザーID"
 password = "パスワード"
 confirm_password = "パスワード（確認）"

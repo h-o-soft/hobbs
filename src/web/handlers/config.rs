@@ -17,6 +17,8 @@ pub struct SiteConfigResponse {
     pub description: String,
     /// SysOp name.
     pub sysop_name: String,
+    /// Whether Telnet server is enabled.
+    pub telnet_enabled: bool,
 }
 
 /// Get public site configuration.
@@ -38,6 +40,7 @@ pub async fn get_public_config(
         name: state.bbs_name.clone(),
         description: state.bbs_description.clone(),
         sysop_name: state.sysop_name.clone(),
+        telnet_enabled: state.telnet_enabled,
     };
     Json(ApiResponse::new(config))
 }
@@ -52,8 +55,10 @@ mod tests {
             name: "Test BBS".to_string(),
             description: "A test BBS".to_string(),
             sysop_name: "Admin".to_string(),
+            telnet_enabled: true,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("Test BBS"));
+        assert!(json.contains("telnet_enabled"));
     }
 }

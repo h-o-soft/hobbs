@@ -396,6 +396,7 @@ impl TestServer {
 
         // Bind server to a random port first to get the address
         let server_config = ServerConfig {
+            enabled: true,
             host: "127.0.0.1".to_string(),
             port: 0, // Let OS assign a port
             max_connections: 10,
@@ -531,6 +532,7 @@ impl Drop for TestServer {
 pub fn test_config() -> Config {
     Config {
         server: ServerConfig {
+            enabled: true,
             host: "127.0.0.1".to_string(),
             port: 0,
             max_connections: 10,

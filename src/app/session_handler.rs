@@ -574,6 +574,12 @@ Select language / Gengo sentaku:
         self.send_line(session, self.i18n.t("register.title"))
             .await?;
 
+        // Show password warning for Telnet connections
+        self.send_line(session, "").await?;
+        self.send_line(session, self.i18n.t("register.password_warning"))
+            .await?;
+        self.send_line(session, "").await?;
+
         // Get username
         self.send(session, &format!("{}: ", self.i18n.t("register.username")))
             .await?;
