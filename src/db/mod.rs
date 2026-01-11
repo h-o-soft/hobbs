@@ -14,7 +14,7 @@ mod repository;
 mod user;
 
 pub use one_time_token::{NewOneTimeToken, OneTimeToken, OneTimeTokenRepository, TokenPurpose};
-pub use refresh_token::{NewRefreshToken, RefreshToken, RefreshTokenRepository};
+pub use refresh_token::{hash_token, NewRefreshToken, RefreshToken, RefreshTokenRepository};
 pub use repository::UserRepository;
 pub use user::{NewUser, Role, User, UserUpdate};
 
@@ -508,7 +508,7 @@ mod tests {
 
         // Check that migrations were applied
         let version = db.schema_version().await.unwrap();
-        assert_eq!(version as usize, 23); // 23 migrations
+        assert_eq!(version as usize, 24); // 24 migrations
     }
 
     #[tokio::test]
@@ -640,7 +640,7 @@ mod tests {
             let db = Database::open(&db_path).await.unwrap();
             assert!(db.table_exists("users").await.unwrap());
             // Migrations should not be reapplied
-            assert_eq!(db.schema_version().await.unwrap(), 23);
+            assert_eq!(db.schema_version().await.unwrap(), 24);
             db.close().await;
         }
 

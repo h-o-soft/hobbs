@@ -8,8 +8,8 @@ use utoipa;
 use crate::chat::ChatRoomManager;
 use crate::datetime::to_rfc3339;
 use crate::db::{
-    NewOneTimeToken, NewRefreshToken, NewUser, OneTimeTokenRepository, RefreshTokenRepository,
-    TokenPurpose, UserRepository,
+    hash_token, NewOneTimeToken, NewRefreshToken, NewUser, OneTimeTokenRepository,
+    RefreshTokenRepository, TokenPurpose, UserRepository,
 };
 use crate::file::FileStorage;
 use crate::mail::MailRepository;
@@ -168,13 +168,13 @@ pub async fn login(
     let access_token = state.generate_access_token(user.id, &user.username, &user.role)?;
     let refresh_token = state.generate_refresh_token();
 
-    // Store refresh token in database
+    // Store refresh token in database (hashed)
     let token_repo = RefreshTokenRepository::new(state.db.pool());
     let expires_at =
         chrono::Utc::now() + chrono::Duration::days(state.refresh_token_expiry as i64);
     let new_token = NewRefreshToken {
         user_id: user.id,
-        token: refresh_token.clone(),
+        token_hash: hash_token(&refresh_token),
         expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
     };
     token_repo.create(&new_token).await.map_err(|e| {
@@ -266,12 +266,12 @@ pub async fn refresh(
     let access_token = state.generate_access_token(user.id, &user.username, &user.role)?;
     let new_refresh_token = state.generate_refresh_token();
 
-    // Store new refresh token
+    // Store new refresh token (hashed)
     let expires_at =
         chrono::Utc::now() + chrono::Duration::days(state.refresh_token_expiry as i64);
     let new_token = NewRefreshToken {
         user_id: user.id,
-        token: new_refresh_token.clone(),
+        token_hash: hash_token(&new_refresh_token),
         expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
     };
     token_repo.create(&new_token).await.map_err(|e| {
@@ -355,13 +355,13 @@ pub async fn register(
     let access_token = state.generate_access_token(user.id, &user.username, &user.role)?;
     let refresh_token = state.generate_refresh_token();
 
-    // Store refresh token in database
+    // Store refresh token in database (hashed)
     let token_repo = RefreshTokenRepository::new(state.db.pool());
     let expires_at =
         chrono::Utc::now() + chrono::Duration::days(state.refresh_token_expiry as i64);
     let new_token = NewRefreshToken {
         user_id: user.id,
-        token: refresh_token.clone(),
+        token_hash: hash_token(&refresh_token),
         expires_at: expires_at.format("%Y-%m-%d %H:%M:%S").to_string(),
     };
     token_repo.create(&new_token).await.map_err(|e| {
