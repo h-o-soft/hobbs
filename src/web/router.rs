@@ -49,6 +49,7 @@ use super::handlers::{
     delete_mail,
     delete_post,
     download_file,
+    download_file_with_token,
     get_board,
     get_feed,
     get_file,
@@ -78,6 +79,7 @@ use super::handlers::{
     logout,
     mark_as_read,
     me,
+    one_time_token,
     refresh,
     register,
     send_mail,
@@ -128,7 +130,9 @@ pub fn create_router(
         .route("/register", post(register));
 
     // Auth routes (authentication required)
-    let auth_protected_routes = Router::new().route("/me", get(me));
+    let auth_protected_routes = Router::new()
+        .route("/me", get(me))
+        .route("/one-time-token", post(one_time_token));
 
     // Combine auth routes
     let auth_routes = Router::new()
@@ -197,7 +201,8 @@ pub fn create_router(
     let file_routes = Router::new()
         .route("/:id", get(get_file))
         .route("/:id", delete(delete_file))
-        .route("/:id/download", get(download_file));
+        .route("/:id/download", get(download_file))
+        .route("/:id/download-with-token", get(download_file_with_token));
 
     // Admin routes
     let admin_user_routes = Router::new()
@@ -227,7 +232,8 @@ pub fn create_router(
 
     // Chat WebSocket routes (if chat manager is provided)
     let chat_routes = if let Some(ref manager) = chat_manager {
-        let chat_ws_state = Arc::new(ChatWsState::new(jwt_state.clone(), manager.clone()));
+        let db_pool = app_state.db.pool().clone();
+        let chat_ws_state = Arc::new(ChatWsState::new(db_pool, manager.clone()));
         Router::new()
             .route("/ws", get(chat_ws_handler))
             .with_state(chat_ws_state)
