@@ -1,4 +1,4 @@
-# HOBBS 日本語リソースファイル
+# Beryl BBS 日本語リソースファイル
 
 [common]
 yes = "はい"
@@ -36,8 +36,8 @@ input_cancelled = "入力を中止しました"
 too_many_lines = "行数が多すぎます（{{max}}行以内）"
 
 [system]
-name = "HOBBS"
-welcome = "HOBBSへようこそ！"
+name = "Beryl BBS"
+welcome = "Beryl BBSへようこそ！"
 goodbye = "ご利用ありがとうございました。またのお越しをお待ちしております。"
 version = "バージョン"
 copyright = "Powered by HOBBS"

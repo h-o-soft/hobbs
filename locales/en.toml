@@ -1,4 +1,4 @@
-# HOBBS English Resource File
+# Beryl BBS English Resource File
 
 [common]
 yes = "Yes"
@@ -36,8 +36,8 @@ input_cancelled = "Input cancelled"
 too_many_lines = "Too many lines (max {{max}})"
 
 [system]
-name = "HOBBS"
-welcome = "Welcome to HOBBS!"
+name = "Beryl BBS"
+welcome = "Welcome to Beryl BBS!"
 goodbye = "Thank you for visiting. See you again!"
 version = "Version"
 copyright = "Powered by HOBBS"
