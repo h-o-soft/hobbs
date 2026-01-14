@@ -2,12 +2,14 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::net::TcpListener;
 use tower_http::compression::CompressionLayer;
 
 use crate::chat::ChatRoomManager;
 use crate::config::{BbsConfig, FilesConfig, WebConfig};
+use crate::db::{OneTimeTokenRepository, RefreshTokenRepository};
 use crate::file::FileStorage;
 use crate::Database;
 
@@ -126,8 +128,69 @@ impl WebServer {
         self.addr
     }
 
+    /// Start the token cleanup background task.
+    ///
+    /// This task runs every hour and removes:
+    /// - Expired and revoked refresh tokens
+    /// - Expired and used one-time tokens
+    fn start_token_cleanup_task(db: SharedDatabase) {
+        tokio::spawn(async move {
+            // Token cleanup interval: 1 hour
+            const CLEANUP_INTERVAL_SECS: u64 = 3600;
+
+            let mut interval = tokio::time::interval(Duration::from_secs(CLEANUP_INTERVAL_SECS));
+
+            // Skip the first immediate tick
+            interval.tick().await;
+
+            loop {
+                interval.tick().await;
+
+                // Cleanup refresh tokens
+                let refresh_repo = RefreshTokenRepository::new(db.pool());
+                match refresh_repo.cleanup_expired().await {
+                    Ok(count) => {
+                        if count > 0 {
+                            tracing::info!(
+                                deleted_count = count,
+                                "Cleaned up expired/revoked refresh tokens"
+                            );
+                        } else {
+                            tracing::debug!("No expired refresh tokens to clean up");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to cleanup refresh tokens");
+                    }
+                }
+
+                // Cleanup one-time tokens
+                let ott_repo = OneTimeTokenRepository::new(db.pool());
+                match ott_repo.cleanup().await {
+                    Ok(count) => {
+                        if count > 0 {
+                            tracing::info!(
+                                deleted_count = count,
+                                "Cleaned up expired/used one-time tokens"
+                            );
+                        } else {
+                            tracing::debug!("No expired one-time tokens to clean up");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to cleanup one-time tokens");
+                    }
+                }
+            }
+        });
+    }
+
     /// Run the web server.
     pub async fn run(self) -> Result<(), std::io::Error> {
+        // Start token cleanup background task
+        Self::start_token_cleanup_task(self.app_state.db.clone());
+        tracing::info!("Token cleanup task started (runs every hour)");
+
         let mut router = create_router(
             self.app_state,
             self.jwt_state,
@@ -159,6 +222,10 @@ impl WebServer {
     ///
     /// This is useful for testing when binding to port 0.
     pub async fn run_with_addr(self) -> Result<SocketAddr, std::io::Error> {
+        // Start token cleanup background task
+        Self::start_token_cleanup_task(self.app_state.db.clone());
+        tracing::info!("Token cleanup task started (runs every hour)");
+
         let mut router = create_router(
             self.app_state,
             self.jwt_state,
