@@ -816,9 +816,42 @@ CREATE INDEX idx_refresh_tokens_hash ON refresh_tokens(token_hash);
 
 ### 6.1 接続
 
+WebSocket接続には、セキュリティのためワンタイムトークンを使用します。
+
+#### 接続フロー
+
+1. **ワンタイムトークンを取得**
+
+```http
+POST /api/auth/one-time-token
+Authorization: Bearer {access_token}
+Content-Type: application/json
+
+{
+  "purpose": "websocket"
+}
 ```
-ws://{host}:{port}/api/chat/ws?token={access_token}
+
+**レスポンス:**
+```json
+{
+  "data": {
+    "token": "abc123...",
+    "expires_at": "2024-12-01T12:00:30Z"
+  }
+}
 ```
+
+2. **WebSocketに接続（30秒以内）**
+
+```
+ws://{host}:{port}/api/chat/ws?token={one_time_token}
+```
+
+**注意事項:**
+- ワンタイムトークンは1回限り有効
+- 有効期限は30秒
+- 期限切れまたは使用済みのトークンでは接続できない
 
 ### 6.2 メッセージ形式
 
