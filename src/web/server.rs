@@ -187,9 +187,8 @@ impl WebServer {
 
     /// Run the web server.
     pub async fn run(self) -> Result<(), std::io::Error> {
-        // Start token cleanup background task
-        Self::start_token_cleanup_task(self.app_state.db.clone());
-        tracing::info!("Token cleanup task started (runs every hour)");
+        // Clone db reference before moving app_state to router
+        let db = self.app_state.db.clone();
 
         let mut router = create_router(
             self.app_state,
@@ -212,6 +211,10 @@ impl WebServer {
 
         let listener = TcpListener::bind(self.addr).await?;
         let local_addr = listener.local_addr()?;
+
+        // Start token cleanup background task after successful bind
+        Self::start_token_cleanup_task(db);
+        tracing::info!("Token cleanup task started (runs every hour)");
 
         tracing::info!("Web server listening on http://{}", local_addr);
 
@@ -222,9 +225,8 @@ impl WebServer {
     ///
     /// This is useful for testing when binding to port 0.
     pub async fn run_with_addr(self) -> Result<SocketAddr, std::io::Error> {
-        // Start token cleanup background task
-        Self::start_token_cleanup_task(self.app_state.db.clone());
-        tracing::info!("Token cleanup task started (runs every hour)");
+        // Clone db reference before moving app_state to router
+        let db = self.app_state.db.clone();
 
         let mut router = create_router(
             self.app_state,
@@ -247,6 +249,10 @@ impl WebServer {
 
         let listener = TcpListener::bind(self.addr).await?;
         let local_addr = listener.local_addr()?;
+
+        // Start token cleanup background task after successful bind
+        Self::start_token_cleanup_task(db);
+        tracing::info!("Token cleanup task started (runs every hour)");
 
         tracing::info!("Web server listening on http://{}", local_addr);
 
