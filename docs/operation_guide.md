@@ -396,7 +396,8 @@ port = 8080
 # CORS許可オリジン（開発環境用）
 cors_origins = ["http://localhost:5173"]
 
-# JWT秘密鍵（必須、環境変数で上書き可能）
+# JWT秘密鍵（必須、最小32文字、環境変数で上書き可能）
+# 生成例: openssl rand -base64 32
 jwt_secret = ""
 
 # アクセストークンの有効期限（秒）
@@ -424,7 +425,17 @@ api_rate_limit = 100
 
 | 環境変数 | 説明 |
 |----------|------|
-| `HOBBS_JWT_SECRET` | JWT秘密鍵（本番環境では必須） |
+| `HOBBS_JWT_SECRET` | JWT秘密鍵（本番環境では必須、最小32文字） |
+
+**JWT秘密鍵の生成方法:**
+
+```bash
+# Linux/macOS
+openssl rand -base64 32
+
+# または
+head -c 32 /dev/urandom | base64
+```
 
 ### 本番環境での設定
 
