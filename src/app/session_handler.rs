@@ -496,6 +496,12 @@ Select language / Gengo sentaku:
                 if verify_password(&password, &user.password).is_ok() {
                     // Check if user is active
                     if !user.is_active {
+                        warn!(
+                            username = %username,
+                            user_id = user.id,
+                            ip = %peer_addr,
+                            "Telnet login failed: account disabled"
+                        );
                         self.send_line(session, self.i18n.t("login.account_disabled"))
                             .await?;
                         return Ok(false);
@@ -510,6 +516,8 @@ Select language / Gengo sentaku:
                     self.line_buffer.set_encoding(user.encoding);
 
                     // Save user settings for later application
+                    let user_id = user.id;
+                    let user_role = user.role;
                     let user_language = user.language.clone();
                     let user_terminal = user.terminal.clone();
                     let user_name = user.username.clone();
@@ -546,8 +554,22 @@ Select language / Gengo sentaku:
                         .await?;
                     }
 
+                    info!(
+                        username = %user_name,
+                        user_id = user_id,
+                        role = ?user_role,
+                        ip = %peer_addr,
+                        "Telnet login successful"
+                    );
+
                     Ok(true)
                 } else {
+                    warn!(
+                        username = %username,
+                        user_id = user.id,
+                        ip = %peer_addr,
+                        "Telnet login failed: invalid password"
+                    );
                     self.login_limiter.record_failure(&peer_addr);
                     self.send_line(session, self.i18n.t("login.invalid_credentials"))
                         .await?;
@@ -555,6 +577,11 @@ Select language / Gengo sentaku:
                 }
             }
             Ok(None) => {
+                warn!(
+                    username = %username,
+                    ip = %peer_addr,
+                    "Telnet login failed: user not found"
+                );
                 self.login_limiter.record_failure(&peer_addr);
                 self.send_line(session, self.i18n.t("login.invalid_credentials"))
                     .await?;
