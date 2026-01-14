@@ -9,6 +9,7 @@
 //! - Suspend/activate account (SubOp can suspend Member, SysOp can suspend anyone)
 
 use rand::Rng;
+use tracing::info;
 
 use crate::auth::hash_password;
 use crate::board::PaginatedResult;
@@ -292,6 +293,8 @@ impl<'a> UserAdminService<'a> {
             .await?
             .ok_or_else(|| AdminError::NotFound("ユーザー".to_string()))?;
 
+        let old_role = target.role;
+
         // Use AdminService for full validation
         let admin_service = AdminService::new(self.db);
         admin_service
@@ -303,6 +306,16 @@ impl<'a> UserAdminService<'a> {
             .update(user_id, &update)
             .await?
             .ok_or_else(|| AdminError::NotFound("ユーザー".to_string()))?;
+
+        info!(
+            target_user_id = user_id,
+            target_username = %target.username,
+            old_role = ?old_role,
+            new_role = ?new_role,
+            changed_by_id = admin.id,
+            changed_by_username = %admin.username,
+            "User role changed"
+        );
 
         Ok(updated)
     }
