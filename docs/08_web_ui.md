@@ -837,7 +837,8 @@ Content-Type: application/json
 {
   "data": {
     "token": "abc123...",
-    "expires_at": "2024-12-01T12:00:30Z"
+    "purpose": "websocket",
+    "expires_in": 30
   }
 }
 ```
