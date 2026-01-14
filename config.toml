@@ -76,7 +76,11 @@ host = "0.0.0.0"
 port = 8080
 # CORS allowed origins (for development)
 cors_origins = ["http://localhost:5173"]
-# JWT secret key (MUST be set if enabled - use a secure random string)
+# JWT secret key (MUST be set if enabled)
+# Requirements:
+#   - Minimum 32 characters for security (256 bits)
+#   - Use a cryptographically secure random string
+# Generate with: openssl rand -base64 32
 jwt_secret = ""
 # Access token expiry in seconds (default: 900 = 15 minutes)
 jwt_access_token_expiry_secs = 900
