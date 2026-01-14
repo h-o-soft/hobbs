@@ -158,18 +158,41 @@ pub async fn login(
 
     // Get user from database
     let repo = UserRepository::new(state.db.pool());
-    let user = repo
-        .get_by_username(&req.username)
-        .await
-        .map_err(|_| ApiError::invalid_credentials())?
-        .ok_or_else(|| ApiError::invalid_credentials())?;
+    let user = match repo.get_by_username(&req.username).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            tracing::warn!(
+                username = %req.username,
+                "Web API login failed: user not found"
+            );
+            return Err(ApiError::invalid_credentials());
+        }
+        Err(_) => {
+            tracing::warn!(
+                username = %req.username,
+                "Web API login failed: database error"
+            );
+            return Err(ApiError::invalid_credentials());
+        }
+    };
 
     // Verify password
-    crate::verify_password(&req.password, &user.password)
-        .map_err(|_| ApiError::invalid_credentials())?;
+    if crate::verify_password(&req.password, &user.password).is_err() {
+        tracing::warn!(
+            username = %req.username,
+            user_id = user.id,
+            "Web API login failed: invalid password"
+        );
+        return Err(ApiError::invalid_credentials());
+    }
 
     // Check if user is active
     if !user.is_active {
+        tracing::warn!(
+            username = %req.username,
+            user_id = user.id,
+            "Web API login failed: account disabled"
+        );
         return Err(ApiError::account_disabled());
     }
 
@@ -194,6 +217,13 @@ pub async fn login(
     // Update last login time
     let user_repo = UserRepository::new(state.db.pool());
     let _ = user_repo.update_last_login(user.id).await;
+
+    tracing::info!(
+        username = %user.username,
+        user_id = user.id,
+        role = ?user.role,
+        "Web API login successful"
+    );
 
     let response = LoginResponse {
         access_token,
