@@ -1,19 +1,26 @@
-========================================
-{{t "file.library"}}{{#if current_folder}} > {{current_folder.name}}{{/if}}
-========================================
 
-No. {{t "file.filename"}}      {{t "file.size"}} DL
-----------------------------------------
-{{#each files}}
-{{@index}}  {{name}}       {{size}} {{download_count}}
-{{/each}}
+=== {{folder_name}} ===
 
-{{t "file.folders"}}:
+{{#if has_folders}}
+{{t "file.folder_list"}}:
 {{#each folders}}
- [{{key}}] {{name}}
+  [{{letter}}] {{name}}
 {{/each}}
 
-----------------------------------------
-[{{t "common.number"}}]DL [U]UP [Q]{{t "common.back"}}
-----------------------------------------
-{{t "menu.select_prompt"}}
+{{/if}}
+{{#if has_files}}
+{{t "file.file_list"}}:
+  {{t "common.number"}} {{t "file.filename"}}    {{t "file.size"}} {{t "file.download_count"}}
+--------------------------------------
+{{#each files}}
+  {{pad number 3}} {{pad filename 14}} {{pad size 8}} {{pad downloads 4}}
+{{/each}}
+{{else}}
+{{#unless has_folders}}
+{{t "file.no_files"}}
+{{/unless}}
+{{/if}}
+{{#if page_info}}
+
+{{page_info}}
+{{/if}}

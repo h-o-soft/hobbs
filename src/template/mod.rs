@@ -43,6 +43,38 @@ pub use loader::{create_system_context, TemplateLoader, WIDTH_40, WIDTH_80};
 pub use parser::{Node, Parser};
 pub use renderer::Renderer;
 
+/// Calculate the display width of a string considering CJK character width.
+pub fn display_width(s: &str, cjk_width: usize) -> usize {
+    if cjk_width == 1 {
+        s.chars().count()
+    } else {
+        s.chars().map(|c| if c.is_ascii() { 1 } else { 2 }).sum()
+    }
+}
+
+/// Truncate a string to fit within the specified display width.
+pub fn truncate_to_width(s: &str, max_width: usize, cjk_width: usize) -> String {
+    let mut result = String::new();
+    let mut current_width = 0;
+
+    for c in s.chars() {
+        let char_width = if cjk_width == 1 || c.is_ascii() {
+            1
+        } else {
+            2
+        };
+
+        if current_width + char_width > max_width {
+            break;
+        }
+
+        result.push(c);
+        current_width += char_width;
+    }
+
+    result
+}
+
 /// Template-related errors.
 #[derive(Error, Debug)]
 pub enum TemplateError {
@@ -202,6 +234,8 @@ pub struct TemplateContext {
     variables: HashMap<String, Value>,
     /// Internationalization instance.
     i18n: Arc<I18n>,
+    /// CJK character width (1 or 2). Used by {{pad}} helper.
+    cjk_width: usize,
 }
 
 impl TemplateContext {
@@ -210,7 +244,18 @@ impl TemplateContext {
         Self {
             variables: HashMap::new(),
             i18n,
+            cjk_width: 2,
         }
+    }
+
+    /// Set the CJK character width (1 or 2).
+    pub fn set_cjk_width(&mut self, width: usize) {
+        self.cjk_width = width;
+    }
+
+    /// Get the CJK character width.
+    pub fn cjk_width(&self) -> usize {
+        self.cjk_width
     }
 
     /// Set a variable in the context.
@@ -260,6 +305,7 @@ impl TemplateContext {
         Self {
             variables: self.variables.clone(),
             i18n: Arc::clone(&self.i18n),
+            cjk_width: self.cjk_width,
         }
     }
 }

@@ -1,14 +1,20 @@
-========================================
-  {{t "board.list"}}        {{t "board.unread"}}:{{total_unread}}
-========================================
 
-No. {{t "board.name"}}        {{t "board.post_count"}} {{t "board.unread"}}
-----------------------------------------
+=== {{t "board.list"}} ===
+
+{{#if has_boards}}
+{{#if logged_in}}
+  {{pad "common.number" 3}} {{pad "board.title" 26}} {{pad "board.replies" 3}} {{t "board.unread"}}
+---------------------------------------
 {{#each boards}}
-{{@index}}  {{name}}          {{post_count}}  {{unread}}{{#if has_unread}}*{{/if}}
+  {{pad number 3}} {{pad name 25}} {{pad count 5}} {{unread_display}}
 {{/each}}
-
-----------------------------------------
-[{{t "common.number"}}]{{t "board.open"}} [U]{{t "board.unread"}} [A]{{t "board.mark_read"}} [Q]{{t "common.back"}}
-----------------------------------------
-{{t "menu.select_prompt"}}
+{{else}}
+  {{t "common.number"}} {{t "board.title"}}      {{t "board.replies"}}
+------------------------------
+{{#each boards}}
+  {{pad number 3}} {{pad name 16}} {{pad count 5}}
+{{/each}}
+{{/if}}
+{{else}}
+{{t "board.no_boards"}}
+{{/if}}

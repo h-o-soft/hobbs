@@ -13,6 +13,7 @@ use crate::db::{Role, UserRepository};
 use crate::error::Result;
 use crate::rate_limit::RateLimitResult;
 use crate::server::{convert_caret_escape, TelnetSession};
+use crate::template::Value;
 
 /// Board screen handler.
 pub struct BoardScreen;
@@ -42,83 +43,43 @@ impl BoardScreen {
                     std::collections::HashMap::new()
                 };
 
-            // Display board list
-            ctx.send_line(session, "").await?;
-            ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("board.list")))
-                .await?;
-            ctx.send_line(session, "").await?;
+            // Display board list using template
+            let logged_in = session.user_id().is_some();
+            let mut context = ctx.create_context();
+            context.set("logged_in", Value::bool(logged_in));
+            context.set("has_boards", Value::bool(!boards.is_empty()));
 
-            if boards.is_empty() {
-                ctx.send_line(session, ctx.i18n.t("board.no_boards"))
-                    .await?;
-            } else {
-                // Show header with unread column for logged-in users
-                if session.user_id().is_some() {
-                    ctx.send_line(
-                        session,
-                        &format!(
-                            "  {:<4} {:<20} {:>6} {:>8}",
-                            ctx.i18n.t("common.number"),
-                            ctx.i18n.t("board.title"),
-                            ctx.i18n.t("board.replies"),
-                            ctx.i18n.t("board.unread")
-                        ),
-                    )
-                    .await?;
-                    ctx.send_line(session, &"-".repeat(48)).await?;
+            let mut board_list = Vec::new();
+            for (i, board) in boards.iter().enumerate() {
+                let count = if board.board_type == BoardType::Thread {
+                    let thread_repo = ThreadRepository::new(ctx.db.pool());
+                    thread_repo.count_by_board(board.id).await?
                 } else {
-                    ctx.send_line(
-                        session,
-                        &format!(
-                            "  {:<4} {:<20} {:>8}",
-                            ctx.i18n.t("common.number"),
-                            ctx.i18n.t("board.title"),
-                            ctx.i18n.t("board.replies")
-                        ),
-                    )
-                    .await?;
-                    ctx.send_line(session, &"-".repeat(40)).await?;
-                }
+                    let post_repo = PostRepository::new(ctx.db.pool());
+                    post_repo.count_by_flat_board(board.id).await?
+                };
 
-                for (i, board) in boards.iter().enumerate() {
-                    let count = if board.board_type == BoardType::Thread {
-                        let thread_repo = ThreadRepository::new(ctx.db.pool());
-                        thread_repo.count_by_board(board.id).await?
+                let mut entry = std::collections::HashMap::new();
+                entry.insert("number".to_string(), Value::string((i + 1).to_string()));
+                entry.insert("name".to_string(), Value::string(&board.name));
+                entry.insert("count".to_string(), Value::string(count.to_string()));
+
+                if logged_in {
+                    let unread = unread_counts.get(&board.id).copied().unwrap_or(0);
+                    let unread_display = if unread > 0 {
+                        format!("[{}]", unread)
                     } else {
-                        let post_repo = PostRepository::new(ctx.db.pool());
-                        post_repo.count_by_flat_board(board.id).await?
+                        String::new()
                     };
-
-                    // Show unread count for logged-in users
-                    if session.user_id().is_some() {
-                        let unread = unread_counts.get(&board.id).copied().unwrap_or(0);
-                        let unread_display = if unread > 0 {
-                            format!("[{}]", unread)
-                        } else {
-                            String::new()
-                        };
-                        ctx.send_line(
-                            session,
-                            &format!(
-                                "  {:<4} {:<20} {:>6} {:>8}",
-                                i + 1,
-                                board.name,
-                                count,
-                                unread_display
-                            ),
-                        )
-                        .await?;
-                    } else {
-                        ctx.send_line(
-                            session,
-                            &format!("  {:<4} {:<20} {:>8}", i + 1, board.name, count),
-                        )
-                        .await?;
-                    }
+                    entry.insert("unread_display".to_string(), Value::string(unread_display));
                 }
-            }
 
-            ctx.send_line(session, "").await?;
+                board_list.push(Value::Object(entry));
+            }
+            context.set("boards", Value::List(board_list));
+
+            let content = ctx.render_template("board/list", &context)?;
+            ctx.send(session, &content).await?;
 
             // Prompt - show [U] option only for logged-in users
             if session.user_id().is_some() {
@@ -199,19 +160,12 @@ impl BoardScreen {
 
             pagination.total = result.total as usize;
 
-            // Display thread list
-            ctx.send_line(session, "").await?;
-            ctx.send_line(
-                session,
-                &format!("=== {}: {} ===", ctx.i18n.t("board.list"), board.name),
-            )
-            .await?;
-            ctx.send_line(session, "").await?;
+            // Display thread list using template
+            let mut context = ctx.create_context();
+            context.set("board_name", Value::string(board.name.clone()));
+            context.set("has_threads", Value::bool(!result.items.is_empty()));
 
-            if result.items.is_empty() {
-                ctx.send_line(session, ctx.i18n.t("board.no_threads"))
-                    .await?;
-            } else {
+            if !result.items.is_empty() {
                 // Get unread thread IDs for logged-in users
                 let unread_thread_ids = if let Some(user_id) = session.user_id() {
                     let thread_ids: Vec<i64> = result.items.iter().map(|t| t.id).collect();
@@ -221,58 +175,39 @@ impl BoardScreen {
                     std::collections::HashSet::new()
                 };
 
-                ctx.send_line(
-                    session,
-                    &format!(
-                        "  {:<4} {:<30} {:>6}",
-                        ctx.i18n.t("common.number"),
-                        ctx.i18n.t("board.title"),
-                        ctx.i18n.t("board.replies")
-                    ),
-                )
-                .await?;
-                ctx.send_line(session, &"-".repeat(50)).await?;
-
+                let mut thread_list = Vec::new();
                 for (i, thread) in result.items.iter().enumerate() {
                     let num = pagination.offset() + i + 1;
-                    let title = if thread.title.chars().count() > 28 {
-                        let truncated: String = thread.title.chars().take(25).collect();
-                        format!("{}...", truncated)
-                    } else {
-                        thread.title.clone()
-                    };
 
-                    // Show * mark for unread threads
                     let unread_mark = if unread_thread_ids.contains(&thread.id) {
                         "*"
                     } else {
                         " "
                     };
 
-                    ctx.send_line(
-                        session,
-                        &format!(
-                            "{} {:<4} {:<30} {:>6}",
-                            unread_mark, num, title, thread.post_count
-                        ),
-                    )
-                    .await?;
+                    let mut entry = std::collections::HashMap::new();
+                    entry.insert("unread_mark".to_string(), Value::string(unread_mark));
+                    entry.insert("number".to_string(), Value::string(num.to_string()));
+                    entry.insert("title".to_string(), Value::string(&thread.title));
+                    entry.insert("post_count".to_string(), Value::string(thread.post_count.to_string()));
+                    thread_list.push(Value::Object(entry));
                 }
+                context.set("threads", Value::List(thread_list));
             }
 
-            // Show pagination
-            ctx.send_line(session, "").await?;
-            ctx.send_line(
-                session,
-                &ctx.i18n.t_with(
+            context.set(
+                "page_info",
+                Value::string(ctx.i18n.t_with(
                     "board.page_of",
                     &[
                         ("current", &pagination.page.to_string()),
                         ("total", &pagination.total_pages().to_string()),
                     ],
-                ),
-            )
-            .await?;
+                ).to_string()),
+            );
+
+            let content = ctx.render_template("board/thread_list", &context)?;
+            ctx.send(session, &content).await?;
 
             // Prompt - show [U] and [A] options only for logged-in users
             if session.user_id().is_some() {
@@ -371,18 +306,12 @@ impl BoardScreen {
 
             pagination.total = result.total as usize;
 
-            // Display post list
-            ctx.send_line(session, "").await?;
-            ctx.send_line(
-                session,
-                &format!("=== {}: {} ===", ctx.i18n.t("board.list"), board.name),
-            )
-            .await?;
-            ctx.send_line(session, "").await?;
+            // Display post list using template
+            let mut context = ctx.create_context();
+            context.set("board_name", Value::string(board.name.clone()));
+            context.set("has_posts", Value::bool(!result.items.is_empty()));
 
-            if result.items.is_empty() {
-                ctx.send_line(session, ctx.i18n.t("board.no_posts")).await?;
-            } else {
+            if !result.items.is_empty() {
                 // Get last read post ID for logged-in users
                 let last_read_post_id = if let Some(user_id) = session.user_id() {
                     let unread_repo = UnreadRepository::new(ctx.db.pool());
@@ -391,63 +320,46 @@ impl BoardScreen {
                     i64::MAX // For guests, mark nothing as unread
                 };
 
-                ctx.send_line(
-                    session,
-                    &format!(
-                        "  {:<4} {:<30} {:<10}",
-                        ctx.i18n.t("common.number"),
-                        ctx.i18n.t("board.title"),
-                        ctx.i18n.t("board.author")
-                    ),
-                )
-                .await?;
-                ctx.send_line(session, &"-".repeat(50)).await?;
-
                 let user_repo = UserRepository::new(ctx.db.pool());
+                let mut post_list = Vec::new();
                 for (i, post) in result.items.iter().enumerate() {
-                    // Number in descending order: oldest post = 1, newest = total
                     let num = result.total as usize - pagination.offset() - i;
                     let title = post.title.as_deref().unwrap_or("(no title)");
-                    let title = if title.chars().count() > 28 {
-                        let truncated: String = title.chars().take(25).collect();
-                        format!("{}...", truncated)
-                    } else {
-                        title.to_string()
-                    };
                     let author = user_repo
                         .get_by_id(post.author_id)
                         .await?
                         .map(|u| u.nickname)
                         .unwrap_or_else(|| "Unknown".to_string());
 
-                    // Show * mark for unread posts
                     let unread_mark = if post.id > last_read_post_id {
                         "*"
                     } else {
                         " "
                     };
 
-                    ctx.send_line(
-                        session,
-                        &format!("{} {:<4} {:<30} {:<10}", unread_mark, num, title, author),
-                    )
-                    .await?;
+                    let mut entry = std::collections::HashMap::new();
+                    entry.insert("unread_mark".to_string(), Value::string(unread_mark));
+                    entry.insert("number".to_string(), Value::string(num.to_string()));
+                    entry.insert("title".to_string(), Value::string(title));
+                    entry.insert("author".to_string(), Value::string(author));
+                    post_list.push(Value::Object(entry));
                 }
+                context.set("posts", Value::List(post_list));
             }
 
-            // Show pagination
-            ctx.send_line(session, "").await?;
-            ctx.send_line(
-                session,
-                &ctx.i18n.t_with(
+            context.set(
+                "page_info",
+                Value::string(ctx.i18n.t_with(
                     "board.page_of",
                     &[
                         ("current", &pagination.page.to_string()),
                         ("total", &pagination.total_pages().to_string()),
                     ],
-                ),
-            )
-            .await?;
+                ).to_string()),
+            );
+
+            let content = ctx.render_template("board/flat_list", &context)?;
+            ctx.send(session, &content).await?;
 
             // Prompt - show [U] and [A] options only for logged-in users
             if session.user_id().is_some() {
@@ -547,16 +459,14 @@ impl BoardScreen {
 
             pagination.total = result.total as usize;
 
-            // Display thread
-            ctx.send_line(session, "").await?;
-            ctx.send_line(session, &format!("=== {} ===", thread.title))
-                .await?;
-            ctx.send_line(session, "").await?;
+            // Display thread using template
+            let mut context = ctx.create_context();
+            context.set("thread_title", Value::string(thread.title.clone()));
+            context.set("has_posts", Value::bool(!result.items.is_empty()));
 
-            if result.items.is_empty() {
-                ctx.send_line(session, ctx.i18n.t("board.no_posts")).await?;
-            } else {
+            if !result.items.is_empty() {
                 let user_repo = UserRepository::new(ctx.db.pool());
+                let mut post_list = Vec::new();
                 for post in &result.items {
                     let author = user_repo
                         .get_by_id(post.author_id)
@@ -569,15 +479,14 @@ impl BoardScreen {
                         &ctx.config.server.timezone,
                         "%Y-%m-%d %H:%M",
                     );
-                    ctx.send_line(
-                        session,
-                        &format!("--- {} ({}) ---", author, formatted_time),
-                    )
-                    .await?;
-                    ctx.send_line(session, &convert_caret_escape(&post.body))
-                        .await?;
-                    ctx.send_line(session, "").await?;
+
+                    let mut entry = std::collections::HashMap::new();
+                    entry.insert("author".to_string(), Value::string(author));
+                    entry.insert("created_at".to_string(), Value::string(formatted_time));
+                    entry.insert("body".to_string(), Value::string(convert_caret_escape(&post.body)));
+                    post_list.push(Value::Object(entry));
                 }
+                context.set("posts", Value::List(post_list));
 
                 // Mark the last displayed post as read for logged-in users
                 if let Some(user_id) = session.user_id() {
@@ -588,18 +497,19 @@ impl BoardScreen {
                 }
             }
 
-            // Show pagination
-            ctx.send_line(
-                session,
-                &ctx.i18n.t_with(
+            context.set(
+                "page_info",
+                Value::string(ctx.i18n.t_with(
                     "board.page_of",
                     &[
                         ("current", &pagination.page.to_string()),
                         ("total", &pagination.total_pages().to_string()),
                     ],
-                ),
-            )
-            .await?;
+                ).to_string()),
+            );
+
+            let content = ctx.render_template("board/post_view", &context)?;
+            ctx.send(session, &content).await?;
 
             // Prompt
             ctx.send(
@@ -651,31 +561,20 @@ impl BoardScreen {
             .map(|u| u.nickname)
             .unwrap_or_else(|| "Unknown".to_string());
 
-        ctx.send_line(session, "").await?;
-        ctx.send_line(
-            session,
-            &format!("=== {} ===", post.title.as_deref().unwrap_or("(no title)")),
-        )
-        .await?;
         let formatted_time = format_datetime(
             &post.created_at,
             &ctx.config.server.timezone,
             "%Y-%m-%d %H:%M",
         );
-        ctx.send_line(
-            session,
-            &format!(
-                "{}: {} ({})",
-                ctx.i18n.t("board.author"),
-                author,
-                formatted_time
-            ),
-        )
-        .await?;
-        ctx.send_line(session, &"-".repeat(40)).await?;
-        ctx.send_line(session, &convert_caret_escape(&post.body))
-            .await?;
-        ctx.send_line(session, &"-".repeat(40)).await?;
+
+        let mut context = ctx.create_context();
+        context.set("title", Value::string(post.title.as_deref().unwrap_or("(no title)").to_string()));
+        context.set("author", Value::string(author));
+        context.set("created_at", Value::string(formatted_time));
+        context.set("body", Value::string(convert_caret_escape(&post.body)));
+
+        let content = ctx.render_template("board/single_post", &context)?;
+        ctx.send(session, &content).await?;
 
         // Mark this post as read for logged-in users
         if let Some(user_id) = session.user_id() {
@@ -954,30 +853,22 @@ impl BoardScreen {
                 post.title.clone().unwrap_or_else(|| "(no title)".to_string())
             };
 
-            ctx.send_line(
-                session,
-                &format!("=== [{}/{}] {} ===", index + 1, total, title),
-            )
-            .await?;
             let formatted_time = format_datetime(
                 &post.created_at,
                 &ctx.config.server.timezone,
                 "%Y-%m-%d %H:%M",
             );
-            ctx.send_line(
-                session,
-                &format!(
-                    "{}: {} ({})",
-                    ctx.i18n.t("board.author"),
-                    author,
-                    formatted_time
-                ),
-            )
-            .await?;
-            ctx.send_line(session, &"-".repeat(40)).await?;
-            ctx.send_line(session, &convert_caret_escape(&post.body))
-                .await?;
-            ctx.send_line(session, &"-".repeat(40)).await?;
+
+            let mut context = ctx.create_context();
+            context.set("current", Value::string((index + 1).to_string()));
+            context.set("total", Value::string(total.to_string()));
+            context.set("title", Value::string(title));
+            context.set("author", Value::string(author));
+            context.set("created_at", Value::string(formatted_time));
+            context.set("body", Value::string(convert_caret_escape(&post.body)));
+
+            let content = ctx.render_template("board/unread_post", &context)?;
+            ctx.send(session, &content).await?;
 
             // Mark this post as read (create repo in block to release borrow)
             {
@@ -1129,37 +1020,23 @@ impl BoardScreen {
                 post.title.clone().unwrap_or_else(|| "(no title)".to_string())
             };
 
-            // Show board name and post info
-            ctx.send_line(
-                session,
-                &format!(
-                    "=== [{}/{}] [{}] {} ===",
-                    index + 1,
-                    total,
-                    unread_post.board_name,
-                    title
-                ),
-            )
-            .await?;
             let formatted_time = format_datetime(
                 &post.created_at,
                 &ctx.config.server.timezone,
                 "%Y-%m-%d %H:%M",
             );
-            ctx.send_line(
-                session,
-                &format!(
-                    "{}: {} ({})",
-                    ctx.i18n.t("board.author"),
-                    author,
-                    formatted_time
-                ),
-            )
-            .await?;
-            ctx.send_line(session, &"-".repeat(40)).await?;
-            ctx.send_line(session, &convert_caret_escape(&post.body))
-                .await?;
-            ctx.send_line(session, &"-".repeat(40)).await?;
+
+            let mut context = ctx.create_context();
+            context.set("current", Value::string((index + 1).to_string()));
+            context.set("total", Value::string(total.to_string()));
+            context.set("board_name", Value::string(unread_post.board_name.clone()));
+            context.set("title", Value::string(title));
+            context.set("author", Value::string(author));
+            context.set("created_at", Value::string(formatted_time));
+            context.set("body", Value::string(convert_caret_escape(&post.body)));
+
+            let content = ctx.render_template("board/unread_post", &context)?;
+            ctx.send(session, &content).await?;
 
             // Mark this post as read (create repo in block to release borrow)
             {

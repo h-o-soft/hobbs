@@ -21,8 +21,9 @@ use crate::mail::MailRepository;
 use crate::rate_limit::RateLimiters;
 use crate::screen::{create_screen_from_profile, Screen};
 use crate::server::{
-    encode_for_client, initial_negotiation, process_output_mode, CharacterEncoding, EchoMode,
-    InputResult, LineBuffer, SessionManager, SessionState, TelnetParser, TelnetSession,
+    convert_caret_escape, encode_for_client, initial_negotiation, process_output_mode,
+    CharacterEncoding, EchoMode, InputResult, LineBuffer, SessionManager, SessionState,
+    TelnetParser, TelnetSession,
 };
 use crate::template::{create_system_context, TemplateContext, TemplateLoader, Value};
 use crate::terminal::TerminalProfile;
@@ -428,6 +429,7 @@ Select language / Gengo sentaku:
         let content = self
             .template_loader
             .render("welcome", self.profile.width, &context)?;
+        let content = convert_caret_escape(&content);
         self.send(session, &content).await
     }
 
@@ -920,6 +922,7 @@ Select language / Gengo sentaku:
         let content = self
             .template_loader
             .render("main_menu", self.profile.width, &context)?;
+        let content = convert_caret_escape(&content);
         self.send(session, &content).await
     }
 
@@ -929,6 +932,7 @@ Select language / Gengo sentaku:
         let content = self
             .template_loader
             .render("help", self.profile.width, &context)?;
+        let content = convert_caret_escape(&content);
         self.send(session, &content).await?;
 
         // Wait for key press

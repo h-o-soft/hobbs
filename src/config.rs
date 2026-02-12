@@ -722,16 +722,32 @@ impl Config {
     }
 
     /// Validate the configuration.
+    /// Minimum length required for JWT secret (256 bits = 32 bytes).
+    pub const MIN_JWT_SECRET_LENGTH: usize = 32;
+
     ///
     /// Returns an error if:
     /// - Web UI is enabled but JWT secret is not set
+    /// - Web UI is enabled but JWT secret is too short (< 32 characters)
     pub fn validate(&self) -> Result<()> {
-        if self.web.enabled && self.web.jwt_secret.is_empty() {
-            return Err(HobbsError::Validation(
-                "Web UI is enabled but jwt_secret is not set. \
-                 Set it in config.toml or via HOBBS_JWT_SECRET environment variable."
-                    .to_string(),
-            ));
+        if self.web.enabled {
+            if self.web.jwt_secret.is_empty() {
+                return Err(HobbsError::Validation(
+                    "Web UI is enabled but jwt_secret is not set. \
+                     Set it in config.toml or via HOBBS_JWT_SECRET environment variable."
+                        .to_string(),
+                ));
+            }
+
+            if self.web.jwt_secret.len() < Self::MIN_JWT_SECRET_LENGTH {
+                return Err(HobbsError::Validation(format!(
+                    "jwt_secret must be at least {} characters for security. \
+                     Current length: {}. \
+                     Generate a secure secret with: openssl rand -base64 32",
+                    Self::MIN_JWT_SECRET_LENGTH,
+                    self.web.jwt_secret.len()
+                )));
+            }
         }
         Ok(())
     }
@@ -1027,18 +1043,43 @@ name = "Partial BBS"
     }
 
     #[test]
-    fn test_validate_web_enabled_with_secret() {
+    fn test_validate_web_enabled_with_valid_secret() {
         let mut config = Config::default();
         config.web.enabled = true;
-        config.web.jwt_secret = "secret".to_string();
+        // 32 characters or more is valid
+        config.web.jwt_secret = "12345678901234567890123456789012".to_string();
 
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_web_enabled_with_short_secret() {
+        let mut config = Config::default();
+        config.web.enabled = true;
+        // Less than 32 characters should fail
+        config.web.jwt_secret = "short_secret".to_string();
+
+        let result = config.validate();
+        assert!(result.is_err());
+        if let Err(HobbsError::Validation(msg)) = result {
+            assert!(msg.contains("at least 32 characters"));
+            assert!(msg.contains("openssl rand"));
+        }
     }
 
     #[test]
     fn test_validate_web_disabled() {
         let config = Config::default();
         // web.enabled is false by default, no secret needed
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_web_disabled_ignores_short_secret() {
+        let mut config = Config::default();
+        config.web.enabled = false;
+        config.web.jwt_secret = "short".to_string();
+        // When web is disabled, jwt_secret length is not validated
         assert!(config.validate().is_ok());
     }
 

@@ -19,7 +19,8 @@ logs/
 # Runtime data (database, files)
 data/
 
-# Local configuration overrides
+# Configuration (copy config.toml.sample to config.toml)
+config.toml
 config.local.toml
 
 # Environment variables (Docker, etc.)

@@ -10,6 +10,7 @@ use crate::error::Result;
 use crate::mail::{MailRepository, NewMail};
 use crate::rate_limit::RateLimitResult;
 use crate::server::{convert_caret_escape, TelnetSession};
+use crate::template::Value;
 
 /// Mail screen handler.
 pub struct MailScreen;
@@ -35,61 +36,33 @@ impl MailScreen {
             let mails = mail_repo.list_inbox(user_id).await?;
             let total = mails.len();
 
-            // Display mail list
-            ctx.send_line(session, "").await?;
-            ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("mail.inbox")))
-                .await?;
-            ctx.send_line(session, "").await?;
+            // Display mail list using template
+            let mut context = ctx.create_context();
+            context.set("has_mails", Value::bool(!mails.is_empty()));
+            context.set("total", Value::number(total as i64));
 
-            if mails.is_empty() {
-                ctx.send_line(session, ctx.i18n.t("mail.no_mail")).await?;
-            } else {
+            if !mails.is_empty() {
                 let user_repo = UserRepository::new(ctx.db.pool());
-                ctx.send_line(
-                    session,
-                    &format!(
-                        "  {:<4} {:<3} {:<12} {:<20}",
-                        ctx.i18n.t("common.number"),
-                        "",
-                        ctx.i18n.t("mail.from"),
-                        ctx.i18n.t("mail.subject")
-                    ),
-                )
-                .await?;
-                ctx.send_line(session, &"-".repeat(50)).await?;
-
+                let mut mail_list = Vec::new();
                 for (i, mail) in mails.iter().enumerate() {
-                    let num = i + 1;
                     let unread = if mail.is_read { " " } else { "*" };
                     let from = user_repo
                         .get_by_id(mail.sender_id)
                         .await?
                         .map(|u| u.nickname)
                         .unwrap_or_else(|| "Unknown".to_string());
-                    let from = if from.chars().count() > 10 {
-                        let truncated: String = from.chars().take(8).collect();
-                        format!("{}...", truncated)
-                    } else {
-                        from
-                    };
-                    let subject = if mail.subject.chars().count() > 18 {
-                        let truncated: String = mail.subject.chars().take(15).collect();
-                        format!("{}...", truncated)
-                    } else {
-                        mail.subject.clone()
-                    };
-
-                    ctx.send_line(
-                        session,
-                        &format!("  {:<4} {:<3} {:<12} {:<20}", num, unread, from, subject),
-                    )
-                    .await?;
+                    let mut entry = std::collections::HashMap::new();
+                    entry.insert("number".to_string(), Value::string((i + 1).to_string()));
+                    entry.insert("unread_mark".to_string(), Value::string(unread));
+                    entry.insert("from".to_string(), Value::string(from));
+                    entry.insert("subject".to_string(), Value::string(&mail.subject));
+                    mail_list.push(Value::Object(entry));
                 }
+                context.set("mails", Value::List(mail_list));
             }
 
-            ctx.send_line(session, "").await?;
-            ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("mail.total"), total))
-                .await?;
+            let content = ctx.render_template("mail/list", &context)?;
+            ctx.send(session, &content).await?;
 
             // Prompt
             ctx.send(
@@ -163,35 +136,18 @@ impl MailScreen {
             (mail, from_name, to_name)
         };
 
-        // Display mail
-        ctx.send_line(session, "").await?;
-        ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("mail.inbox")))
-            .await?;
-        ctx.send_line(
-            session,
-            &format!("{}: {}", ctx.i18n.t("mail.from"), from_name),
-        )
-        .await?;
-        ctx.send_line(session, &format!("{}: {}", ctx.i18n.t("mail.to"), to_name))
-            .await?;
-        ctx.send_line(
-            session,
-            &format!("{}: {}", ctx.i18n.t("mail.subject"), mail.subject),
-        )
-        .await?;
-        ctx.send_line(
-            session,
-            &format!(
-                "{}: {}",
-                ctx.i18n.t("mail.date"),
-                format_utc_datetime(&mail.created_at, &ctx.config.server.timezone, "%Y/%m/%d %H:%M")
-            ),
-        )
-        .await?;
-        ctx.send_line(session, &"-".repeat(40)).await?;
-        ctx.send_line(session, &convert_caret_escape(&mail.body))
-            .await?;
-        ctx.send_line(session, &"-".repeat(40)).await?;
+        // Display mail using template
+        let mut context = ctx.create_context();
+        context.set("from", Value::string(from_name));
+        context.set("to", Value::string(to_name));
+        context.set("subject", Value::string(mail.subject.clone()));
+        context.set("date", Value::string(
+            format_utc_datetime(&mail.created_at, &ctx.config.server.timezone, "%Y/%m/%d %H:%M"),
+        ));
+        context.set("body", Value::string(convert_caret_escape(&mail.body)));
+
+        let content = ctx.render_template("mail/view", &context)?;
+        ctx.send(session, &content).await?;
 
         // Options
         loop {
@@ -246,9 +202,10 @@ impl MailScreen {
             RateLimitResult::Allowed => {}
         }
 
-        ctx.send_line(session, "").await?;
-        ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("mail.compose")))
-            .await?;
+        let mut context = ctx.create_context();
+        context.set("title", Value::string(ctx.i18n.t("mail.compose").to_string()));
+        let content = ctx.render_template("mail/compose", &context)?;
+        ctx.send(session, &content).await?;
 
         // Get recipient
         ctx.send(session, &format!("{}: ", ctx.i18n.t("mail.to")))
@@ -340,9 +297,10 @@ impl MailScreen {
             RateLimitResult::Allowed => {}
         }
 
-        ctx.send_line(session, "").await?;
-        ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("mail.reply")))
-            .await?;
+        let mut context = ctx.create_context();
+        context.set("title", Value::string(ctx.i18n.t("mail.reply").to_string()));
+        let content = ctx.render_template("mail/compose", &context)?;
+        ctx.send(session, &content).await?;
 
         // Get subject
         let default_subject = format!("Re: {}", original.subject);

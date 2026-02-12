@@ -1,0 +1,14 @@
+
+=== {{t "board.list"}}: {{board_name}} ===
+
+{{#if has_posts}}
+    {{t "common.number"}}  {{t "board.title"}}                          {{t "board.author"}}
+--------------------------------------------------------------
+{{#each posts}}
+{{unread_mark}} {{pad number 4}}  {{pad title 40}} {{pad author 16}}
+{{/each}}
+{{else}}
+{{t "board.no_posts"}}
+{{/if}}
+
+{{page_info}}

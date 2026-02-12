@@ -1,14 +1,13 @@
-========================================
-{{board.name}} > {{thread.title}}
-              {{t "board.replies"}} {{post.number}}/{{thread.reply_count}}
-========================================
-{{t "board.author"}}: {{post.author}}
-{{t "board.date"}}: {{post.date_short}}
-----------------------------------------
 
-{{post.body}}
+=== {{thread_title}} ===
 
-----------------------------------------
-[R]{{t "board.reply"}} [N]{{t "common.next"}} [P]{{t "common.previous"}} [Q]{{t "common.back"}}
-----------------------------------------
->
+{{#if has_posts}}
+{{#each posts}}
+--- {{author}} ({{created_at}}) ---
+{{body}}
+
+{{/each}}
+{{else}}
+{{t "board.no_posts"}}
+{{/if}}
+{{page_info}}

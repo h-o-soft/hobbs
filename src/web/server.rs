@@ -218,7 +218,11 @@ impl WebServer {
 
         tracing::info!("Web server listening on http://{}", local_addr);
 
-        axum::serve(listener, router).await
+        axum::serve(
+            listener,
+            router.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .await
     }
 
     /// Run the server and return the actual bound address.
@@ -257,7 +261,12 @@ impl WebServer {
         tracing::info!("Web server listening on http://{}", local_addr);
 
         tokio::spawn(async move {
-            if let Err(e) = axum::serve(listener, router).await {
+            if let Err(e) = axum::serve(
+                listener,
+                router.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await
+            {
                 tracing::error!("Web server error: {}", e);
             }
         });

@@ -160,24 +160,26 @@ impl LineBuffer {
                 // ShiftJIS: check if last byte is part of a 2-byte character
                 let last = *self.buffer.last().unwrap();
 
-                // Check for 1-byte characters first
-                // ASCII (0x00-0x7F) or half-width katakana (0xA1-0xDF)
-                if last <= 0x7F || (0xA1..=0xDF).contains(&last) {
+                // ASCII is always 1 byte
+                if last <= 0x7F {
                     return 1;
                 }
 
-                // Check if this could be the second byte of a 2-byte character
+                // Check for 2-byte character FIRST, because trail byte range
+                // (0x40-0x7E, 0x80-0xFC) overlaps with half-width katakana (0xA1-0xDF).
+                // e.g. "う" = 0x82 0xA4 — the trail byte 0xA4 is also in the katakana range.
                 if self.buffer.len() >= 2 {
                     let prev = self.buffer[self.buffer.len() - 2];
-                    // Is prev a lead byte? (0x81-0x9F or 0xE0-0xFC)
-                    let is_lead = (0x81..=0x9F).contains(&prev) || (0xE0..=0xFC).contains(&prev);
-                    // Is last a valid trail byte? (0x40-0x7E or 0x80-0xFC)
-                    let is_trail = (0x40..=0x7E).contains(&last) || (0x80..=0xFC).contains(&last);
+                    let is_lead =
+                        (0x81..=0x9F).contains(&prev) || (0xE0..=0xFC).contains(&prev);
+                    let is_trail =
+                        (0x40..=0x7E).contains(&last) || (0x80..=0xFC).contains(&last);
                     if is_lead && is_trail {
                         return 2;
                     }
                 }
 
+                // Half-width katakana (0xA1-0xDF) or other single-byte
                 1
             }
             CharacterEncoding::Cp437 | CharacterEncoding::Petscii => {
@@ -1019,6 +1021,57 @@ mod tests {
         // Echo should be 1-column width
         assert_eq!(echo, vec![control::BS, b' ', control::BS]);
         assert_eq!(buffer.contents(), b"A");
+    }
+
+    #[test]
+    fn test_line_buffer_backspace_shiftjis_trail_in_katakana_range() {
+        // Trail byte 0xA4 of "う" (0x82 0xA4) falls in the half-width katakana
+        // range (0xA1-0xDF). Backspace must still delete 2 bytes, not 1.
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::ShiftJIS);
+
+        // Input "あいう" in ShiftJIS
+        // あ=0x82 0xA0, い=0x82 0xA2, う=0x82 0xA4
+        for &b in &[0x82, 0xA0, 0x82, 0xA2, 0x82, 0xA4] {
+            buffer.process_byte(b);
+        }
+        assert_eq!(buffer.len(), 6);
+
+        // Backspace should delete "う" (2 bytes), not just 0xA4 (1 byte)
+        let (result, echo) = buffer.process_byte(control::BS);
+        assert_eq!(result, InputResult::Buffering);
+        assert_eq!(
+            echo,
+            vec![control::BS, control::BS, b' ', b' ', control::BS, control::BS]
+        );
+        assert_eq!(buffer.len(), 4); // "あい" remains
+        assert_eq!(buffer.contents(), &[0x82, 0xA0, 0x82, 0xA2]);
+
+        // Second backspace: delete "い" (trail byte 0xA2 also in katakana range)
+        buffer.process_byte(control::BS);
+        assert_eq!(buffer.len(), 2); // "あ" remains
+        assert_eq!(buffer.contents(), &[0x82, 0xA0]);
+
+        // Third backspace: delete "あ" (trail byte 0xA0 NOT in katakana range)
+        buffer.process_byte(control::BS);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn test_line_buffer_backspace_shiftjis_katakana_after_fullwidth() {
+        // Half-width katakana after a full-width character should delete correctly
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::ShiftJIS);
+
+        // Input "あ" (0x82 0xA0) + "ｱ" (0xB1 half-width katakana)
+        for &b in &[0x82, 0xA0, 0xB1] {
+            buffer.process_byte(b);
+        }
+        assert_eq!(buffer.len(), 3);
+
+        // Backspace should delete "ｱ" (1 byte), not "あ" + "ｱ"
+        let (_, echo) = buffer.process_byte(control::BS);
+        assert_eq!(echo, vec![control::BS, b' ', control::BS]); // 1-column
+        assert_eq!(buffer.len(), 2); // "あ" remains
+        assert_eq!(buffer.contents(), &[0x82, 0xA0]);
     }
 
     #[test]

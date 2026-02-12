@@ -1,4 +1,5 @@
-# Beryl BBS - Configuration File
+# HOBBS - Configuration File
+
 
 [server]
 host = "0.0.0.0"
@@ -20,8 +21,8 @@ storage_path = "data/files"
 max_upload_size_mb = 10
 
 [bbs]
-name = "Beryl BBS"
-description = "A retro BBS powered by HOBBS"
+name = "HOBBS - Hobbyist BBS"
+description = "A retro BBS system"
 sysop_name = "SysOp"
 
 [locale]
