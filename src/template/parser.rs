@@ -38,6 +38,10 @@ pub enum Node {
 
     /// With block (scope change): `{{#with object}}...{{/with}}`
     With { variable: String, body: Vec<Node> },
+
+    /// Pad helper: `{{pad variable width}}`
+    /// Pads or truncates a variable to a fixed display width.
+    Pad { variable: String, width: String },
 }
 
 /// Template parser.
@@ -108,6 +112,11 @@ impl<'a> Parser<'a> {
         // Check for translation
         if self.peek_str("t ") || self.peek_str("t\"") {
             return self.parse_translation();
+        }
+
+        // Check for pad helper
+        if self.peek_str("pad ") {
+            return self.parse_pad();
         }
 
         // Parse variable
@@ -240,6 +249,27 @@ impl<'a> Parser<'a> {
         self.expect("}}")?;
 
         Ok(Node::Translation { key, params })
+    }
+
+    /// Parse a pad helper tag: `{{pad variable width}}` or `{{pad "translation.key" width}}`
+    fn parse_pad(&mut self) -> Result<Node> {
+        self.expect("pad")?;
+        self.skip_whitespace();
+
+        // Source can be a variable name or a quoted translation key
+        let source = if self.peek_char() == Some('"') {
+            // Quoted string = translation key, keep quotes to distinguish
+            format!("\"{}\"", self.parse_quoted_string()?)
+        } else {
+            self.parse_identifier()?
+        };
+        self.skip_whitespace();
+
+        let width = self.parse_identifier()?;
+        self.skip_whitespace();
+        self.expect("}}")?;
+
+        Ok(Node::Pad { variable: source, width })
     }
 
     /// Parse a quoted string.
@@ -609,6 +639,56 @@ User Menu:
 
         // Just verify it parses without error
         assert!(!nodes.is_empty());
+    }
+
+    #[test]
+    fn test_parse_pad() {
+        let parser = Parser::new("{{pad name 10}}");
+        let nodes = parser.parse().unwrap();
+
+        assert_eq!(
+            nodes,
+            vec![Node::Pad {
+                variable: "name".to_string(),
+                width: "10".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_parse_pad_translation() {
+        let parser = Parser::new(r#"{{pad "board.title" 16}}"#);
+        let nodes = parser.parse().unwrap();
+
+        assert_eq!(
+            nodes,
+            vec![Node::Pad {
+                variable: "\"board.title\"".to_string(),
+                width: "16".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_parse_pad_with_text() {
+        let parser = Parser::new("[{{pad num 4}}] {{pad title 20}}");
+        let nodes = parser.parse().unwrap();
+
+        assert_eq!(
+            nodes,
+            vec![
+                Node::Text("[".to_string()),
+                Node::Pad {
+                    variable: "num".to_string(),
+                    width: "4".to_string(),
+                },
+                Node::Text("] ".to_string()),
+                Node::Pad {
+                    variable: "title".to_string(),
+                    width: "20".to_string(),
+                },
+            ]
+        );
     }
 
     #[test]

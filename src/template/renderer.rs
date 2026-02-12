@@ -3,7 +3,7 @@
 //! Renders parsed template nodes with the given context.
 
 use super::parser::Node;
-use super::{Result, TemplateContext, TemplateError, Value};
+use super::{display_width, truncate_to_width, Result, TemplateContext, TemplateError, Value};
 
 /// Template renderer.
 pub struct Renderer<'a> {
@@ -45,6 +45,7 @@ impl<'a> Renderer<'a> {
             } => self.render_each(variable, item_name.as_deref(), body),
             Node::Unless { condition, body } => self.render_unless(condition, body),
             Node::With { variable, body } => self.render_with(variable, body),
+            Node::Pad { variable, width } => self.render_pad(variable, width),
         }
     }
 
@@ -165,6 +166,45 @@ impl<'a> Renderer<'a> {
             self.render(body)
         } else {
             Ok(String::new())
+        }
+    }
+
+    /// Render a pad helper: pad or truncate a value to a fixed display width.
+    /// If the source is quoted (e.g. `"board.title"`), it's resolved as a translation key.
+    /// Otherwise, it's resolved as a variable reference.
+    fn render_pad(&self, variable: &str, width_str: &str) -> Result<String> {
+        let text = if variable.starts_with('"') && variable.ends_with('"') {
+            // Translation key - strip quotes and look up
+            let key = &variable[1..variable.len() - 1];
+            self.context.i18n().t(key).to_string()
+        } else {
+            self.context
+                .get(variable)
+                .map(|v| v.to_display_string())
+                .unwrap_or_default()
+        };
+
+        let target_width: usize = width_str.parse().map_err(|_| {
+            TemplateError::Render(format!("Invalid pad width: {width_str}"))
+        })?;
+
+        if target_width == 0 {
+            return Ok(String::new());
+        }
+
+        let cjk_width = self.context.cjk_width();
+        let display_w = display_width(&text, cjk_width);
+
+        if display_w <= target_width {
+            // Pad with spaces
+            let padding = target_width - display_w;
+            Ok(format!("{}{}", text, " ".repeat(padding)))
+        } else {
+            // Truncate to (target_width - 1) and append '~'
+            let truncated = truncate_to_width(&text, target_width - 1, cjk_width);
+            let truncated_w = display_width(&truncated, cjk_width);
+            let padding = target_width - 1 - truncated_w;
+            Ok(format!("{}{}~", truncated, " ".repeat(padding)))
         }
     }
 
@@ -595,6 +635,127 @@ message = "こんにちは、{{name}}さん"
         let result = renderer.render(&nodes).unwrap();
 
         assert_eq!(result, "Items: x y ");
+    }
+
+    #[test]
+    fn test_render_pad_short_string() {
+        let mut context = create_context();
+        context.set("name", Value::String("Alice".to_string()));
+        let renderer = Renderer::new(&context);
+
+        let nodes = vec![Node::Pad {
+            variable: "name".to_string(),
+            width: "10".to_string(),
+        }];
+        let result = renderer.render(&nodes).unwrap();
+        assert_eq!(result, "Alice     ");
+    }
+
+    #[test]
+    fn test_render_pad_exact_width() {
+        let mut context = create_context();
+        context.set("name", Value::String("Hello".to_string()));
+        let renderer = Renderer::new(&context);
+
+        let nodes = vec![Node::Pad {
+            variable: "name".to_string(),
+            width: "5".to_string(),
+        }];
+        let result = renderer.render(&nodes).unwrap();
+        assert_eq!(result, "Hello");
+    }
+
+    #[test]
+    fn test_render_pad_truncate() {
+        let mut context = create_context();
+        context.set("name", Value::String("Hello, World!".to_string()));
+        let renderer = Renderer::new(&context);
+
+        let nodes = vec![Node::Pad {
+            variable: "name".to_string(),
+            width: "8".to_string(),
+        }];
+        let result = renderer.render(&nodes).unwrap();
+        // 7 chars + '~' = 8
+        assert_eq!(result, "Hello, ~");
+    }
+
+    #[test]
+    fn test_render_pad_cjk() {
+        let mut context = create_context();
+        context.set_cjk_width(2);
+        context.set("name", Value::String("こんにちは".to_string()));
+        let renderer = Renderer::new(&context);
+
+        // "こんにちは" = 10 display columns with cjk_width=2
+        // pad to 12 → "こんにちは  "
+        let nodes = vec![Node::Pad {
+            variable: "name".to_string(),
+            width: "12".to_string(),
+        }];
+        let result = renderer.render(&nodes).unwrap();
+        assert_eq!(result, "こんにちは  ");
+    }
+
+    #[test]
+    fn test_render_pad_cjk_truncate() {
+        let mut context = create_context();
+        context.set_cjk_width(2);
+        context.set("name", Value::String("こんにちは世界".to_string()));
+        let renderer = Renderer::new(&context);
+
+        // "こんにちは世界" = 14 display columns
+        // pad to 8 → truncate to 7 cols = "こんに" (6) + "~" (1) = 7... need padding to 8
+        // Actually: truncate_to_width("こんにちは世界", 7, 2) → "こんに" (6 cols, next char is 2 cols which exceeds 7)
+        // So "こんに" + " " + "~" = 8
+        let nodes = vec![Node::Pad {
+            variable: "name".to_string(),
+            width: "8".to_string(),
+        }];
+        let result = renderer.render(&nodes).unwrap();
+        assert_eq!(result, "こんに ~");
+    }
+
+    #[test]
+    fn test_render_pad_translation() {
+        let context = create_context_with_i18n();
+        let renderer = Renderer::new(&context);
+
+        // "menu.main" = "メインメニュー" (7 CJK chars = 14 display cols)
+        let nodes = vec![Node::Pad {
+            variable: "\"menu.main\"".to_string(),
+            width: "20".to_string(),
+        }];
+        let result = renderer.render(&nodes).unwrap();
+        assert_eq!(result, "メインメニュー      ");
+    }
+
+    #[test]
+    fn test_render_pad_translation_truncate() {
+        let context = create_context_with_i18n();
+        let renderer = Renderer::new(&context);
+
+        // "menu.main" = "メインメニュー" (14 display cols), truncate to 8
+        let nodes = vec![Node::Pad {
+            variable: "\"menu.main\"".to_string(),
+            width: "8".to_string(),
+        }];
+        let result = renderer.render(&nodes).unwrap();
+        // truncate to 7 cols = "メイン" (6 cols) + " " + "~" = 8
+        assert_eq!(result, "メイン ~");
+    }
+
+    #[test]
+    fn test_render_pad_missing_variable() {
+        let context = create_context();
+        let renderer = Renderer::new(&context);
+
+        let nodes = vec![Node::Pad {
+            variable: "missing".to_string(),
+            width: "5".to_string(),
+        }];
+        let result = renderer.render(&nodes).unwrap();
+        assert_eq!(result, "     ");
     }
 
     #[test]
