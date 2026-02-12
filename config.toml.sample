@@ -1,0 +1,92 @@
+# HOBBS - Configuration File
+
+
+[server]
+host = "0.0.0.0"
+port = 2323
+max_connections = 20
+idle_timeout_secs = 300
+# Timezone for displaying dates (e.g., "Asia/Tokyo", "America/New_York", "UTC")
+timezone = "Asia/Tokyo"
+
+[database]
+# SQLite版（--features sqlite でビルドした場合）
+path = "data/hobbs.db"
+
+# PostgreSQL版（--features postgres でビルドした場合、上記pathの代わりに使用）
+# url = "postgres://hobbs:password@localhost/hobbs"
+
+[files]
+storage_path = "data/files"
+max_upload_size_mb = 10
+
+[bbs]
+name = "HOBBS - Hobbyist BBS"
+description = "A retro BBS system"
+sysop_name = "SysOp"
+
+[locale]
+language = "ja"
+
+[templates]
+path = "templates"
+
+[logging]
+level = "info"
+file = "logs/hobbs.log"
+
+[terminal]
+# Default terminal profile: standard (80x24), c64 (40x25, no ANSI), c64_ansi (40x25)
+default_profile = "standard"
+# Auto-paging for terminals without scroll capability
+auto_paging = true
+# Lines before pause (0 = terminal height - 4)
+paging_lines = 0
+
+[rss]
+# Whether RSS feature is enabled
+enabled = true
+# Background update check interval in seconds (default: 300 = 5 minutes)
+update_interval_secs = 300
+# Default fetch interval per feed in seconds (default: 3600 = 1 hour)
+default_fetch_interval_secs = 3600
+# Maximum feed size in bytes (default: 5MB)
+max_feed_size_bytes = 5242880
+# Maximum items to keep per feed (default: 100)
+max_items_per_feed = 100
+# Maximum description/content length in characters (default: 10000)
+max_content_length = 10000
+# Connection timeout in seconds (default: 10)
+connect_timeout_secs = 10
+# Read timeout in seconds (default: 20)
+read_timeout_secs = 20
+# Total request timeout in seconds (default: 30)
+total_timeout_secs = 30
+# Maximum number of HTTP redirects (default: 5)
+max_redirects = 5
+# Maximum consecutive errors before disabling feed (default: 5)
+max_consecutive_errors = 5
+
+[web]
+# Whether Web UI is enabled
+enabled = true
+# Host address for Web API
+host = "0.0.0.0"
+# Port number for Web API
+port = 8080
+# CORS allowed origins (for development)
+cors_origins = ["http://localhost:5173"]
+# JWT secret key (MUST be set if enabled)
+# Requirements:
+#   - Minimum 32 characters for security (256 bits)
+#   - Use a cryptographically secure random string
+# Generate with: openssl rand -base64 32
+jwt_secret = ""
+# Access token expiry in seconds (default: 900 = 15 minutes)
+jwt_access_token_expiry_secs = 900
+# Refresh token expiry in days (default: 7)
+jwt_refresh_token_expiry_days = 7
+# Whether to serve static files (SPA)
+serve_static = true
+# Path to static files directory
+static_path = "web/dist"
