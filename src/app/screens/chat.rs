@@ -13,6 +13,7 @@ use crate::chat::{
 use crate::error::Result;
 use crate::rate_limit::RateLimitResult;
 use crate::server::TelnetSession;
+use crate::template::Value;
 
 /// Maximum length for chat messages (in characters).
 pub const MAX_CHAT_MESSAGE_LENGTH: usize = 500;
@@ -27,49 +28,24 @@ impl ChatScreen {
         session: &mut TelnetSession,
     ) -> Result<ScreenResult> {
         loop {
-            // Display chat room list
-            ctx.send_line(session, "").await?;
-            ctx.send_line(
-                session,
-                &format!("=== {} ===", ctx.i18n.t("chat.room_list")),
-            )
-            .await?;
-            ctx.send_line(session, "").await?;
-
-            // Get rooms from manager
+            // Display chat room list using template
             let rooms = ctx.chat_manager.list_rooms().await;
 
-            ctx.send_line(
-                session,
-                &format!(
-                    "  {:<4} {:<20} {}",
-                    ctx.i18n.t("common.number"),
-                    ctx.i18n.t("chat.room_name"),
-                    ctx.i18n.t("chat.users_in_room")
-                ),
-            )
-            .await?;
-            ctx.send_line(session, &"-".repeat(40)).await?;
+            let mut context = ctx.create_context();
+            context.set("has_rooms", Value::bool(!rooms.is_empty()));
 
-            if rooms.is_empty() {
-                ctx.send_line(session, ctx.i18n.t("chat.no_rooms")).await?;
-            } else {
-                for (i, room) in rooms.iter().enumerate() {
-                    ctx.send_line(
-                        session,
-                        &format!(
-                            "  {:<4} {:<20} ({} {})",
-                            i + 1,
-                            room.name,
-                            room.participant_count,
-                            ctx.i18n.t("common.people")
-                        ),
-                    )
-                    .await?;
-                }
+            let mut room_list = Vec::new();
+            for (i, room) in rooms.iter().enumerate() {
+                let mut entry = std::collections::HashMap::new();
+                entry.insert("number".to_string(), Value::string((i + 1).to_string()));
+                entry.insert("name".to_string(), Value::string(&room.name));
+                entry.insert("participant_count".to_string(), Value::number(room.participant_count as i64));
+                room_list.push(Value::Object(entry));
             }
+            context.set("rooms", Value::List(room_list));
 
-            ctx.send_line(session, "").await?;
+            let content = ctx.render_template("chat/list", &context)?;
+            ctx.send(session, &content).await?;
             ctx.send(
                 session,
                 &format!(

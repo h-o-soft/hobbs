@@ -5,6 +5,7 @@ use super::ScreenResult;
 use crate::db::UserRepository;
 use crate::error::Result;
 use crate::server::TelnetSession;
+use crate::template::Value;
 
 /// Member list screen handler.
 pub struct MemberScreen;
@@ -13,34 +14,15 @@ impl MemberScreen {
     /// Run the member list screen.
     pub async fn run(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<ScreenResult> {
         loop {
-            // Display member list header
-            ctx.send_line(session, "").await?;
-            ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("member.list")))
-                .await?;
-            ctx.send_line(session, "").await?;
-
-            // Get member list from database
+            // Display member list using template
             let user_repo = UserRepository::new(ctx.db.pool());
             let users = user_repo.list_active().await?;
 
-            if users.is_empty() {
-                ctx.send_line(session, ctx.i18n.t("member.no_members"))
-                    .await?;
-            } else {
-                // Header
-                ctx.send_line(
-                    session,
-                    &format!(
-                        "  {:<16} {:<20} {:<10}",
-                        ctx.i18n.t("member.username"),
-                        ctx.i18n.t("member.nickname"),
-                        ctx.i18n.t("member.role")
-                    ),
-                )
-                .await?;
-                ctx.send_line(session, &"-".repeat(50)).await?;
+            let mut context = ctx.create_context();
+            context.set("has_members", Value::bool(!users.is_empty()));
 
-                // List users
+            if !users.is_empty() {
+                let mut member_list = Vec::new();
                 for user in &users {
                     let role_str = match user.role {
                         crate::db::Role::Guest => ctx.i18n.t("role.guest"),
@@ -48,26 +30,20 @@ impl MemberScreen {
                         crate::db::Role::SubOp => ctx.i18n.t("role.subop"),
                         crate::db::Role::SysOp => ctx.i18n.t("role.sysop"),
                     };
-                    ctx.send_line(
-                        session,
-                        &format!(
-                            "  {:<16} {:<20} {:<10}",
-                            user.username, user.nickname, role_str
-                        ),
-                    )
-                    .await?;
+                    let mut entry = std::collections::HashMap::new();
+                    entry.insert("username".to_string(), Value::string(&user.username));
+                    entry.insert("nickname".to_string(), Value::string(&user.nickname));
+                    entry.insert("role".to_string(), Value::string(role_str));
+                    member_list.push(Value::Object(entry));
                 }
-
-                ctx.send_line(session, "").await?;
-                ctx.send_line(
-                    session,
-                    &ctx.i18n
-                        .t_with("member.total", &[("count", &users.len().to_string())]),
-                )
-                .await?;
+                context.set("members", Value::List(member_list));
+                context.set("total_text", Value::string(
+                    ctx.i18n.t_with("member.total", &[("count", &users.len().to_string())]).to_string(),
+                ));
             }
 
-            ctx.send_line(session, "").await?;
+            let content = ctx.render_template("member/list", &context)?;
+            ctx.send(session, &content).await?;
             ctx.send(session, &format!("[Q={}]: ", ctx.i18n.t("common.back")))
                 .await?;
 

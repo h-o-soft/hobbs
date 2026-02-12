@@ -1,0 +1,20 @@
+
+{{#if unread_info}}
+{{unread_info}}
+{{/if}}
+========================================
+{{title}}
+----------------------------------------
+{{#if author}}
+{{author_label}}: {{author}}
+{{/if}}
+{{#if date}}
+{{date_label}}: {{date}}
+{{/if}}
+{{#if link_text}}
+{{link_text}}
+{{/if}}
+
+{{description}}
+
+========================================

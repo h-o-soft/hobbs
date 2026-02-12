@@ -1,0 +1,5 @@
+=== [{{current}}/{{total}}] {{#if board_name}}[{{board_name}}] {{/if}}{{title}} ===
+{{t "board.author"}}: {{author}} ({{created_at}})
+----------------------------------------
+{{body}}
+----------------------------------------

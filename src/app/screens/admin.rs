@@ -5,6 +5,7 @@ use super::ScreenResult;
 use crate::chat::DeleteRoomError;
 use crate::error::Result;
 use crate::server::TelnetSession;
+use crate::template::Value;
 
 /// Admin screen handler (placeholder).
 ///
@@ -22,136 +23,11 @@ impl AdminScreen {
         }
 
         loop {
-            ctx.send_line(session, "").await?;
-            ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("menu.admin")))
-                .await?;
-            ctx.send_line(session, "").await?;
-
-            ctx.send_line(
-                session,
-                &format!("=== {} ===", ctx.i18n.t("admin.board_management")),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("  [1] {}", ctx.i18n.t("admin.board_list")),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("  [2] {}", ctx.i18n.t("admin.create_board")),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("  [3] {}", ctx.i18n.t("admin.edit_board")),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("  [4] {}", ctx.i18n.t("admin.delete_board")),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("  [5] {}", ctx.i18n.t("admin.content_management")),
-            )
-            .await?;
-            ctx.send_line(session, "").await?;
-
-            ctx.send_line(
-                session,
-                &format!("=== {} ===", ctx.i18n.t("admin.user_management")),
-            )
-            .await?;
-            ctx.send_line(session, &format!("  [6] {}", ctx.i18n.t("admin.user_list")))
-                .await?;
-            // SysOp only: change role
-            if Self::is_sysop(ctx, session).await {
-                ctx.send_line(
-                    session,
-                    &format!("  [7] {}", ctx.i18n.t("admin.change_role")),
-                )
-                .await?;
-            }
-            ctx.send_line(
-                session,
-                &format!("  [8] {}", ctx.i18n.t("admin.suspend_user")),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("  [9] {}", ctx.i18n.t("admin.activate_user")),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("  [10] {}", ctx.i18n.t("admin.session_list")),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("  [11] {}", ctx.i18n.t("admin.reset_password")),
-            )
-            .await?;
-            ctx.send_line(session, "").await?;
-
-            ctx.send_line(
-                session,
-                &format!("=== {} ===", ctx.i18n.t("admin.chat_management")),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("  [12] {}", ctx.i18n.t("admin.chat_room_list")),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("  [13] {}", ctx.i18n.t("admin.create_chat_room")),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("  [14] {}", ctx.i18n.t("admin.delete_chat_room")),
-            )
-            .await?;
-            ctx.send_line(session, "").await?;
-
-            ctx.send_line(
-                session,
-                &format!("=== {} ===", ctx.i18n.t("admin.file_management")),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("  [15] {}", ctx.i18n.t("admin.folder_list")),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("  [16] {}", ctx.i18n.t("admin.edit_folder")),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("  [17] {}", ctx.i18n.t("admin.create_folder")),
-            )
-            .await?;
-            ctx.send_line(
-                session,
-                &format!("  [18] {}", ctx.i18n.t("admin.delete_folder")),
-            )
-            .await?;
-            ctx.send_line(session, "").await?;
-
-            ctx.send_line(
-                session,
-                &format!("=== {} ===", ctx.i18n.t("admin.system_status")),
-            )
-            .await?;
-            ctx.send_line(session, "  [20] System Status").await?;
-            ctx.send_line(session, "").await?;
+            // Display admin menu using template
+            let mut context = ctx.create_context();
+            context.set("is_sysop", Value::bool(Self::is_sysop(ctx, session).await));
+            let content = ctx.render_template("admin/menu", &context)?;
+            ctx.send(session, &content).await?;
 
             ctx.send(
                 session,

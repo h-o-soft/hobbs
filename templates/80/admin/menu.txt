@@ -1,25 +1,33 @@
-================================================================================
-    {{t "admin.menu"}}                                              {{t "admin.role"}}: {{user.role_name}}
-================================================================================
 
-    === {{t "admin.board_management"}} ===
-    [1] {{t "admin.board_list"}}
-    [2] {{t "admin.create_board"}}
-    [3] {{t "admin.delete_post"}}
+=== {{t "menu.admin"}} ===
 
-    === {{t "admin.file_management"}} ===
-    [4] {{t "admin.folder_list"}}
-    [5] {{t "admin.create_folder"}}
-    [6] {{t "admin.delete_file"}}
+=== {{t "admin.board_management"}} ===
+  [1] {{t "admin.board_list"}}
+  [2] {{t "admin.create_board"}}
+  [3] {{t "admin.edit_board"}}
+  [4] {{t "admin.delete_board"}}
+  [5] {{t "admin.content_management"}}
 
-    === {{t "admin.user_management"}} ===
-    [7] {{t "admin.user_list"}}
-    [8] {{t "admin.edit_user"}}
-    [9] {{t "admin.change_role"}}
+=== {{t "admin.user_management"}} ===
+  [6] {{t "admin.user_list"}}
+{{#if is_sysop}}
+  [7] {{t "admin.change_role"}}
+{{/if}}
+  [8] {{t "admin.suspend_user"}}
+  [9] {{t "admin.activate_user"}}
+  [10] {{t "admin.session_list"}}
+  [11] {{t "admin.reset_password"}}
 
-    === {{t "admin.system"}} ===
-    [0] {{t "admin.session_list"}}
+=== {{t "admin.chat_management"}} ===
+  [12] {{t "admin.chat_room_list"}}
+  [13] {{t "admin.create_chat_room"}}
+  [14] {{t "admin.delete_chat_room"}}
 
-    [Q] {{t "admin.back_to_main"}}
---------------------------------------------------------------------------------
-{{t "menu.select_prompt"}}
+=== {{t "admin.file_management"}} ===
+  [15] {{t "admin.folder_list"}}
+  [16] {{t "admin.edit_folder"}}
+  [17] {{t "admin.create_folder"}}
+  [18] {{t "admin.delete_folder"}}
+
+=== {{t "admin.system_status"}} ===
+  [20] System Status

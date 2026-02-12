@@ -8,6 +8,7 @@ use crate::error::Result;
 use crate::file::UploadRequest;
 use crate::file::{FileRepository, FileService, FileStorage, FolderRepository};
 use crate::server::TelnetSession;
+use crate::template::Value;
 use crate::xmodem::{xmodem_receive, xmodem_send, TransferError};
 
 /// File screen handler.
@@ -62,79 +63,51 @@ impl FileScreen {
                 vec![]
             };
 
-            // Display
-            ctx.send_line(session, "").await?;
-            ctx.send_line(session, &format!("=== {} ===", folder_name))
-                .await?;
-            ctx.send_line(session, "").await?;
+            // Display using template
+            let mut context = ctx.create_context();
+            context.set("folder_name", Value::string(folder_name.clone()));
+            context.set("has_folders", Value::bool(!child_folders.is_empty()));
+            context.set("has_files", Value::bool(!files.is_empty()));
 
-            // Show child folders
-            if !child_folders.is_empty() {
-                ctx.send_line(session, &format!("{}:", ctx.i18n.t("file.folder_list")))
-                    .await?;
-                for (i, folder) in child_folders.iter().enumerate() {
-                    let letter = (b'A' + i as u8) as char;
-                    ctx.send_line(session, &format!("  [{}] {}", letter, folder.name))
-                        .await?;
-                }
-                ctx.send_line(session, "").await?;
+            let mut folder_list = Vec::new();
+            for (i, folder) in child_folders.iter().enumerate() {
+                let letter = (b'A' + i as u8) as char;
+                let mut entry = std::collections::HashMap::new();
+                entry.insert("letter".to_string(), Value::string(letter.to_string()));
+                entry.insert("name".to_string(), Value::string(folder.name.clone()));
+                folder_list.push(Value::Object(entry));
             }
+            context.set("folders", Value::List(folder_list));
 
-            // Show files
-            if files.is_empty() && child_folders.is_empty() {
-                ctx.send_line(session, ctx.i18n.t("file.no_files")).await?;
-            } else if !files.is_empty() {
-                ctx.send_line(session, &format!("{}:", ctx.i18n.t("file.file_list")))
-                    .await?;
-                ctx.send_line(
-                    session,
-                    &format!(
-                        "  {:<4} {:<20} {:>10} {:>6}",
-                        ctx.i18n.t("common.number"),
-                        ctx.i18n.t("file.filename"),
-                        ctx.i18n.t("file.size"),
-                        ctx.i18n.t("file.download_count")
-                    ),
-                )
-                .await?;
-                ctx.send_line(session, &"-".repeat(50)).await?;
+            let mut file_list = Vec::new();
+            for (i, file) in files.iter().enumerate() {
+                let num = pagination.offset() + i + 1;
+                let size = Self::format_size(file.size);
 
-                for (i, file) in files.iter().enumerate() {
-                    let num = pagination.offset() + i + 1;
-                    let filename = if file.filename.chars().count() > 18 {
-                        let truncated: String = file.filename.chars().take(15).collect();
-                        format!("{}...", truncated)
-                    } else {
-                        file.filename.clone()
-                    };
-                    let size = Self::format_size(file.size);
-
-                    ctx.send_line(
-                        session,
-                        &format!(
-                            "  {:<4} {:<20} {:>10} {:>6}",
-                            num, filename, size, file.downloads
-                        ),
-                    )
-                    .await?;
-                }
+                let mut entry = std::collections::HashMap::new();
+                entry.insert("number".to_string(), Value::string(num.to_string()));
+                entry.insert("filename".to_string(), Value::string(&file.filename));
+                entry.insert("size".to_string(), Value::string(size));
+                entry.insert("downloads".to_string(), Value::string(file.downloads.to_string()));
+                file_list.push(Value::Object(entry));
             }
+            context.set("files", Value::List(file_list));
 
-            // Show pagination
-            ctx.send_line(session, "").await?;
             if pagination.total > 0 {
-                ctx.send_line(
-                    session,
-                    &ctx.i18n.t_with(
+                context.set(
+                    "page_info",
+                    Value::string(ctx.i18n.t_with(
                         "board.page_of",
                         &[
                             ("current", &pagination.page.to_string()),
                             ("total", &pagination.total_pages().to_string()),
                         ],
-                    ),
-                )
-                .await?;
+                    ).to_string()),
+                );
             }
+
+            let content = ctx.render_template("file/folder_list", &context)?;
+            ctx.send(session, &content).await?;
 
             // Prompt
             let mut prompt = format!(
