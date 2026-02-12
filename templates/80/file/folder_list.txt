@@ -1,20 +1,26 @@
-================================================================================
-    {{t "file.library"}}{{#if current_folder}} > {{current_folder.name}}{{/if}}
-================================================================================
 
-    No.  {{t "file.filename"}}                {{t "file.size"}}      {{t "file.download_count"}}    {{t "file.date"}}
-    -------------------------------------------------------------------------------
-{{#each files}}
-    {{@index}}   {{name}}                {{size}}       {{download_count}}    {{date}}
-{{/each}}
+=== {{folder_name}} ===
 
-    {{t "file.folders"}}:
+{{#if has_folders}}
+{{t "file.folder_list"}}:
 {{#each folders}}
-     [{{key}}] {{name}}
+  [{{letter}}] {{name}}
 {{/each}}
 
-    {{t "common.page"}}: {{current_page}}/{{total_pages}}
---------------------------------------------------------------------------------
-    [{{t "common.number"}}] {{t "file.download"}}    [U] {{t "file.upload"}}    [Q] {{t "common.back"}}
---------------------------------------------------------------------------------
-{{t "menu.select_prompt"}}
+{{/if}}
+{{#if has_files}}
+{{t "file.file_list"}}:
+  {{t "common.number"}}  {{t "file.filename"}}                  {{t "file.size"}}      {{t "file.download_count"}}
+--------------------------------------------------------------
+{{#each files}}
+  {{pad number 4}}  {{pad filename 24}} {{pad size 10}} {{pad downloads 6}}
+{{/each}}
+{{else}}
+{{#unless has_folders}}
+{{t "file.no_files"}}
+{{/unless}}
+{{/if}}
+{{#if page_info}}
+
+{{page_info}}
+{{/if}}

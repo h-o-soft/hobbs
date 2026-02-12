@@ -9,6 +9,7 @@ use crate::rss::{
     RssReadPositionRepository, MAX_ITEMS_PER_FEED,
 };
 use crate::server::TelnetSession;
+use crate::template::Value;
 
 /// RSS screen handler.
 pub struct RssScreen;
@@ -26,49 +27,23 @@ impl RssScreen {
             // Calculate total unread
             let total_unread: i64 = feeds.iter().map(|f| f.unread_count).sum();
 
-            // Display feed list
-            ctx.send_line(session, "").await?;
-            ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("rss.title")))
-                .await?;
-
-            if total_unread > 0 && user_id.is_some() {
-                ctx.send_line(
-                    session,
-                    &ctx.i18n
-                        .t_with("rss.unread_total", &[("count", &total_unread.to_string())]),
-                )
-                .await?;
+            // Display feed list using template
+            let mut context = ctx.create_context();
+            let show_unread = total_unread > 0 && user_id.is_some();
+            context.set("show_unread_total", Value::bool(show_unread));
+            if show_unread {
+                context.set("unread_total_text", Value::string(
+                    ctx.i18n.t_with("rss.unread_total", &[("count", &total_unread.to_string())]),
+                ));
             }
-            ctx.send_line(session, "").await?;
+            context.set("has_feeds", Value::bool(!feeds.is_empty()));
 
-            if feeds.is_empty() {
-                ctx.send_line(session, ctx.i18n.t("rss.no_feeds")).await?;
-            } else {
-                // Header
-                ctx.send_line(
-                    session,
-                    &format!(
-                        "  {:<4} {:<30} {}",
-                        ctx.i18n.t("common.number"),
-                        ctx.i18n.t("rss.feed_name"),
-                        ctx.i18n.t("rss.unread")
-                    ),
-                )
-                .await?;
-                ctx.send_line(session, &"-".repeat(50)).await?;
-
-                // Feed list
+            if !feeds.is_empty() {
+                let mut feed_list = Vec::new();
                 for (i, feed_with_unread) in feeds.iter().enumerate() {
                     let num = i + 1;
                     let feed = &feed_with_unread.feed;
                     let unread_count = feed_with_unread.unread_count;
-
-                    let title = if feed.title.chars().count() > 28 {
-                        let truncated: String = feed.title.chars().take(25).collect();
-                        format!("{}...", truncated)
-                    } else {
-                        feed.title.clone()
-                    };
 
                     let unread_marker = if unread_count > 0 && user_id.is_some() {
                         format!("{}*", unread_count)
@@ -76,20 +51,20 @@ impl RssScreen {
                         "-".to_string()
                     };
 
-                    ctx.send_line(
-                        session,
-                        &format!("  {:<4} {:<30} {}", num, title, unread_marker),
-                    )
-                    .await?;
+                    let mut entry = std::collections::HashMap::new();
+                    entry.insert("number".to_string(), Value::string(num.to_string()));
+                    entry.insert("title".to_string(), Value::string(&feed.title));
+                    entry.insert("unread_marker".to_string(), Value::string(unread_marker));
+                    feed_list.push(Value::Object(entry));
                 }
+                context.set("feeds", Value::List(feed_list));
             }
+            context.set("total_text", Value::string(
+                format!("{}: {}", ctx.i18n.t("rss.total"), feeds.len()),
+            ));
 
-            ctx.send_line(session, "").await?;
-            ctx.send_line(
-                session,
-                &format!("{}: {}", ctx.i18n.t("rss.total"), feeds.len()),
-            )
-            .await?;
+            let content = ctx.render_template("rss/list", &context)?;
+            ctx.send(session, &content).await?;
 
             // Prompt - show add/delete options for logged-in users
             let prompt = if user_id.is_some() {
@@ -158,24 +133,18 @@ impl RssScreen {
                 None => 0,
             };
 
-            // Display header
-            ctx.send_line(session, "").await?;
-            ctx.send_line(session, &format!("=== {} ===", feed.title))
-                .await?;
-
+            // Display article list using template
+            let mut context = ctx.create_context();
+            context.set("feed_title", Value::string(&feed.title));
+            context.set("has_unread", Value::bool(unread_count > 0));
             if unread_count > 0 {
-                ctx.send_line(
-                    session,
-                    &ctx.i18n
-                        .t_with("rss.unread_count", &[("count", &unread_count.to_string())]),
-                )
-                .await?;
+                context.set("unread_count_text", Value::string(
+                    ctx.i18n.t_with("rss.unread_count", &[("count", &unread_count.to_string())]),
+                ));
             }
-            ctx.send_line(session, "").await?;
+            context.set("has_items", Value::bool(!items.is_empty()));
 
-            if items.is_empty() {
-                ctx.send_line(session, ctx.i18n.t("rss.no_items")).await?;
-            } else {
+            if !items.is_empty() {
                 // Get read position for this user
                 let read_pos_repo = RssReadPositionRepository::new(ctx.db.pool());
                 let last_read_id = match user_id {
@@ -188,25 +157,10 @@ impl RssScreen {
                     None => None,
                 };
 
-                // Header
-                ctx.send_line(
-                    session,
-                    &format!(
-                        "  {:<4} {:<3} {:<35} {}",
-                        ctx.i18n.t("common.number"),
-                        "",
-                        ctx.i18n.t("rss.article_title"),
-                        ctx.i18n.t("rss.date")
-                    ),
-                )
-                .await?;
-                ctx.send_line(session, &"-".repeat(60)).await?;
-
-                // Article list
+                let mut item_list = Vec::new();
                 for (i, item) in items.iter().enumerate() {
                     let num = offset + i + 1;
 
-                    // Check if unread
                     let is_unread = match last_read_id {
                         None => true,
                         Some(last_id) => item.id > last_id,
@@ -215,13 +169,6 @@ impl RssScreen {
                         "*"
                     } else {
                         " "
-                    };
-
-                    let title = if item.title.chars().count() > 33 {
-                        let truncated: String = item.title.chars().take(30).collect();
-                        format!("{}...", truncated)
-                    } else {
-                        item.title.clone()
                     };
 
                     let date = item
@@ -235,32 +182,33 @@ impl RssScreen {
                         })
                         .unwrap_or_else(|| "-".to_string());
 
-                    ctx.send_line(
-                        session,
-                        &format!("  {:<4} {:<3} {:<35} {}", num, unread_marker, title, date),
-                    )
-                    .await?;
+                    let mut entry = std::collections::HashMap::new();
+                    entry.insert("number".to_string(), Value::string(num.to_string()));
+                    entry.insert("unread_marker".to_string(), Value::string(unread_marker));
+                    entry.insert("title".to_string(), Value::string(&item.title));
+                    entry.insert("date".to_string(), Value::string(date));
+                    item_list.push(Value::Object(entry));
                 }
+                context.set("items", Value::List(item_list));
             }
-
-            ctx.send_line(session, "").await?;
 
             // Pagination info
             let current_page = offset / page_size + 1;
             let total_pages = (total as usize + page_size - 1) / page_size;
             if total_pages > 1 {
-                ctx.send_line(
-                    session,
-                    &ctx.i18n.t_with(
+                context.set("page_info", Value::string(
+                    ctx.i18n.t_with(
                         "board.page_of",
                         &[
                             ("current", &current_page.to_string()),
                             ("total", &total_pages.to_string()),
                         ],
                     ),
-                )
-                .await?;
+                ));
             }
+
+            let content = ctx.render_template("rss/feed", &context)?;
+            ctx.send(session, &content).await?;
 
             // Prompt
             let mut prompt_parts = vec![];
@@ -329,75 +277,40 @@ impl RssScreen {
             let _ = read_pos_repo.upsert(uid, item.feed_id, item_id).await;
         }
 
-        // Display article
-        ctx.send_line(session, "").await?;
-        ctx.send_line(session, &"=".repeat(60)).await?;
-        ctx.send_line(session, &item.title).await?;
-        ctx.send_line(session, &"-".repeat(60)).await?;
+        // Display article using template
+        let mut context = ctx.create_context();
+        context.set("title", Value::string(&item.title));
+        context.set("author_label", Value::string(ctx.i18n.t("rss.author")));
+        context.set("date_label", Value::string(ctx.i18n.t("rss.date")));
 
         if let Some(author) = &item.author {
-            ctx.send_line(
-                session,
-                &format!("{}: {}", ctx.i18n.t("rss.author"), author),
-            )
-            .await?;
+            context.set("author", Value::string(author));
         }
 
         if let Some(published_at) = item.published_at {
-            ctx.send_line(
-                session,
-                &format!(
-                    "{}: {}",
-                    ctx.i18n.t("rss.date"),
-                    format_datetime(
-                        &published_at.to_rfc3339(),
-                        &ctx.config.server.timezone,
-                        "%Y/%m/%d %H:%M",
-                    )
-                ),
-            )
-            .await?;
+            context.set("date", Value::string(format_datetime(
+                &published_at.to_rfc3339(),
+                &ctx.config.server.timezone,
+                "%Y/%m/%d %H:%M",
+            )));
         }
 
         if let Some(link) = &item.link {
-            ctx.send_line(
-                session,
-                &ctx.i18n.t_with("rss.view_in_browser", &[("url", link)]),
-            )
-            .await?;
+            context.set("link_text", Value::string(
+                ctx.i18n.t_with("rss.view_in_browser", &[("url", link)]),
+            ));
         }
 
-        ctx.send_line(session, "").await?;
+        // Word wrap description to terminal width
+        let desc_text = item
+            .description
+            .as_deref()
+            .map(|d| ctx.word_wrap(d))
+            .unwrap_or_default();
+        context.set("description", Value::string(&desc_text));
 
-        // Description
-        if let Some(description) = &item.description {
-            // Word wrap description
-            for line in description.lines() {
-                if line.is_empty() {
-                    ctx.send_line(session, "").await?;
-                } else {
-                    // Simple word wrap at 70 chars
-                    let mut current = String::new();
-                    for word in line.split_whitespace() {
-                        if current.len() + word.len() + 1 > 70 {
-                            ctx.send_line(session, &current).await?;
-                            current = word.to_string();
-                        } else {
-                            if !current.is_empty() {
-                                current.push(' ');
-                            }
-                            current.push_str(word);
-                        }
-                    }
-                    if !current.is_empty() {
-                        ctx.send_line(session, &current).await?;
-                    }
-                }
-            }
-        }
-
-        ctx.send_line(session, "").await?;
-        ctx.send_line(session, &"=".repeat(60)).await?;
+        let content = ctx.render_template("rss/item", &context)?;
+        ctx.send(session, &content).await?;
 
         // Wait for user
         ctx.send(session, ctx.i18n.t("common.press_enter")).await?;
@@ -449,78 +362,43 @@ impl RssScreen {
                 None => break,
             };
 
-            // Display article
-            ctx.send_line(session, "").await?;
-            ctx.send_line(
-                session,
-                &ctx.i18n
-                    .t_with("rss.unread_count", &[("count", &unread_count.to_string())]),
-            )
-            .await?;
-            ctx.send_line(session, &"=".repeat(60)).await?;
-            ctx.send_line(session, &item.title).await?;
-            ctx.send_line(session, &"-".repeat(60)).await?;
+            // Display article using template
+            let mut context = ctx.create_context();
+            context.set("unread_info", Value::string(
+                ctx.i18n.t_with("rss.unread_count", &[("count", &unread_count.to_string())]),
+            ));
+            context.set("title", Value::string(&item.title));
+            context.set("author_label", Value::string(ctx.i18n.t("rss.author")));
+            context.set("date_label", Value::string(ctx.i18n.t("rss.date")));
 
             if let Some(author) = &item.author {
-                ctx.send_line(
-                    session,
-                    &format!("{}: {}", ctx.i18n.t("rss.author"), author),
-                )
-                .await?;
+                context.set("author", Value::string(author));
             }
 
             if let Some(published_at) = item.published_at {
-                ctx.send_line(
-                    session,
-                    &format!(
-                        "{}: {}",
-                        ctx.i18n.t("rss.date"),
-                        format_datetime(
-                            &published_at.to_rfc3339(),
-                            &ctx.config.server.timezone,
-                            "%Y/%m/%d %H:%M",
-                        )
-                    ),
-                )
-                .await?;
+                context.set("date", Value::string(format_datetime(
+                    &published_at.to_rfc3339(),
+                    &ctx.config.server.timezone,
+                    "%Y/%m/%d %H:%M",
+                )));
             }
 
             if let Some(link) = &item.link {
-                ctx.send_line(
-                    session,
-                    &ctx.i18n.t_with("rss.view_in_browser", &[("url", link)]),
-                )
-                .await?;
+                context.set("link_text", Value::string(
+                    ctx.i18n.t_with("rss.view_in_browser", &[("url", link)]),
+                ));
             }
 
-            ctx.send_line(session, "").await?;
+            // Word wrap description to terminal width
+            let desc_text = item
+                .description
+                .as_deref()
+                .map(|d| ctx.word_wrap(d))
+                .unwrap_or_default();
+            context.set("description", Value::string(&desc_text));
 
-            if let Some(description) = &item.description {
-                for line in description.lines() {
-                    if line.is_empty() {
-                        ctx.send_line(session, "").await?;
-                    } else {
-                        let mut current = String::new();
-                        for word in line.split_whitespace() {
-                            if current.len() + word.len() + 1 > 70 {
-                                ctx.send_line(session, &current).await?;
-                                current = word.to_string();
-                            } else {
-                                if !current.is_empty() {
-                                    current.push(' ');
-                                }
-                                current.push_str(word);
-                            }
-                        }
-                        if !current.is_empty() {
-                            ctx.send_line(session, &current).await?;
-                        }
-                    }
-                }
-            }
-
-            ctx.send_line(session, "").await?;
-            ctx.send_line(session, &"=".repeat(60)).await?;
+            let content = ctx.render_template("rss/item", &context)?;
+            ctx.send(session, &content).await?;
 
             // Update read position
             let _ = read_pos_repo.upsert(user_id, feed_id, item.id).await;

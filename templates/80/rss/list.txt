@@ -1,0 +1,17 @@
+
+=== {{t "rss.title"}} ===
+{{#if show_unread_total}}
+{{unread_total_text}}
+{{/if}}
+
+{{#if has_feeds}}
+  {{t "common.number"}} {{t "rss.feed_name"}}                        {{t "rss.unread"}}
+--------------------------------------------------------------
+{{#each feeds}}
+  {{pad number 4}} {{pad title 40}} {{unread_marker}}
+{{/each}}
+{{else}}
+{{t "rss.no_feeds"}}
+{{/if}}
+
+{{total_text}}

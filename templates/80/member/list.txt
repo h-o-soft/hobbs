@@ -1,0 +1,14 @@
+
+=== {{t "member.list"}} ===
+
+{{#if has_members}}
+  {{t "member.username"}}          {{t "member.nickname"}}              {{t "member.role"}}
+--------------------------------------------------------------
+{{#each members}}
+  {{pad username 16}} {{pad nickname 20}} {{pad role 10}}
+{{/each}}
+
+{{total_text}}
+{{else}}
+{{t "member.no_members"}}
+{{/if}}

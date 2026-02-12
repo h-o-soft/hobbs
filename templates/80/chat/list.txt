@@ -1,0 +1,12 @@
+
+=== {{t "chat.room_list"}} ===
+
+  {{t "common.number"}}  {{t "chat.room_name"}}                        {{t "chat.users_in_room"}}
+--------------------------------------------------------------
+{{#if has_rooms}}
+{{#each rooms}}
+  {{pad number 4}}  {{pad name 30}} ({{participant_count}} {{t "common.people"}})
+{{/each}}
+{{else}}
+{{t "chat.no_rooms"}}
+{{/if}}

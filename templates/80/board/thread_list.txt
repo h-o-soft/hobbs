@@ -1,15 +1,14 @@
-================================================================================
-    {{t "board.board"}}: {{board.name}}                                    {{t "board.unread"}}: {{board.unread}}{{t "common.items"}} [{{t "board.thread_format"}}]
-================================================================================
 
-    No.  {{t "board.title"}}                        {{t "board.author"}}    {{t "board.replies"}}  {{t "board.unread"}}  {{t "common.latest"}}
-    -------------------------------------------------------------------------------
+=== {{t "board.list"}}: {{board_name}} ===
+
+{{#if has_threads}}
+    {{t "common.number"}}  {{t "board.title"}}                          {{t "board.replies"}}
+--------------------------------------------------------------
 {{#each threads}}
-    {{@index}}   {{title}}          {{author}}      {{reply_count}}   {{unread}}{{#if has_unread}}*{{/if}}  {{last_reply_date}}
+{{unread_mark}} {{pad number 4}}  {{pad title 40}} {{pad post_count 6}}
 {{/each}}
+{{else}}
+{{t "board.no_threads"}}
+{{/if}}
 
-    {{t "common.page"}}: {{current_page}}/{{total_pages}}    [N] {{t "common.next"}}    [P] {{t "common.previous"}}
---------------------------------------------------------------------------------
-    [{{t "common.number"}}] {{t "board.open"}}  [U] {{t "board.read_all_unread"}}  [A] {{t "board.mark_read"}}  [W] {{t "board.new_thread"}}  [Q] {{t "common.back"}}
---------------------------------------------------------------------------------
-{{t "menu.select_prompt"}}
+{{page_info}}
