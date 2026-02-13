@@ -445,6 +445,8 @@ pub struct AdminBoardResponse {
     pub sort_order: i32,
     /// Whether the board is active.
     pub is_active: bool,
+    /// Whether auto-paging is disabled for this board.
+    pub disable_paging: bool,
     /// Creation timestamp.
     pub created_at: String,
 }

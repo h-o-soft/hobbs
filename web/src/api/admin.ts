@@ -47,6 +47,7 @@ export interface CreateBoardRequest {
   min_read_role: string;
   min_write_role: string;
   sort_order?: number;
+  disable_paging?: boolean;
 }
 
 export async function createBoard(data: CreateBoardRequest): Promise<AdminBoard> {
@@ -61,6 +62,7 @@ export interface UpdateBoardRequest {
   min_write_role?: string;
   sort_order?: number;
   is_active?: boolean;
+  disable_paging?: boolean;
 }
 
 export async function updateBoard(id: number, data: UpdateBoardRequest): Promise<AdminBoard> {
