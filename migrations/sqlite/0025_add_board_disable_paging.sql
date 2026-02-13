@@ -1,0 +1,1 @@
+ALTER TABLE boards ADD COLUMN disable_paging INTEGER NOT NULL DEFAULT 0;

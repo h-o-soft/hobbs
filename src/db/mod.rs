@@ -508,7 +508,7 @@ mod tests {
 
         // Check that migrations were applied
         let version = db.schema_version().await.unwrap();
-        assert_eq!(version as usize, 24); // 24 migrations
+        assert_eq!(version as usize, 25); // 25 migrations
     }
 
     #[tokio::test]
@@ -640,7 +640,7 @@ mod tests {
             let db = Database::open(&db_path).await.unwrap();
             assert!(db.table_exists("users").await.unwrap());
             // Migrations should not be reapplied
-            assert_eq!(db.schema_version().await.unwrap(), 24);
+            assert_eq!(db.schema_version().await.unwrap(), 25);
             db.close().await;
         }
 

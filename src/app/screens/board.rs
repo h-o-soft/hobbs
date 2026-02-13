@@ -6,8 +6,8 @@ use super::common::{Pagination, ScreenContext};
 use crate::datetime::format_datetime;
 use super::ScreenResult;
 use crate::board::{
-    BoardService, BoardType, Pagination as BoardPagination, PostRepository, ThreadRepository,
-    UnreadPostWithBoard, UnreadRepository,
+    BoardRepository, BoardService, BoardType, Pagination as BoardPagination, PostRepository,
+    ThreadRepository, UnreadPostWithBoard, UnreadRepository,
 };
 use crate::db::{Role, UserRepository};
 use crate::error::Result;
@@ -448,12 +448,23 @@ impl BoardScreen {
         loop {
             // Get thread info
             let user_role = Self::get_user_role(ctx, session).await;
-            let board_service = BoardService::new(&ctx.db);
-            let thread = board_service.get_thread(thread_id, user_role).await?;
+
+            // Get thread and board info, then check disable_paging
+            let (thread, disable_paging) = {
+                let board_service = BoardService::new(&ctx.db);
+                let thread = board_service.get_thread(thread_id, user_role).await?;
+                let board = board_service.get_board(thread.board_id, user_role).await?;
+                (thread, board.disable_paging)
+            };
+            let original_paging = ctx.auto_paging_enabled();
+            if disable_paging {
+                ctx.set_auto_paging(false);
+            }
 
             // Get posts using service with pagination
             let board_pagination =
                 BoardPagination::new(pagination.offset() as i64, pagination.per_page as i64);
+            let board_service = BoardService::new(&ctx.db);
             let result =
                 board_service.list_posts_in_thread(thread_id, user_role, board_pagination).await?;
 
@@ -511,6 +522,9 @@ impl BoardScreen {
             let content = ctx.render_template("board/post_view", &context)?;
             ctx.send(session, &content).await?;
 
+            // Restore auto-paging setting before prompt
+            ctx.set_auto_paging(original_paging);
+
             // Prompt
             ctx.send(
                 session,
@@ -554,6 +568,13 @@ impl BoardScreen {
         let board_service = BoardService::new(&ctx.db);
         let post = board_service.get_post(post_id, user_role).await?;
 
+        // Check if this board has disable_paging set
+        let board = board_service.get_board(post.board_id, user_role).await?;
+        let original_paging = ctx.auto_paging_enabled();
+        if board.disable_paging {
+            ctx.set_auto_paging(false);
+        }
+
         let user_repo = UserRepository::new(ctx.db.pool());
         let author = user_repo
             .get_by_id(post.author_id)
@@ -583,6 +604,10 @@ impl BoardScreen {
         }
 
         ctx.wait_for_enter(session).await?;
+
+        // Restore auto-paging setting
+        ctx.set_auto_paging(original_paging);
+
         Ok(ScreenResult::Back)
     }
 
@@ -820,6 +845,15 @@ impl BoardScreen {
             return Ok(ScreenResult::Back);
         }
 
+        // Check if this board has disable_paging set
+        let user_role = Self::get_user_role(ctx, session).await;
+        let board_service = BoardService::new(&ctx.db);
+        let board = board_service.get_board(board_id, user_role).await?;
+        let original_paging = ctx.auto_paging_enabled();
+        if board.disable_paging {
+            ctx.set_auto_paging(false);
+        }
+
         let total = unread_posts.len();
         ctx.send_line(session, "").await?;
         ctx.send_line(
@@ -876,6 +910,9 @@ impl BoardScreen {
                 unread_repo.mark_as_read(user_id, board_id, post.id).await?;
             }
 
+            // Restore auto-paging before prompt
+            ctx.set_auto_paging(original_paging);
+
             // Prompt for next action (unless this is the last post)
             if index + 1 < total {
                 ctx.send(
@@ -899,6 +936,11 @@ impl BoardScreen {
                         // Continue to next post (default for Enter or 'n')
                         ctx.send_line(session, "").await?;
                     }
+                }
+
+                // Re-disable paging for next post if needed
+                if board.disable_paging {
+                    ctx.set_auto_paging(false);
                 }
             } else {
                 // Last post - show completion message
@@ -995,8 +1037,33 @@ impl BoardScreen {
         .await?;
         ctx.send_line(session, "").await?;
 
+        // Cache board_id -> disable_paging to avoid repeated DB lookups
+        let mut disable_paging_cache: std::collections::HashMap<i64, bool> =
+            std::collections::HashMap::new();
+        let original_paging = ctx.auto_paging_enabled();
+
         for (index, unread_post) in unread_posts.iter().enumerate() {
             let post = &unread_post.post;
+
+            // Check disable_paging for this post's board (with cache)
+            let disable_paging = if let Some(&cached) = disable_paging_cache.get(&post.board_id) {
+                cached
+            } else {
+                let board_repo = BoardRepository::new(ctx.db.pool());
+                let dp = board_repo
+                    .get_by_id(post.board_id)
+                    .await?
+                    .map(|b| b.disable_paging)
+                    .unwrap_or(false);
+                disable_paging_cache.insert(post.board_id, dp);
+                dp
+            };
+
+            if disable_paging {
+                ctx.set_auto_paging(false);
+            } else {
+                ctx.set_auto_paging(original_paging);
+            }
 
             // Display post header (create repo in block to release borrow)
             let author = {
@@ -1043,6 +1110,9 @@ impl BoardScreen {
                 let unread_repo = UnreadRepository::new(ctx.db.pool());
                 unread_repo.mark_as_read(user_id, post.board_id, post.id).await?;
             }
+
+            // Restore auto-paging before prompt
+            ctx.set_auto_paging(original_paging);
 
             // Prompt for next action (unless this is the last post)
             if index + 1 < total {

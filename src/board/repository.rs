@@ -25,8 +25,8 @@ impl<'a> BoardRepository<'a> {
     #[cfg(feature = "sqlite")]
     pub async fn create(&self, new_board: &NewBoard) -> Result<Board> {
         let id: i64 = sqlx::query_scalar(
-            "INSERT INTO boards (name, description, board_type, min_read_role, min_write_role, sort_order)
-             VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
+            "INSERT INTO boards (name, description, board_type, min_read_role, min_write_role, sort_order, disable_paging)
+             VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
         )
         .bind(&new_board.name)
         .bind(&new_board.description)
@@ -34,6 +34,7 @@ impl<'a> BoardRepository<'a> {
         .bind(new_board.min_read_role.as_str())
         .bind(new_board.min_write_role.as_str())
         .bind(new_board.sort_order)
+        .bind(new_board.disable_paging)
         .fetch_one(self.pool)
         .await
         .map_err(|e| HobbsError::Database(e.to_string()))?;
@@ -49,8 +50,8 @@ impl<'a> BoardRepository<'a> {
     #[cfg(feature = "postgres")]
     pub async fn create(&self, new_board: &NewBoard) -> Result<Board> {
         let id: i64 = sqlx::query_scalar(
-            "INSERT INTO boards (name, description, board_type, min_read_role, min_write_role, sort_order)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+            "INSERT INTO boards (name, description, board_type, min_read_role, min_write_role, sort_order, disable_paging)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
         )
         .bind(&new_board.name)
         .bind(&new_board.description)
@@ -58,6 +59,7 @@ impl<'a> BoardRepository<'a> {
         .bind(new_board.min_read_role.as_str())
         .bind(new_board.min_write_role.as_str())
         .bind(new_board.sort_order)
+        .bind(new_board.disable_paging)
         .fetch_one(self.pool)
         .await
         .map_err(|e| HobbsError::Database(e.to_string()))?;
@@ -71,7 +73,7 @@ impl<'a> BoardRepository<'a> {
     pub async fn get_by_id(&self, id: i64) -> Result<Option<Board>> {
         let result: Option<BoardRow> = sqlx::query_as(
             "SELECT id, name, description, board_type, min_read_role, min_write_role,
-                    sort_order, is_active, created_at
+                    sort_order, is_active, disable_paging, created_at
              FROM boards WHERE id = $1",
         )
         .bind(id)
@@ -86,7 +88,7 @@ impl<'a> BoardRepository<'a> {
     pub async fn get_by_name(&self, name: &str) -> Result<Option<Board>> {
         let result: Option<BoardRow> = sqlx::query_as(
             "SELECT id, name, description, board_type, min_read_role, min_write_role,
-                    sort_order, is_active, created_at
+                    sort_order, is_active, disable_paging, created_at
              FROM boards WHERE name = $1",
         )
         .bind(name)
@@ -137,6 +139,10 @@ impl<'a> BoardRepository<'a> {
         if let Some(is_active) = update.is_active {
             separated.push("is_active = ");
             separated.push_bind_unseparated(is_active);
+        }
+        if let Some(disable_paging) = update.disable_paging {
+            separated.push("disable_paging = ");
+            separated.push_bind_unseparated(disable_paging);
         }
 
         query.push(" WHERE id = ");
@@ -196,6 +202,10 @@ impl<'a> BoardRepository<'a> {
             separated.push("is_active = ");
             separated.push_bind_unseparated(is_active);
         }
+        if let Some(disable_paging) = update.disable_paging {
+            separated.push("disable_paging = ");
+            separated.push_bind_unseparated(disable_paging);
+        }
 
         query.push(" WHERE id = ");
         query.push_bind(id);
@@ -229,7 +239,7 @@ impl<'a> BoardRepository<'a> {
     pub async fn list_active(&self) -> Result<Vec<Board>> {
         let query = format!(
             "SELECT id, name, description, board_type, min_read_role, min_write_role,
-                    sort_order, is_active, created_at
+                    sort_order, is_active, disable_paging, created_at
              FROM boards WHERE is_active = {} ORDER BY sort_order ASC, created_at ASC, id ASC",
             SQL_TRUE
         );
@@ -245,7 +255,7 @@ impl<'a> BoardRepository<'a> {
     pub async fn list_all(&self) -> Result<Vec<Board>> {
         let rows: Vec<BoardRow> = sqlx::query_as(
             "SELECT id, name, description, board_type, min_read_role, min_write_role,
-                    sort_order, is_active, created_at
+                    sort_order, is_active, disable_paging, created_at
              FROM boards ORDER BY sort_order ASC, created_at ASC, id ASC",
         )
         .fetch_all(self.pool)
@@ -320,6 +330,7 @@ struct BoardRow {
     min_write_role: String,
     sort_order: i32,
     is_active: bool,
+    disable_paging: bool,
     created_at: String,
 }
 
@@ -334,6 +345,7 @@ impl BoardRow {
             min_write_role: self.min_write_role.parse().unwrap_or(Role::Member),
             sort_order: self.sort_order,
             is_active: self.is_active,
+            disable_paging: self.disable_paging,
             created_at: self.created_at,
         }
     }
