@@ -72,6 +72,8 @@ pub struct Board {
     pub sort_order: i32,
     /// Whether the board is active.
     pub is_active: bool,
+    /// Whether auto-paging is disabled for this board.
+    pub disable_paging: bool,
     /// Board creation timestamp.
     pub created_at: String,
 }
@@ -103,6 +105,8 @@ pub struct NewBoard {
     pub min_write_role: Role,
     /// Sort order for display (defaults to 0).
     pub sort_order: i32,
+    /// Whether auto-paging is disabled for this board.
+    pub disable_paging: bool,
 }
 
 impl NewBoard {
@@ -115,6 +119,7 @@ impl NewBoard {
             min_read_role: Role::Guest,
             min_write_role: Role::Member,
             sort_order: 0,
+            disable_paging: false,
         }
     }
 
@@ -147,6 +152,12 @@ impl NewBoard {
         self.sort_order = sort_order;
         self
     }
+
+    /// Set whether auto-paging is disabled.
+    pub fn with_disable_paging(mut self, disable_paging: bool) -> Self {
+        self.disable_paging = disable_paging;
+        self
+    }
 }
 
 /// Data for updating an existing board.
@@ -166,6 +177,8 @@ pub struct BoardUpdate {
     pub sort_order: Option<i32>,
     /// New active status.
     pub is_active: Option<bool>,
+    /// New disable_paging status.
+    pub disable_paging: Option<bool>,
 }
 
 impl BoardUpdate {
@@ -216,6 +229,12 @@ impl BoardUpdate {
         self
     }
 
+    /// Set disable_paging status.
+    pub fn disable_paging(mut self, disable_paging: bool) -> Self {
+        self.disable_paging = Some(disable_paging);
+        self
+    }
+
     /// Check if any fields are set.
     pub fn is_empty(&self) -> bool {
         self.name.is_none()
@@ -225,6 +244,7 @@ impl BoardUpdate {
             && self.min_write_role.is_none()
             && self.sort_order.is_none()
             && self.is_active.is_none()
+            && self.disable_paging.is_none()
     }
 }
 
@@ -274,6 +294,7 @@ mod tests {
             min_write_role: Role::Member,
             sort_order: 0,
             is_active: true,
+            disable_paging: false,
             created_at: "2024-01-01".to_string(),
         };
 
@@ -294,6 +315,7 @@ mod tests {
             min_write_role: Role::SubOp,
             sort_order: 0,
             is_active: true,
+            disable_paging: false,
             created_at: "2024-01-01".to_string(),
         };
 

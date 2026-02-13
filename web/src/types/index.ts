@@ -249,6 +249,7 @@ export interface AdminBoard {
   min_write_role: string;
   sort_order: number;
   is_active: boolean;
+  disable_paging: boolean;
   created_at: string;
 }
 

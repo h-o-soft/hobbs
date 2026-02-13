@@ -310,6 +310,9 @@ pub struct AdminCreateBoardRequest {
     /// Sort order.
     #[serde(default)]
     pub sort_order: i32,
+    /// Whether auto-paging is disabled for this board.
+    #[serde(default)]
+    pub disable_paging: bool,
 }
 
 fn default_board_type() -> String {
@@ -352,6 +355,9 @@ pub struct AdminUpdateBoardRequest {
     /// Whether the board is active.
     #[serde(default)]
     pub is_active: Option<bool>,
+    /// Whether auto-paging is disabled for this board.
+    #[serde(default)]
+    pub disable_paging: Option<bool>,
 }
 
 /// Create folder request (admin).

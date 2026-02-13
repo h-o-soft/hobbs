@@ -306,6 +306,16 @@ impl AdminScreen {
                 &format!("  {}: {}", ctx.i18n.t("admin.board_active"), status),
             )
             .await?;
+            let paging_status = if board.disable_paging {
+                ctx.i18n.t("admin.board_paging_off")
+            } else {
+                ctx.i18n.t("admin.board_paging_on")
+            };
+            ctx.send_line(
+                session,
+                &format!("  {}: {}", ctx.i18n.t("admin.board_paging"), paging_status),
+            )
+            .await?;
 
             ctx.send_line(session, "").await?;
             ctx.send_line(
@@ -336,6 +346,11 @@ impl AdminScreen {
             ctx.send_line(
                 session,
                 &format!("  [5] {}", ctx.i18n.t("admin.board_edit_active")),
+            )
+            .await?;
+            ctx.send_line(
+                session,
+                &format!("  [6] {}", ctx.i18n.t("admin.board_edit_paging")),
             )
             .await?;
             ctx.send_line(session, "").await?;
@@ -439,6 +454,20 @@ impl AdminScreen {
                 "5" => {
                     // Toggle active status
                     let update = BoardUpdate::new().is_active(!board.is_active);
+                    let board_repo = BoardRepository::new(ctx.db.pool());
+                    if let Err(e) = board_repo.update(board_id, &update).await {
+                        ctx.send_line(session, &format!("Error: {}", e)).await?;
+                    } else {
+                        ctx.send_line(
+                            session,
+                            &ctx.i18n
+                                .t_with("admin.board_updated", &[("name", &board.name)]),
+                        )
+                        .await?;
+                    }
+                }
+                "6" => {
+                    let update = BoardUpdate::new().disable_paging(!board.disable_paging);
                     let board_repo = BoardRepository::new(ctx.db.pool());
                     if let Err(e) = board_repo.update(board_id, &update).await {
                         ctx.send_line(session, &format!("Error: {}", e)).await?;

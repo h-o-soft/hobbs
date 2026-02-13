@@ -197,7 +197,7 @@ const BoardsTab: Component = () => {
                     <div>
                       <h3 class="font-medium text-gray-200">{board.name}</h3>
                       <p class="text-sm text-gray-500 mt-1">
-                        {board.board_type === 'thread' ? t('admin.threadType') : t('admin.flatType')} | {t('admin.readPermission')}: {t(`roles.${board.min_read_role}` as any)} | {t('admin.writePermission')}: {t(`roles.${board.min_write_role}` as any)}
+                        {board.board_type === 'thread' ? t('admin.threadType') : t('admin.flatType')} | {t('admin.readPermission')}: {t(`roles.${board.min_read_role}` as any)} | {t('admin.writePermission')}: {t(`roles.${board.min_write_role}` as any)} | {t('admin.paging')}: {board.disable_paging ? t('admin.pagingOff') : t('admin.pagingOn')}
                       </p>
                     </div>
                     <div class="flex space-x-2">
@@ -441,6 +441,7 @@ const BoardForm: Component<BoardFormProps> = (props) => {
   const [boardType, setBoardType] = createSignal(props.board?.board_type || 'thread');
   const [minReadRole, setMinReadRole] = createSignal(props.board?.min_read_role || 'guest');
   const [minWriteRole, setMinWriteRole] = createSignal(props.board?.min_write_role || 'member');
+  const [disablePaging, setDisablePaging] = createSignal(props.board?.disable_paging || false);
   const [error, setError] = createSignal('');
   const [loading, setLoading] = createSignal(false);
 
@@ -456,6 +457,7 @@ const BoardForm: Component<BoardFormProps> = (props) => {
           description: description() || undefined,
           min_read_role: minReadRole(),
           min_write_role: minWriteRole(),
+          disable_paging: disablePaging(),
         });
       } else {
         await adminApi.createBoard({
@@ -464,6 +466,7 @@ const BoardForm: Component<BoardFormProps> = (props) => {
           board_type: boardType(),
           min_read_role: minReadRole(),
           min_write_role: minWriteRole(),
+          disable_paging: disablePaging(),
         });
       }
       props.onSuccess();
@@ -526,6 +529,18 @@ const BoardForm: Component<BoardFormProps> = (props) => {
         onChange={(e) => setMinWriteRole(e.currentTarget.value)}
         options={permissionOptions}
       />
+
+      <label class="flex items-center space-x-2">
+        <input
+          type="checkbox"
+          checked={disablePaging()}
+          onChange={(e) => setDisablePaging(e.currentTarget.checked)}
+          class="form-checkbox"
+        />
+        <span class="text-sm text-gray-400">
+          {t('admin.paging')}: {disablePaging() ? t('admin.pagingOff') : t('admin.pagingOn')}
+        </span>
+      </label>
 
       <div class="flex justify-end space-x-3">
         <Button type="button" variant="secondary" onClick={props.onCancel}>

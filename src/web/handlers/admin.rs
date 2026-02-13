@@ -407,6 +407,7 @@ pub async fn admin_list_boards(
             min_write_role: b.min_write_role.as_str().to_string(),
             sort_order: b.sort_order,
             is_active: b.is_active,
+            disable_paging: b.disable_paging,
             created_at: to_rfc3339(&b.created_at),
         })
         .collect();
@@ -461,7 +462,8 @@ pub async fn admin_create_board(
         .with_board_type(board_type)
         .with_min_read_role(min_read_role)
         .with_min_write_role(min_write_role)
-        .with_sort_order(req.sort_order);
+        .with_sort_order(req.sort_order)
+        .with_disable_paging(req.disable_paging);
 
     if let Some(ref desc) = req.description {
         new_board = new_board.with_description(desc);
@@ -482,6 +484,7 @@ pub async fn admin_create_board(
         min_write_role: board.min_write_role.as_str().to_string(),
         sort_order: board.sort_order,
         is_active: board.is_active,
+        disable_paging: board.disable_paging,
         created_at: to_rfc3339(&board.created_at),
     };
 
@@ -558,6 +561,10 @@ pub async fn admin_update_board(
         update = update.is_active(is_active);
     }
 
+    if let Some(disable_paging) = req.disable_paging {
+        update = update.disable_paging(disable_paging);
+    }
+
     let board_repo = BoardRepository::new(state.db.pool());
     let board = board_repo
         .update(board_id, &update)
@@ -577,6 +584,7 @@ pub async fn admin_update_board(
         min_write_role: board.min_write_role.as_str().to_string(),
         sort_order: board.sort_order,
         is_active: board.is_active,
+        disable_paging: board.disable_paging,
         created_at: to_rfc3339(&board.created_at),
     };
 
