@@ -174,11 +174,11 @@ impl<'a> PostRepository<'a> {
         Ok(result.rows_affected() > 0)
     }
 
-    /// List posts in a thread, ordered by created_at ascending.
+    /// List posts in a thread, ordered by created_at descending.
     pub async fn list_by_thread(&self, thread_id: i64) -> Result<Vec<Post>> {
         let posts = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE thread_id = $1 ORDER BY created_at ASC",
+             FROM posts WHERE thread_id = $1 ORDER BY created_at DESC, id DESC",
         )
         .bind(thread_id)
         .fetch_all(self.pool)
@@ -197,7 +197,7 @@ impl<'a> PostRepository<'a> {
     ) -> Result<Vec<Post>> {
         let posts = sqlx::query_as::<_, Post>(
             "SELECT id, board_id, thread_id, author_id, title, body, created_at
-             FROM posts WHERE thread_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3",
+             FROM posts WHERE thread_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3",
         )
         .bind(thread_id)
         .bind(limit)
@@ -547,9 +547,9 @@ mod tests {
 
         let posts = repo.list_by_thread(thread_id).await.unwrap();
         assert_eq!(posts.len(), 3);
-        // Should be ordered by created_at ASC
-        assert_eq!(posts[0].body, "Post 1");
-        assert_eq!(posts[2].body, "Post 3");
+        // Should be ordered by created_at DESC
+        assert_eq!(posts[0].body, "Post 3");
+        assert_eq!(posts[2].body, "Post 1");
     }
 
     #[tokio::test]
@@ -579,8 +579,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(page1.len(), 2);
-        assert_eq!(page1[0].body, "Post 1");
-        assert_eq!(page1[1].body, "Post 2");
+        assert_eq!(page1[0].body, "Post 5");
+        assert_eq!(page1[1].body, "Post 4");
 
         // Get second page
         let page2 = repo
@@ -589,7 +589,7 @@ mod tests {
             .unwrap();
         assert_eq!(page2.len(), 2);
         assert_eq!(page2[0].body, "Post 3");
-        assert_eq!(page2[1].body, "Post 4");
+        assert_eq!(page2[1].body, "Post 2");
     }
 
     #[tokio::test]
