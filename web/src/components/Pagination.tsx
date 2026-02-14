@@ -42,7 +42,7 @@ export const Pagination: Component<PaginationProps> = (props) => {
   };
 
   return (
-    <Show when={props.totalPages > 1}>
+    <Show when={props.totalPages >= 1}>
       <div class="flex items-center justify-center space-x-1">
         {/* Previous */}
         <button
