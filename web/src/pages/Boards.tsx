@@ -170,6 +170,12 @@ export const BoardDetailPage: Component = () => {
                 />
               }
             >
+              <Pagination
+                page={threads()!.meta.page}
+                totalPages={Math.ceil(threads()!.meta.total / threads()!.meta.per_page)}
+                onPageChange={handlePageChange}
+              />
+
               <div class="space-y-2 max-w-3xl mx-auto">
                 <For each={threads()!.data}>
                   {(thread) => (
@@ -223,6 +229,12 @@ export const BoardDetailPage: Component = () => {
                 />
               }
             >
+              <Pagination
+                page={flatPosts()!.meta.page}
+                totalPages={Math.ceil(flatPosts()!.meta.total / flatPosts()!.meta.per_page)}
+                onPageChange={handlePageChange}
+              />
+
               <div class="space-y-4 max-w-3xl mx-auto">
                 <For each={flatPosts()!.data}>
                   {(post, index) => (
@@ -415,6 +427,23 @@ export const ThreadDetailPage: Component = () => {
 
         {/* Posts */}
         <Show when={!posts.loading} fallback={<PageLoading />}>
+          {/* Reply Form */}
+          <div class="card">
+            <h3 class="text-lg font-medium text-neon-cyan mb-4">{t('boards.reply')}</h3>
+            <ReplyForm
+              threadId={threadId()}
+              onSuccess={handlePostCreated}
+            />
+          </div>
+
+          <Show when={posts()}>
+            <Pagination
+              page={posts()!.meta.page}
+              totalPages={Math.ceil(posts()!.meta.total / posts()!.meta.per_page)}
+              onPageChange={handlePageChange}
+            />
+          </Show>
+
           <div class="space-y-4 max-w-3xl mx-auto">
             <For each={posts()?.data}>
               {(post, index) => (
@@ -454,15 +483,6 @@ export const ThreadDetailPage: Component = () => {
               onPageChange={handlePageChange}
             />
           </Show>
-
-          {/* Reply Form */}
-          <div class="card">
-            <h3 class="text-lg font-medium text-neon-cyan mb-4">{t('boards.reply')}</h3>
-            <ReplyForm
-              threadId={threadId()}
-              onSuccess={handlePostCreated}
-            />
-          </div>
         </Show>
 
         {/* Edit Post Modal */}
