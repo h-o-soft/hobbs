@@ -379,13 +379,8 @@ impl RssScreen {
                 ));
             }
 
-            // Word wrap description to terminal width
-            let desc_text = item
-                .description
-                .as_deref()
-                .map(|d| ctx.word_wrap(d))
-                .unwrap_or_default();
-            context.set("description", Value::string(&desc_text));
+            let desc_text = item.description.as_deref().unwrap_or_default();
+            context.set("description", Value::string(desc_text));
 
             let content = ctx.render_template("rss/item", &context)?;
             ctx.send(session, &content).await?;
