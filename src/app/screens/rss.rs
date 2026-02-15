@@ -271,10 +271,17 @@ impl RssScreen {
             None => return Ok(()),
         };
 
-        // Update read position if logged in
+        // Update read position if logged in (only advance forward, never backward)
         if let Some(uid) = user_id {
             let read_pos_repo = RssReadPositionRepository::new(ctx.db.pool());
-            let _ = read_pos_repo.upsert(uid, item.feed_id, item_id).await;
+            let current_pos = read_pos_repo
+                .get(uid, item.feed_id)
+                .await?
+                .and_then(|pos| pos.last_read_item_id)
+                .unwrap_or(0);
+            if item_id > current_pos {
+                let _ = read_pos_repo.upsert(uid, item.feed_id, item_id).await;
+            }
         }
 
         // Display article using template
