@@ -301,13 +301,8 @@ impl RssScreen {
             ));
         }
 
-        // Word wrap description to terminal width
-        let desc_text = item
-            .description
-            .as_deref()
-            .map(|d| ctx.word_wrap(d))
-            .unwrap_or_default();
-        context.set("description", Value::string(&desc_text));
+        let desc_text = item.description.as_deref().unwrap_or_default();
+        context.set("description", Value::string(desc_text));
 
         let content = ctx.render_template("rss/item", &context)?;
         ctx.send(session, &content).await?;
@@ -343,21 +338,9 @@ impl RssScreen {
                 break;
             }
 
-            // Get the oldest unread item
+            // Get the oldest unread item (by id ASC)
             let read_pos_repo = RssReadPositionRepository::new(ctx.db.pool());
-            let last_read_id = read_pos_repo
-                .get(user_id, feed_id)
-                .await?
-                .and_then(|pos| pos.last_read_item_id);
-
-            // Get items after last read
-            let items = item_repo.list_by_feed(feed_id, 100, 0).await?;
-            let unread_item = items.into_iter().rev().find(|item| match last_read_id {
-                None => true,
-                Some(last_id) => item.id > last_id,
-            });
-
-            let item = match unread_item {
+            let item = match item_repo.get_next_unread(feed_id, user_id).await? {
                 Some(i) => i,
                 None => break,
             };
