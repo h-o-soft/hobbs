@@ -747,6 +747,35 @@ impl<'a> RssItemRepository<'a> {
         Ok(count.0)
     }
 
+    /// Get the next unread item for a user and feed (oldest unread by id).
+    pub async fn get_next_unread(
+        &self,
+        feed_id: i64,
+        user_id: i64,
+    ) -> Result<Option<RssItem>> {
+        let row = sqlx::query_as::<_, RssItemRow>(
+            r#"
+            SELECT id, feed_id, guid, title, link, description, author, published_at, fetched_at
+            FROM rss_items
+            WHERE feed_id = $1
+            AND id > COALESCE(
+                (SELECT last_read_item_id FROM rss_read_positions
+                 WHERE user_id = $2 AND feed_id = $3),
+                0)
+            ORDER BY id ASC
+            LIMIT 1
+            "#,
+        )
+        .bind(feed_id)
+        .bind(user_id)
+        .bind(feed_id)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(|e| HobbsError::Database(e.to_string()))?;
+
+        Ok(row.map(RssItem::from))
+    }
+
     /// Get the newest item ID for a feed.
     pub async fn get_newest_item_id(&self, feed_id: i64) -> Result<Option<i64>> {
         let result: Option<(i64,)> = sqlx::query_as(
