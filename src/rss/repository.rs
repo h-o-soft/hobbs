@@ -776,14 +776,12 @@ impl<'a> RssItemRepository<'a> {
         Ok(row.map(RssItem::from))
     }
 
-    /// Get the newest item ID for a feed.
+    /// Get the largest item ID for a feed (for read position tracking).
     pub async fn get_newest_item_id(&self, feed_id: i64) -> Result<Option<i64>> {
         let result: Option<(i64,)> = sqlx::query_as(
             r#"
-            SELECT id FROM rss_items
+            SELECT MAX(id) FROM rss_items
             WHERE feed_id = $1
-            ORDER BY COALESCE(published_at, fetched_at) DESC, id DESC
-            LIMIT 1
             "#,
         )
         .bind(feed_id)
