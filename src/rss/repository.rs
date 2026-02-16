@@ -334,7 +334,7 @@ impl<'a> RssFeedRepository<'a> {
             FROM rss_feeds
             WHERE is_active = {}
               AND (last_fetched_at IS NULL
-                   OR last_fetched_at + (fetch_interval || ' seconds')::INTERVAL <= NOW())
+                   OR last_fetched_at + make_interval(secs => fetch_interval::double precision) <= NOW())
             ORDER BY last_fetched_at ASC NULLS FIRST
             "#,
             SQL_TRUE
