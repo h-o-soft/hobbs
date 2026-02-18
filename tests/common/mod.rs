@@ -562,6 +562,7 @@ pub fn test_config() -> Config {
         terminal: Default::default(),
         rss: Default::default(),
         web: Default::default(),
+        ssh: Default::default(),
         rate_limits: Default::default(),
     }
 }

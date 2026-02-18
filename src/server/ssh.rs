@@ -10,13 +10,13 @@
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use russh::keys::PrivateKey;
-use russh::server::{Auth, Handler, Msg, Server, Session};
+use russh::server::{Auth, Handler, Msg, Session};
 use russh::{Channel, ChannelId};
-use tokio::net::TcpStream;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
 use tracing::{error, info, warn};
 
 use crate::{Config, HobbsError, Result};
@@ -85,38 +85,6 @@ fn load_or_generate_host_key(path: &str) -> Result<PrivateKey> {
     }
 }
 
-/// SSH server factory that creates a handler for each new connection.
-struct BbsServer {
-    config: Arc<Config>,
-    semaphore: Arc<Semaphore>,
-}
-
-impl Server for BbsServer {
-    type Handler = BbsHandler;
-
-    fn new_client(&mut self, peer_addr: Option<SocketAddr>) -> Self::Handler {
-        // Try to acquire a connection permit (non-blocking)
-        let permit = match self.semaphore.clone().try_acquire_owned() {
-            Ok(permit) => Some(permit),
-            Err(_) => {
-                warn!(
-                    "SSH connection limit reached, rejecting connection from {:?}",
-                    peer_addr
-                );
-                None
-            }
-        };
-
-        BbsHandler {
-            telnet_addr: format!("127.0.0.1:{}", self.config.server.port),
-            config: Arc::clone(&self.config),
-            peer_addr,
-            active_channels: Arc::new(Mutex::new(HashSet::new())),
-            _permit: permit,
-        }
-    }
-}
-
 /// SSH connection handler for a single client.
 struct BbsHandler {
     /// Internal Telnet address to relay to.
@@ -127,8 +95,9 @@ struct BbsHandler {
     peer_addr: Option<SocketAddr>,
     /// Set of active channel IDs (shared with relay tasks for cleanup).
     active_channels: Arc<Mutex<HashSet<ChannelId>>>,
-    /// Connection permit (None = connection was rejected at limit).
-    _permit: Option<OwnedSemaphorePermit>,
+    /// Connection permit — dropped when the SSH session ends.
+    /// Connections without a permit are dropped before SSH handshake in the accept loop.
+    _permit: OwnedSemaphorePermit,
 }
 
 impl Handler for BbsHandler {
@@ -148,14 +117,6 @@ impl Handler for BbsHandler {
         user: &str,
         password: &str,
     ) -> std::result::Result<Auth, Self::Error> {
-        // Reject if connection was not permitted (limit reached)
-        if self._permit.is_none() {
-            return Ok(Auth::Reject {
-                proceed_with_methods: None,
-                partial_success: false,
-            });
-        }
-
         if user == self.config.ssh.username && password == self.config.ssh.password {
             info!("SSH authentication successful from {:?}", self.peer_addr);
             Ok(Auth::Accept)
@@ -221,23 +182,27 @@ impl Handler for BbsHandler {
             return Ok(false);
         }
 
-        // Check channel limit
-        let channel_count = {
-            let channels = self.active_channels.lock().unwrap();
-            channels.len()
-        };
-        if channel_count >= self.config.ssh.max_channels_per_connection {
-            warn!(
-                "SSH channel limit reached from {:?}: {}/{}",
-                self.peer_addr, channel_count, self.config.ssh.max_channels_per_connection
-            );
-            return Ok(false);
+        // Reserve channel slot atomically (check + insert under single lock)
+        // to prevent race conditions with concurrent direct-tcpip requests.
+        let channel_id = channel.id();
+        {
+            let mut channels = self.active_channels.lock().await;
+            if channels.len() >= self.config.ssh.max_channels_per_connection {
+                warn!(
+                    "SSH channel limit reached from {:?}: {}/{}",
+                    self.peer_addr, channels.len(), self.config.ssh.max_channels_per_connection
+                );
+                return Ok(false);
+            }
+            channels.insert(channel_id);
         }
 
         // Connect to internal Telnet port
         let tcp_stream = match TcpStream::connect(&self.telnet_addr).await {
             Ok(stream) => stream,
             Err(e) => {
+                // Rollback reservation on connection failure
+                self.active_channels.lock().await.remove(&channel_id);
                 error!(
                     "Failed to connect to internal Telnet port {}: {}",
                     self.telnet_addr, e
@@ -245,14 +210,6 @@ impl Handler for BbsHandler {
                 return Ok(false);
             }
         };
-
-        let channel_id = channel.id();
-
-        // Register channel
-        {
-            let mut channels = self.active_channels.lock().unwrap();
-            channels.insert(channel_id);
-        }
 
         info!(
             "SSH port forwarding from {:?} ({}:{}) -> {}",
@@ -280,10 +237,7 @@ impl Handler for BbsHandler {
             }
 
             // Cleanup
-            {
-                let mut channels = active_channels.lock().unwrap();
-                channels.remove(&channel_id);
-            }
+            active_channels.lock().await.remove(&channel_id);
         });
 
         Ok(true)
@@ -295,8 +249,7 @@ impl Handler for BbsHandler {
         channel: ChannelId,
         _session: &mut Session,
     ) -> std::result::Result<(), Self::Error> {
-        let mut channels = self.active_channels.lock().unwrap();
-        channels.remove(&channel);
+        self.active_channels.lock().await.remove(&channel);
         Ok(())
     }
 
@@ -306,13 +259,16 @@ impl Handler for BbsHandler {
         channel: ChannelId,
         _session: &mut Session,
     ) -> std::result::Result<(), Self::Error> {
-        let mut channels = self.active_channels.lock().unwrap();
-        channels.remove(&channel);
+        self.active_channels.lock().await.remove(&channel);
         Ok(())
     }
 }
 
 /// Run the SSH tunnel server.
+///
+/// Uses a custom accept loop (instead of russh's `Server` trait) to check
+/// connection limits *before* the SSH handshake, ensuring immediate TCP
+/// rejection when the limit is reached.
 pub async fn run(config: Arc<Config>) -> Result<()> {
     let host_key = load_or_generate_host_key(&config.ssh.host_key_path)?;
 
@@ -325,27 +281,53 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         );
     }
 
-    let russh_config = russh::server::Config {
+    let russh_config = Arc::new(russh::server::Config {
         keys: vec![host_key],
         ..Default::default()
-    };
+    });
 
     let semaphore = Arc::new(Semaphore::new(config.ssh.max_connections));
     let addr = format!("{}:{}", config.ssh.host, config.ssh.port);
 
+    let listener = TcpListener::bind(&addr).await.map_err(|e| {
+        HobbsError::Config(format!("Failed to bind SSH server on {}: {}", addr, e))
+    })?;
     info!("SSH server listening on {}", addr);
 
-    let mut server = BbsServer {
-        config,
-        semaphore,
-    };
+    loop {
+        let (stream, peer_addr) = listener.accept().await.map_err(|e| {
+            HobbsError::Config(format!("SSH accept error: {}", e))
+        })?;
 
-    server
-        .run_on_address(Arc::new(russh_config), &addr)
-        .await
-        .map_err(|e| HobbsError::Config(format!("SSH server error: {}", e)))?;
+        // Check connection limit BEFORE SSH handshake — reject immediately
+        let permit = match semaphore.clone().try_acquire_owned() {
+            Ok(permit) => permit,
+            Err(_) => {
+                warn!(
+                    "SSH connection limit reached, rejecting connection from {}",
+                    peer_addr
+                );
+                drop(stream);
+                continue;
+            }
+        };
 
-    Ok(())
+        let handler = BbsHandler {
+            telnet_addr: format!("127.0.0.1:{}", config.server.port),
+            config: Arc::clone(&config),
+            peer_addr: Some(peer_addr),
+            active_channels: Arc::new(Mutex::new(HashSet::new())),
+            _permit: permit,
+        };
+
+        let session_config = Arc::clone(&russh_config);
+        tokio::spawn(async move {
+            if let Err(e) = russh::server::run_stream(session_config, stream, handler).await {
+                // Connection errors are normal (client disconnect)
+                info!("SSH session ended for {}: {}", peer_addr, e);
+            }
+        });
+    }
 }
 
 #[cfg(test)]
