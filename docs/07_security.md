@@ -286,19 +286,39 @@ Telnetは平文通信のため、以下の点に注意：
 
 ### 6.2 推奨される対策
 
-1. **ローカルネットワーク限定**: インターネット公開は非推奨
-2. **VPN経由**: 外部アクセス時はVPN使用を推奨
-3. **SSH トンネリング**: 将来的にサポート検討
+1. **SSHトンネル経由（推奨）**: HOBBS内蔵のSSHサーバーでポートフォワード
+2. **ローカルネットワーク限定**: インターネット公開は非推奨
+3. **VPN経由**: VPNを使用して暗号化
+
+#### SSH トンネル構成（推奨）
+
+HOBBS内蔵のSSHサーバー（`direct-tcpip` ポートフォワード専用）を使用し、
+Telnet通信をSSHで暗号化する。BBS側のコードには変更不要（純粋なトランスポート層）。
 
 ```
 推奨構成:
+[クライアント] --Telnet--> [中継サーバー] --SSH--> [HOBBS SSH:2222]
+                            ssh -L 12323:                ↓ direct-tcpip
+                            localhost:2323          [HOBBS Telnet:2323]
+              --Telnet-->   localhost:12323          (127.0.0.1のみ)
+```
+
+SSH有効時の推奨設定:
+- `server.host = "127.0.0.1"` でTelnetをローカル限定にする
+- SSHパスワードは `config.toml` または環境変数 `HOBBS_SSH_PASSWORD` で設定
+- Shell接続は非サポート（SSHターミナルはTelnet IACを処理できないため）
+
+詳細は[運用ガイド](operation_guide.md)のSSHセクションを参照。
+
+#### VPN構成
+
+```
 [クライアント] --VPN--> [サーバー] --localhost--> [HOBBS]
 ```
 
 ### 6.3 将来検討
 
 - TLS/SSL対応（Telnet over TLS）
-- SSH対応
 
 ## 7. データ保護
 
