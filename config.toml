@@ -66,6 +66,17 @@ max_redirects = 5
 # Maximum consecutive errors before disabling feed (default: 5)
 max_consecutive_errors = 5
 
+[ssh]
+# Whether SSH tunnel server is enabled
+enabled = false
+host = "0.0.0.0"
+port = 2222
+host_key_path = "data/ssh_host_key"
+username = "bbs"
+password = ""
+max_connections = 20
+max_channels_per_connection = 1
+
 [web]
 # Whether Web UI is enabled
 enabled = true

@@ -651,6 +651,74 @@ impl Default for WebConfig {
     }
 }
 
+/// SSH tunnel server configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SshConfig {
+    /// Whether SSH server is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Host address to bind.
+    #[serde(default = "default_ssh_host")]
+    pub host: String,
+    /// Port number to listen on.
+    #[serde(default = "default_ssh_port")]
+    pub port: u16,
+    /// Path to SSH host key (auto-generated if not exists).
+    #[serde(default = "default_ssh_host_key_path")]
+    pub host_key_path: String,
+    /// SSH username (shared for all connections).
+    #[serde(default = "default_ssh_username")]
+    pub username: String,
+    /// SSH password (required when enabled).
+    #[serde(default)]
+    pub password: String,
+    /// Maximum concurrent SSH connections.
+    #[serde(default = "default_ssh_max_connections")]
+    pub max_connections: usize,
+    /// Maximum channels per SSH connection.
+    #[serde(default = "default_ssh_max_channels")]
+    pub max_channels_per_connection: usize,
+}
+
+fn default_ssh_host() -> String {
+    "0.0.0.0".to_string()
+}
+
+fn default_ssh_port() -> u16 {
+    2222
+}
+
+fn default_ssh_host_key_path() -> String {
+    "data/ssh_host_key".to_string()
+}
+
+fn default_ssh_username() -> String {
+    "bbs".to_string()
+}
+
+fn default_ssh_max_connections() -> usize {
+    20
+}
+
+fn default_ssh_max_channels() -> usize {
+    1
+}
+
+impl Default for SshConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            host: default_ssh_host(),
+            port: default_ssh_port(),
+            host_key_path: default_ssh_host_key_path(),
+            username: default_ssh_username(),
+            password: String::new(),
+            max_connections: default_ssh_max_connections(),
+            max_channels_per_connection: default_ssh_max_channels(),
+        }
+    }
+}
+
 /// Main configuration structure.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct Config {
@@ -687,6 +755,9 @@ pub struct Config {
     /// Web UI configuration.
     #[serde(default)]
     pub web: WebConfig,
+    /// SSH tunnel server configuration.
+    #[serde(default)]
+    pub ssh: SshConfig,
 }
 
 impl Config {
@@ -712,11 +783,18 @@ impl Config {
     ///
     /// Supported environment variables:
     /// - `HOBBS_JWT_SECRET`: Override the JWT secret key
+    /// - `HOBBS_SSH_PASSWORD`: Override the SSH password
     pub fn apply_env_overrides(&mut self) {
         // JWT secret from environment variable (highest priority)
         if let Ok(jwt_secret) = std::env::var("HOBBS_JWT_SECRET") {
             if !jwt_secret.is_empty() {
                 self.web.jwt_secret = jwt_secret;
+            }
+        }
+        // SSH password from environment variable
+        if let Ok(ssh_password) = std::env::var("HOBBS_SSH_PASSWORD") {
+            if !ssh_password.is_empty() {
+                self.ssh.password = ssh_password;
             }
         }
     }
@@ -747,6 +825,26 @@ impl Config {
                     Self::MIN_JWT_SECRET_LENGTH,
                     self.web.jwt_secret.len()
                 )));
+            }
+        }
+
+        if self.ssh.enabled {
+            if self.ssh.password.is_empty() {
+                return Err(HobbsError::Validation(
+                    "SSH is enabled but password is not set. \
+                     Set it in config.toml or via HOBBS_SSH_PASSWORD environment variable."
+                        .to_string(),
+                ));
+            }
+            if self.ssh.max_connections < 1 {
+                return Err(HobbsError::Validation(
+                    "ssh.max_connections must be at least 1.".to_string(),
+                ));
+            }
+            if self.ssh.max_channels_per_connection < 1 {
+                return Err(HobbsError::Validation(
+                    "ssh.max_channels_per_connection must be at least 1.".to_string(),
+                ));
             }
         }
         Ok(())
@@ -817,6 +915,15 @@ mod tests {
         assert_eq!(config.web.jwt_refresh_token_expiry_days, 7);
         assert!(!config.web.serve_static);
         assert_eq!(config.web.static_path, "web/dist");
+
+        assert!(!config.ssh.enabled);
+        assert_eq!(config.ssh.host, "0.0.0.0");
+        assert_eq!(config.ssh.port, 2222);
+        assert_eq!(config.ssh.host_key_path, "data/ssh_host_key");
+        assert_eq!(config.ssh.username, "bbs");
+        assert!(config.ssh.password.is_empty());
+        assert_eq!(config.ssh.max_connections, 20);
+        assert_eq!(config.ssh.max_channels_per_connection, 1);
     }
 
     #[test]
@@ -1081,6 +1188,108 @@ name = "Partial BBS"
         config.web.jwt_secret = "short".to_string();
         // When web is disabled, jwt_secret length is not validated
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_parse_ssh_config() {
+        let toml = r#"
+[ssh]
+enabled = true
+host = "0.0.0.0"
+port = 2222
+host_key_path = "custom/key"
+username = "tunnel"
+password = "secret"
+max_connections = 10
+max_channels_per_connection = 3
+"#;
+
+        let config = Config::parse(toml).unwrap();
+
+        assert!(config.ssh.enabled);
+        assert_eq!(config.ssh.host, "0.0.0.0");
+        assert_eq!(config.ssh.port, 2222);
+        assert_eq!(config.ssh.host_key_path, "custom/key");
+        assert_eq!(config.ssh.username, "tunnel");
+        assert_eq!(config.ssh.password, "secret");
+        assert_eq!(config.ssh.max_connections, 10);
+        assert_eq!(config.ssh.max_channels_per_connection, 3);
+    }
+
+    #[test]
+    fn test_validate_ssh_enabled_no_password() {
+        let mut config = Config::default();
+        config.ssh.enabled = true;
+        config.ssh.password = String::new();
+
+        let result = config.validate();
+        assert!(result.is_err());
+        if let Err(HobbsError::Validation(msg)) = result {
+            assert!(msg.contains("SSH"));
+            assert!(msg.contains("password"));
+        }
+    }
+
+    #[test]
+    fn test_validate_ssh_enabled_with_password() {
+        let mut config = Config::default();
+        config.ssh.enabled = true;
+        config.ssh.password = "test-password".to_string();
+
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_ssh_disabled_no_password() {
+        let config = Config::default();
+        // ssh.enabled is false by default, no password needed
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_ssh_enabled_zero_max_connections() {
+        let mut config = Config::default();
+        config.ssh.enabled = true;
+        config.ssh.password = "test".to_string();
+        config.ssh.max_connections = 0;
+
+        let result = config.validate();
+        assert!(result.is_err());
+        if let Err(HobbsError::Validation(msg)) = result {
+            assert!(msg.contains("max_connections"));
+        }
+    }
+
+    #[test]
+    fn test_validate_ssh_enabled_zero_max_channels() {
+        let mut config = Config::default();
+        config.ssh.enabled = true;
+        config.ssh.password = "test".to_string();
+        config.ssh.max_channels_per_connection = 0;
+
+        let result = config.validate();
+        assert!(result.is_err());
+        if let Err(HobbsError::Validation(msg)) = result {
+            assert!(msg.contains("max_channels"));
+        }
+    }
+
+    #[test]
+    fn test_apply_env_overrides_ssh_password() {
+        let original = std::env::var("HOBBS_SSH_PASSWORD").ok();
+
+        std::env::set_var("HOBBS_SSH_PASSWORD", "env-ssh-pass");
+
+        let mut config = Config::default();
+        config.apply_env_overrides();
+
+        assert_eq!(config.ssh.password, "env-ssh-pass");
+
+        if let Some(val) = original {
+            std::env::set_var("HOBBS_SSH_PASSWORD", val);
+        } else {
+            std::env::remove_var("HOBBS_SSH_PASSWORD");
+        }
     }
 
     #[test]

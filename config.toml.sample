@@ -67,6 +67,27 @@ max_redirects = 5
 # Maximum consecutive errors before disabling feed (default: 5)
 max_consecutive_errors = 5
 
+[ssh]
+# Whether SSH tunnel server is enabled
+# When enabled, provides encrypted port forwarding to the Telnet port.
+# Recommended: set server.host = "127.0.0.1" to restrict plaintext Telnet to localhost.
+enabled = false
+# Host address for SSH server
+host = "0.0.0.0"
+# Port number for SSH server
+port = 2222
+# Path to SSH host key (auto-generated on first startup if not exists)
+host_key_path = "data/ssh_host_key"
+# SSH username (shared for all connections)
+username = "bbs"
+# SSH password (required when enabled)
+# Can be overridden with HOBBS_SSH_PASSWORD environment variable
+password = ""
+# Maximum concurrent SSH connections
+max_connections = 20
+# Maximum channels per SSH connection (1 = one forwarded port per connection)
+max_channels_per_connection = 1
+
 [web]
 # Whether Web UI is enabled
 enabled = true

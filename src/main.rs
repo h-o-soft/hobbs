@@ -150,6 +150,17 @@ async fn run_server(config: Config) -> Result<(), Box<dyn std::error::Error>> {
                 });
             }
 
+            // Start SSH server if enabled (runs in separate task)
+            // SSH server is Send-safe (no Cell/RefCell) so tokio::spawn is fine
+            if config.ssh.enabled {
+                let ssh_config = Arc::new(config.clone());
+                tokio::spawn(async move {
+                    if let Err(e) = hobbs::server::ssh::run(ssh_config).await {
+                        error!("SSH server error: {}", e);
+                    }
+                });
+            }
+
             // Clone db and config for RSS updater
             let rss_db = Arc::clone(&app.db());
             let rss_config = config.rss.clone();
