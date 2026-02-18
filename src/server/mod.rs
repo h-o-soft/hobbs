@@ -1,12 +1,13 @@
-//! Telnet server module.
+//! Server module.
 //!
 //! This module provides the TCP listener and connection handling for the
-//! Telnet server.
+//! Telnet server, and the SSH tunnel server.
 
 pub mod encoding;
 pub mod input;
 mod listener;
 mod session;
+pub mod ssh;
 pub mod telnet;
 
 pub use encoding::{
