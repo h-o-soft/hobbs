@@ -11,6 +11,8 @@
 5. [バックアップ・リストア](#バックアップリストア)
 6. [トラブルシューティング](#トラブルシューティング)
 7. [セキュリティ](#セキュリティ)
+   - [SSH トンネルサーバー](#ssh-トンネルサーバー)
+   - [ネットワークセキュリティ](#ネットワークセキュリティ)
 
 ---
 
@@ -50,8 +52,11 @@ sudo systemctl restart hobbs
 # プロセス確認
 ps aux | grep hobbs
 
-# ポート確認
+# ポート確認（Telnet）
 lsof -i :2323
+
+# ポート確認（SSH、有効時）
+lsof -i :2222
 
 # systemdステータス
 sudo systemctl status hobbs
@@ -826,6 +831,174 @@ RUST_LOG=debug ./hobbs
    sudo ufw allow 2323/tcp
    ```
 
+### SSH トンネルサーバー
+
+HOBBS にはSSHトンネルサーバーが内蔵されており、Telnet通信をSSHで暗号化できます。
+`direct-tcpip`（ポートフォワード）専用で、Shell接続は非サポートです。
+
+#### SSH設定
+
+`config.toml` の `[ssh]` セクション:
+
+```toml
+[ssh]
+# SSHトンネルサーバーを有効にする
+enabled = true
+# バインドするホストアドレス
+host = "0.0.0.0"
+# SSHサーバーのポート番号
+port = 2222
+# SSHホスト鍵のパス（初回起動時に自動生成）
+host_key_path = "data/ssh_host_key"
+# SSH接続用ユーザー名（全接続共通）
+username = "bbs"
+# SSH接続用パスワード（有効時は必須）
+# 環境変数 HOBBS_SSH_PASSWORD で上書き可能
+password = "your-ssh-password"
+# 最大同時SSH接続数
+max_connections = 20
+# 1接続あたりの最大チャネル数
+max_channels_per_connection = 1
+```
+
+SSH有効時は Telnet をローカル限定にすることを推奨します:
+
+```toml
+[server]
+host = "127.0.0.1"   # Telnet はローカルのみ
+```
+
+#### 環境変数
+
+| 環境変数 | 説明 |
+|----------|------|
+| `HOBBS_SSH_PASSWORD` | SSHパスワード（config.toml より優先） |
+
+systemdサービスの場合:
+```ini
+[Service]
+Environment="HOBBS_SSH_PASSWORD=your-ssh-password"
+```
+
+#### 接続方法
+
+SSHポートフォワードで中間のローカルポートからHOBBSに接続します:
+
+```bash
+ssh -L 12323:localhost:2323 bbs@bbs-server.example.com -p 2222 -N
+```
+
+別のターミナルから:
+
+```bash
+telnet localhost 12323
+```
+
+Shell接続（`ssh bbs@server -p 2222`）は非サポートです。SSHターミナルはTelnet IACネゴシエーションを処理できないため、ポートフォワード専用となります。
+
+#### 中継サーバー構成
+
+Telnetクライアントからインターネット経由でBBSに接続する場合、
+中継サーバーを使用してSSHトンネルを常時維持する構成が有効です。
+
+```
+構成図:
+[Telnetクライアント] --Telnet--> [中継サーバー:12323] --SSH--> [BBSサーバー:2222]
+                                                                   ↓ direct-tcpip
+                                                              [BBSサーバー:2323]
+                                                              (127.0.0.1のみ)
+```
+
+**BBSサーバー側の準備:**
+
+1. `config.toml` で SSH を有効化（上記参照）
+2. ファイアウォールでSSHポートを開放:
+   ```bash
+   sudo ufw allow 2222/tcp
+   ```
+3. クラウド環境（Oracle Cloud等）を使用している場合、セキュリティリストでも2222/tcpを許可
+
+**中継サーバー側の準備:**
+
+1. 中継サーバーのファイアウォールで12323/tcpを開放:
+   ```bash
+   sudo ufw allow 12323/tcp
+   ```
+
+2. SSHトンネルのsystemdサービスを作成:
+
+   `/etc/systemd/system/hobbs-ssh-tunnel.service`:
+
+   ```ini
+   [Unit]
+   Description=HOBBS SSH Tunnel
+   After=network-online.target
+   Wants=network-online.target
+
+   [Service]
+   Type=simple
+   ExecStart=/usr/bin/sshpass -p 'your-ssh-password' /usr/bin/ssh \
+       -L 0.0.0.0:12323:localhost:2323 \
+       bbs@bbs-server.example.com -p 2222 -N \
+       -o ServerAliveInterval=60 \
+       -o ServerAliveCountMax=3 \
+       -o ExitOnForwardFailure=yes \
+       -o StrictHostKeyChecking=accept-new
+   Restart=always
+   RestartSec=10
+   User=tunnel
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+   - `0.0.0.0:12323` — 全インターフェースでlisten（外部からTelnet接続可能に）
+   - `localhost:2323` — BBSサーバー側のTelnetポート（localhostへの転送のみ許可）
+   - `sshpass` — パスワード認証の自動化（`sudo apt install sshpass`）
+   - `ServerAliveInterval` / `ServerAliveCountMax` — 接続断検出と自動再接続
+   - `StrictHostKeyChecking=accept-new` — 初回ホスト鍵を自動受け入れ（以降は検証）
+
+3. サービスの有効化と起動:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable hobbs-ssh-tunnel
+   sudo systemctl start hobbs-ssh-tunnel
+   ```
+
+4. 状態確認:
+   ```bash
+   sudo systemctl status hobbs-ssh-tunnel
+   ss -tlnp | grep 12323
+   ```
+
+5. Telnetクライアントから中継サーバーの12323ポートに接続
+
+#### ホスト鍵
+
+- Ed25519鍵が初回起動時に自動生成される（`data/ssh_host_key`）
+- ファイル権限は0600（Unixのみ）
+- 鍵が破損した場合はファイルを削除すれば再生成される
+
+#### トラブルシューティング
+
+1. **SSH接続が拒否される（Connection refused）**
+   - `config.toml` で `ssh.enabled = true` かつ `ssh.password` が設定されているか確認
+   - ログに `SSH server listening on` が出力されているか確認
+   - ファイアウォール（ufw, セキュリティリスト等）で2222/tcpが開放されているか確認
+   - HOBBSのバイナリがSSH対応版か確認（古いバイナリではSSHサーバーが起動しない）
+
+2. **認証に失敗する**
+   - config.toml の `ssh.username` / `ssh.password` を確認
+   - 環境変数 `HOBBS_SSH_PASSWORD` が設定されていれば config.toml より優先される
+
+3. **ポートフォワードが拒否される**
+   - `-L` のフォワード先は `localhost:2323` を指定（HOBBSのSSHサーバーは `127.0.0.1`/`localhost` への転送のみ許可）
+   - IPアドレス指定（例: `192.168.1.1:2323`）は拒否される
+
+4. **中継サーバーの12323ポートに外部から接続できない**
+   - `-L` のバインドアドレスに `0.0.0.0:` を付けているか確認（デフォルトは127.0.0.1のみ）
+   - 中継サーバーのファイアウォールで12323/tcpが開放されているか確認
+
 ### ネットワークセキュリティ
 
 #### Telnet接続のセキュリティ
@@ -838,21 +1011,18 @@ Telnetは平文プロトコルのため、以下の情報が盗聴される可�
 
 **推奨される対策:**
 
-1. **ローカルネットワーク限定での使用**
+1. **SSHトンネル経由（推奨）**
+   - HOBBS内蔵のSSHサーバーを使用
+   - 詳細は上記「SSHトンネルサーバー」セクションを参照
+
+2. **ローカルネットワーク限定での使用**
    - インターネットに直接公開しない
    - ファイアウォールで外部アクセスをブロック
 
-2. **VPN/トンネル経由での接続**
+3. **VPN経由での接続**
    - Tailscale、WireGuard等のVPNを使用
-   - SSHポートフォワーディングを使用
 
-   ```bash
-   # SSHトンネルの例
-   ssh -L 2323:localhost:2323 user@bbs-server
-   telnet localhost 2323
-   ```
-
-3. **stunnel等でのTLS終端**
+4. **stunnel等でのTLS終端**
    - TLS対応のtelnetプロキシを前段に配置
 
    ```bash

@@ -13,6 +13,10 @@
 │  │  │   (tokio)   │  │  Manager    │  │  Encoder/Decoder│  │  │
 │  │  └─────────────┘  └─────────────┘  └─────────────────┘  │  │
 │  └──────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │              SSH Tunnel Layer (russh)                      │  │
+│  │  direct-tcpip → 内部Telnetポートへ双方向TCPリレー          │  │
+│  └──────────────────────────────────────────────────────────┘  │
 │                              │                                   │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │                  Application Layer                        │  │
@@ -116,11 +120,12 @@ hobbs/
 │   ├── main.rs              # エントリポイント
 │   ├── lib.rs               # ライブラリルート
 │   ├── config.rs            # 設定読み込み
-│   ├── server/              # Telnetサーバ層
+│   ├── server/              # Telnetサーバ層 + SSHトンネル
 │   │   ├── mod.rs
 │   │   ├── listener.rs      # TCP接続受付
 │   │   ├── session.rs       # セッション管理
-│   │   └── encoding.rs      # ShiftJIS変換
+│   │   ├── encoding.rs      # ShiftJIS変換
+│   │   └── ssh.rs           # SSHトンネルサーバー
 │   ├── terminal/            # 端末プロファイル
 │   │   ├── mod.rs
 │   │   └── profile.rs       # TerminalProfile定義
@@ -532,15 +537,20 @@ impl ChatRoom {
 }
 ```
 
-## 11. 将来のプロトコル拡張
+## 11. プロトコル拡張
 
-### 11.1 SSH対応（Phase 7以降）
+### 11.1 SSHトンネルサーバー
 
-現在のアーキテクチャはTelnet固有の処理を `src/server/telnet.rs` に局所化しており、
-SSH対応を後から追加しても設計に大きな影響を与えない。
+HOBBS内蔵のSSHサーバー（`src/server/ssh.rs`）により、Telnet通信をSSHで暗号化できる。
+`russh` クレートを使用し、`direct-tcpip`（ポートフォワード）で内部Telnetポートへリレーする。
+
+**方式: 内部TCPリレー型**
+- SSHの `direct-tcpip` チャネルで内部Telnetポートへ双方向リレー
+- Shell接続は非サポート（SSHターミナルはTelnet IACを処理できないため）
+- BBS側のコードには一切変更なし — SSHは純粋なトランスポート層
 
 ```
-将来の構成:
+現在の構成:
 
                      ┌──────────────────────────┐
                      │   Application Layer      │
@@ -550,25 +560,25 @@ SSH対応を後から追加しても設計に大きな影響を与えない。
          ┌───────────────────────┼───────────────────────┐
          │                       │                       │
     ┌────▼────┐            ┌─────▼─────┐          ┌──────▼──────┐
-    │ Telnet  │            │    SSH    │          │  (Future)   │
-    │  Layer  │            │   Layer   │          │  WebSocket  │
-    │ :2323   │            │   :2222   │          │    etc.     │
-    └─────────┘            └───────────┘          └─────────────┘
+    │ Telnet  │            │SSH Tunnel │          │   Web UI    │
+    │  Layer  │            │(direct-   │          │  (REST +    │
+    │ :2323   │            │ tcpip)    │          │   SPA)      │
+    └─────────┘            │ :2222     │          │  :8080      │
+                           └─────┬─────┘          └─────────────┘
+                                 │ TCP relay
+                           ┌─────▼─────┐
+                           │  Telnet   │
+                           │  :2323    │
+                           │(localhost)│
+                           └───────────┘
 ```
 
-**共通インターフェース:**
+SSHサーバーは `tokio::spawn` で独立タスクとして起動（Send-safe）。
+接続数制限はセマフォでSSHハンドシェイク前に即拒否し、
+チャネル数制限は `Arc<tokio::sync::Mutex<HashSet<ChannelId>>>` で管理する。
 
-```rust
-/// プロトコル層が実装するトレイト
-pub trait ConnectionHandler: Send + Sync {
-    /// データ受信
-    async fn read(&mut self, buf: &mut [u8]) -> io::Result<usize>;
-    /// データ送信
-    async fn write(&mut self, buf: &[u8]) -> io::Result<usize>;
-    /// 接続終了
-    async fn close(&mut self) -> io::Result<()>;
-}
-```
+### 11.2 将来の拡張
 
-SSH対応時は `src/server/ssh.rs` を追加し、`ConnectionHandler` を実装することで
-既存のセッション管理・アプリケーション層と統合可能。
+- WebSocket対応（ブラウザからのアクセス）
+- IPv6対応
+- TLS over Telnet（STARTTLS）
