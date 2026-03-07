@@ -94,6 +94,12 @@ export const LoginPage: Component = () => {
               {t('auth.registerHere')}
             </A>
           </div>
+
+          <div class="mt-4 text-center">
+            <A href="/boards" class="text-sm text-gray-400 hover:text-neon-cyan transition-colors">
+              {t('auth.guestBrowse')}
+            </A>
+          </div>
         </div>
 
         {/* Decorative Element */}

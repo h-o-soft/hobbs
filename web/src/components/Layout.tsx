@@ -27,22 +27,22 @@ export const Layout: ParentComponent = (props) => {
         <div class="container mx-auto px-4">
           <div class="flex items-center justify-between h-16">
             {/* Logo */}
-            <A href="/" class="font-display text-2xl font-bold text-neon-cyan text-neon-glow">
+            <A href={auth.isAuthenticated ? "/" : "/boards"} class="font-display text-2xl font-bold text-neon-cyan text-neon-glow">
               {siteConfig.config.name.split(' - ')[0] || siteConfig.config.name}
             </A>
 
             {/* Navigation */}
-            <Show when={auth.isAuthenticated}>
-              <nav class="hidden md:flex items-center space-x-1">
-                <NavLink href="/boards" active={isActive('/boards')}>{t('nav.boards')}</NavLink>
+            <nav class="hidden md:flex items-center space-x-1">
+              <NavLink href="/boards" active={isActive('/boards')}>{t('nav.boards')}</NavLink>
+              <Show when={auth.isAuthenticated}>
                 <NavLink href="/mail" active={isActive('/mail')}>{t('nav.mail')}</NavLink>
                 <NavLink href="/chat" active={isActive('/chat')}>{t('nav.chat')}</NavLink>
                 <NavLink href="/files" active={isActive('/files')}>{t('nav.files')}</NavLink>
                 <Show when={auth.user?.role === 'sysop' || auth.user?.role === 'subop'}>
                   <NavLink href="/admin" active={isActive('/admin')}>{t('nav.admin')}</NavLink>
                 </Show>
-              </nav>
-            </Show>
+              </Show>
+            </nav>
 
             {/* User Info */}
             <div class="flex items-center space-x-4">
@@ -57,9 +57,14 @@ export const Layout: ParentComponent = (props) => {
               <Show
                 when={auth.isAuthenticated}
                 fallback={
-                  <A href="/login" class="btn-primary text-sm">
-                    {t('nav.login')}
-                  </A>
+                  <div class="flex items-center space-x-2">
+                    <A href="/login" class="btn-primary text-sm">
+                      {t('nav.login')}
+                    </A>
+                    <A href="/register" class="text-sm text-gray-400 hover:text-neon-cyan transition-colors">
+                      {t('auth.register')}
+                    </A>
+                  </div>
                 }
               >
                 <div class="flex items-center space-x-3">
@@ -86,17 +91,17 @@ export const Layout: ParentComponent = (props) => {
           </div>
 
           {/* Mobile Navigation */}
-          <Show when={auth.isAuthenticated}>
-            <nav class="md:hidden flex items-center space-x-1 pb-3 overflow-x-auto">
-              <NavLink href="/boards" active={isActive('/boards')}>{t('nav.boards')}</NavLink>
+          <nav class="md:hidden flex items-center space-x-1 pb-3 overflow-x-auto">
+            <NavLink href="/boards" active={isActive('/boards')}>{t('nav.boards')}</NavLink>
+            <Show when={auth.isAuthenticated}>
               <NavLink href="/mail" active={isActive('/mail')}>{t('nav.mail')}</NavLink>
               <NavLink href="/chat" active={isActive('/chat')}>{t('nav.chat')}</NavLink>
               <NavLink href="/files" active={isActive('/files')}>{t('nav.files')}</NavLink>
               <Show when={auth.user?.role === 'sysop' || auth.user?.role === 'subop'}>
                 <NavLink href="/admin" active={isActive('/admin')}>{t('nav.admin')}</NavLink>
               </Show>
-            </nav>
-          </Show>
+            </Show>
+          </nav>
         </div>
       </header>
 
