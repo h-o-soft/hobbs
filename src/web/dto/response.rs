@@ -167,6 +167,8 @@ pub struct ThreadResponse {
     pub author: AuthorInfo,
     /// Number of posts.
     pub post_count: i32,
+    /// Whether user can write to this thread's board.
+    pub can_write: bool,
     /// Creation timestamp.
     pub created_at: String,
     /// Last update timestamp.

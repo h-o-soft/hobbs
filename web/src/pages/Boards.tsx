@@ -75,7 +75,9 @@ export const BoardDetailPage: Component = () => {
     return isAuthor || isAdmin;
   };
 
-  const [board] = createResource(boardId, boardApi.getBoard);
+  const [board] = createResource(boardId, (id) =>
+    boardApi.getBoard(id).catch(() => null)
+  );
 
   // スレッド形式の掲示板用
   const [threads, { refetch: refetchThreads }] = createResource(
@@ -122,7 +124,15 @@ export const BoardDetailPage: Component = () => {
 
   return (
     <div class="space-y-6">
-      <Show when={!board.loading && board()} fallback={<PageLoading />}>
+      <Show when={!board.loading} fallback={<PageLoading />}>
+      <Show when={board()} fallback={
+        <div class="space-y-4">
+          <div class="flex items-center space-x-2 text-sm text-gray-500 mb-2">
+            <A href="/boards" class="hover:text-neon-cyan transition-colors">{t('boards.title')}</A>
+          </div>
+          <Alert type="error">{t('errors.notFound')}</Alert>
+        </div>
+      }>
         {/* Header */}
         <div class="flex items-center justify-between">
           <div>
@@ -325,6 +335,7 @@ export const BoardDetailPage: Component = () => {
           </Show>
         </Modal>
       </Show>
+      </Show>
     </div>
   );
 };
@@ -354,10 +365,12 @@ export const ThreadDetailPage: Component = () => {
     return isAuthor || isAdmin;
   };
 
-  const [thread, { refetch: refetchThread }] = createResource(threadId, boardApi.getThread);
+  const [thread, { refetch: refetchThread }] = createResource(threadId, (id) =>
+    boardApi.getThread(id).catch(() => null)
+  );
 
   const [posts, { refetch }] = createResource(
-    () => ({ threadId: threadId(), page: page() }),
+    () => thread() ? { threadId: threadId(), page: page() } : null,
     ({ threadId, page }) => boardApi.getPosts(threadId, { page, per_page: 50 })
   );
 
@@ -391,7 +404,15 @@ export const ThreadDetailPage: Component = () => {
 
   return (
     <div class="space-y-6">
-      <Show when={!thread.loading && thread()} fallback={<PageLoading />}>
+      <Show when={!thread.loading} fallback={<PageLoading />}>
+      <Show when={thread()} fallback={
+        <div class="space-y-4">
+          <div class="flex items-center space-x-2 text-sm text-gray-500 mb-2">
+            <A href="/boards" class="hover:text-neon-cyan transition-colors">{t('boards.title')}</A>
+          </div>
+          <Alert type="error">{t('errors.notFound')}</Alert>
+        </div>
+      }>
         {/* Header */}
         <div>
           <div class="flex items-center space-x-2 text-sm text-gray-500 mb-2">
@@ -428,13 +449,22 @@ export const ThreadDetailPage: Component = () => {
         {/* Posts */}
         <Show when={!posts.loading} fallback={<PageLoading />}>
           {/* Reply Form */}
-          <div class="card">
-            <h3 class="text-lg font-medium text-neon-cyan mb-4">{t('boards.reply')}</h3>
-            <ReplyForm
-              threadId={threadId()}
-              onSuccess={handlePostCreated}
-            />
-          </div>
+          <Show when={thread()?.can_write} fallback={
+            <Show when={!auth.isAuthenticated}>
+              <div class="card text-center py-4">
+                <p class="text-gray-400 mb-2">{t('boards.loginToReply')}</p>
+                <A href="/login" class="text-neon-cyan hover:text-neon-cyan/80">{t('auth.login')}</A>
+              </div>
+            </Show>
+          }>
+            <div class="card">
+              <h3 class="text-lg font-medium text-neon-cyan mb-4">{t('boards.reply')}</h3>
+              <ReplyForm
+                threadId={threadId()}
+                onSuccess={handlePostCreated}
+              />
+            </div>
+          </Show>
 
           <Show when={posts()}>
             <Pagination
@@ -520,6 +550,7 @@ export const ThreadDetailPage: Component = () => {
             )}
           </Show>
         </Modal>
+      </Show>
       </Show>
     </div>
   );

@@ -62,6 +62,7 @@ export const dict = {
     loginHere: 'Login',
     subtitle: 'Powered by HOBBS',
     telnetPasswordWarning: 'Warning: This BBS supports Telnet (plaintext) connections. Your password may be transmitted unencrypted over the network. NEVER use the same password as other services.',
+    guestBrowse: 'Browse as Guest',
   },
 
   // Home
@@ -107,6 +108,7 @@ export const dict = {
     editThreadFailed: 'Failed to edit thread',
     confirmDeleteThread: 'Are you sure you want to delete this thread?',
     deleteThreadFailed: 'Failed to delete thread',
+    loginToReply: 'Please login to post',
   },
 
   // Mail
