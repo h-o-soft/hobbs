@@ -91,6 +91,7 @@ export interface Thread {
   title: string;
   author: AuthorInfo;
   post_count: number;
+  can_write: boolean;
   created_at: string;
   updated_at: string;
 }

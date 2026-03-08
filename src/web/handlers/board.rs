@@ -162,7 +162,7 @@ pub async fn list_threads(
 
     let (offset, limit) = pagination.to_offset_limit();
 
-    let (_board, threads, total) = {
+    let (board, threads, total) = {
         let board_repo = BoardRepository::new(state.db.pool());
         let thread_repo = ThreadRepository::new(state.db.pool());
 
@@ -227,6 +227,7 @@ pub async fn list_threads(
                 title: t.title,
                 author,
                 post_count: t.post_count,
+                can_write: board.can_write(user_role),
                 created_at: to_rfc3339(&t.created_at),
                 updated_at: to_rfc3339(&t.updated_at),
             });
@@ -351,6 +352,7 @@ pub async fn create_thread(
         title: thread.title,
         author,
         post_count: thread.post_count,
+        can_write: true, // User has write permission (checked above)
         created_at: to_rfc3339(&thread.created_at),
         updated_at: to_rfc3339(&thread.updated_at),
     };
@@ -592,7 +594,7 @@ pub async fn get_thread(
         .map(|c| Role::from_str(&c.role).unwrap_or(Role::Guest))
         .unwrap_or(Role::Guest);
 
-    let (thread, author) = {
+    let (thread, author, can_write) = {
         let thread_repo = ThreadRepository::new(state.db.pool());
         let board_repo = BoardRepository::new(state.db.pool());
         let user_repo = UserRepository::new(state.db.pool());
@@ -620,6 +622,8 @@ pub async fn get_thread(
             return Err(ApiError::forbidden("Access denied"));
         }
 
+        let can_write = board.can_write(user_role);
+
         let author = user_repo
             .get_by_id(thread.author_id)
             .await
@@ -636,7 +640,7 @@ pub async fn get_thread(
                 nickname: "Unknown".to_string(),
             });
 
-        (thread, author)
+        (thread, author, can_write)
     };
 
     let response = ThreadResponse {
@@ -645,6 +649,7 @@ pub async fn get_thread(
         title: thread.title,
         author,
         post_count: thread.post_count,
+        can_write,
         created_at: to_rfc3339(&thread.created_at),
         updated_at: to_rfc3339(&thread.updated_at),
     };
@@ -1063,10 +1068,19 @@ pub async fn update_thread(
             })?
     };
 
-    // Fetch author info
-    let author = {
+    // Fetch author info and board for can_write
+    let (author, can_write) = {
         let user_repo = UserRepository::new(state.db.pool());
-        user_repo.get_by_id(thread.author_id).await.ok().flatten()
+        let board_repo = BoardRepository::new(state.db.pool());
+        let author = user_repo.get_by_id(thread.author_id).await.ok().flatten();
+        let can_write = board_repo
+            .get_by_id(thread.board_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|b| b.can_write(user_role))
+            .unwrap_or(false);
+        (author, can_write)
     };
 
     let response = ThreadResponse {
@@ -1085,6 +1099,7 @@ pub async fn update_thread(
                 nickname: "Unknown".to_string(),
             }),
         post_count: thread.post_count,
+        can_write,
         created_at: to_rfc3339(&thread.created_at),
         updated_at: to_rfc3339(&thread.updated_at),
     };

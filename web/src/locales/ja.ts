@@ -62,6 +62,7 @@ export const dict = {
     loginHere: 'ログイン',
     subtitle: 'Powered by HOBBS',
     telnetPasswordWarning: '警告: このBBSはTelnet（平文）接続に対応しています。パスワードは暗号化されずにネットワーク上を流れる可能性があります。他のサービスと同じパスワードは絶対に使用しないでください。',
+    guestBrowse: 'ゲストとして閲覧',
   },
 
   // Home
@@ -107,6 +108,7 @@ export const dict = {
     editThreadFailed: 'スレッドの編集に失敗しました',
     confirmDeleteThread: 'このスレッドを削除しますか？',
     deleteThreadFailed: 'スレッドの削除に失敗しました',
+    loginToReply: '投稿するにはログインしてください',
   },
 
   // Mail

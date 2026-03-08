@@ -90,6 +90,24 @@ const PublicRoute: Component<{ children: any }> = (props) => {
   );
 };
 
+// Guest-allowed route wrapper (accessible without login)
+const GuestAllowedRoute: Component<{ children: any }> = (props) => {
+  const [auth] = useAuth();
+
+  return (
+    <Show
+      when={!auth.isLoading}
+      fallback={<PageLoading />}
+    >
+      <Layout>
+        <Suspense fallback={<PageLoading />}>
+          {props.children}
+        </Suspense>
+      </Layout>
+    </Show>
+  );
+};
+
 const App: Component = () => {
   return (
     <SiteConfigProvider>
@@ -115,19 +133,19 @@ const App: Component = () => {
           </ProtectedRoute>
         )} />
         <Route path="/boards" component={() => (
-          <ProtectedRoute>
+          <GuestAllowedRoute>
             <BoardsPage />
-          </ProtectedRoute>
+          </GuestAllowedRoute>
         )} />
         <Route path="/boards/:id" component={() => (
-          <ProtectedRoute>
+          <GuestAllowedRoute>
             <BoardDetailPage />
-          </ProtectedRoute>
+          </GuestAllowedRoute>
         )} />
         <Route path="/threads/:id" component={() => (
-          <ProtectedRoute>
+          <GuestAllowedRoute>
             <ThreadDetailPage />
-          </ProtectedRoute>
+          </GuestAllowedRoute>
         )} />
         <Route path="/mail" component={() => (
           <ProtectedRoute>
@@ -185,7 +203,14 @@ const App: Component = () => {
         )} />
 
         {/* Fallback */}
-        <Route path="*" component={() => <Navigate href="/" />} />
+        <Route path="*" component={() => {
+          const [auth] = useAuth();
+          return (
+            <Show when={!auth.isLoading}>
+              <Navigate href={auth.isAuthenticated ? "/" : "/boards"} />
+            </Show>
+          );
+        }} />
           </Router>
         </AuthProvider>
       </I18nProvider>
