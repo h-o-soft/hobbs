@@ -27,8 +27,8 @@ pub struct TerminalProfile {
     pub encoding: CharacterEncoding,
     /// Default output mode for escape sequence handling.
     pub output_mode: OutputMode,
-    /// Template directory name (relative to templates/).
-    /// Typically "80" for 80-column or "40" for 40-column terminals.
+    /// Unused: the template set is chosen from `width` by `TemplateLoader`.
+    /// Kept for compatibility with `[[terminal.profiles]]` in config files.
     pub template_dir: String,
 }
 

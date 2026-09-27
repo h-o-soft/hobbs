@@ -124,17 +124,14 @@ hobbs/
 │   │   ├── mod.rs
 │   │   ├── listener.rs      # TCP接続受付
 │   │   ├── session.rs       # セッション管理
-│   │   ├── encoding.rs      # ShiftJIS変換
+│   │   ├── encoding.rs      # 文字コード変換（ShiftJIS/UTF-8/CP437/PETSCII）、出力モード
+│   │   ├── wire.rs          # 送信バイト列への変換（to_wire）、エコー
 │   │   └── ssh.rs           # SSHトンネルサーバー
-│   ├── terminal/            # 端末プロファイル
+│   ├── terminal/            # 端末プロファイル（詳細は docs/terminal_model.md）
 │   │   ├── mod.rs
-│   │   └── profile.rs       # TerminalProfile定義
-│   ├── screen/              # 画面表示
-│   │   ├── mod.rs
-│   │   ├── ansi.rs          # ANSIエスケープシーケンス
-│   │   ├── menu.rs          # メニュー表示
-│   │   ├── renderer.rs      # 画面レンダリング
-│   │   └── plain.rs         # プレーンテキスト描画
+│   │   ├── profile.rs       # TerminalProfile定義
+│   │   ├── settings.rs      # TerminalSettings と resolve（設定の決め方）
+│   │   └── width.rs         # 表示幅の計算
 │   ├── auth/                # 認証・会員管理
 │   │   ├── mod.rs
 │   │   ├── user.rs          # ユーザー管理

@@ -300,6 +300,11 @@ HOBBSは様々な端末タイプをサポートしています。
 | `c64` | 40 | 25 | PETSCII | Plain | C64（ANSI非対応） |
 | `c64_petscii` | 40 | 25 | PETSCII | PetsciiCtrl | C64（PETSCII制御コード使用） |
 | `c64_ansi` | 40 | 25 | PETSCII | ANSI | C64（ANSI対応エミュレータ） |
+| `40col_sjis` | 40 | 25 | ShiftJIS | ANSI | 40桁の日本語端末 |
+| `jterm40` | 40 | 25 | ShiftJIS | ANSI | C64 用の自作端末（全角も1桁として扱う） |
+| `40col_utf8` | 40 | 25 | UTF-8 | ANSI | 40桁の UTF-8 端末 |
+
+> 文字コード・端末まわりの実際の動き（いつ何が決まるか、既知の癖）は `docs/terminal_model.md` を参照してください。C64 系の3つは、現状まともに動きません。
 
 ### 設定項目
 
@@ -307,7 +312,7 @@ HOBBSは様々な端末タイプをサポートしています。
 
 ```toml
 [terminal]
-# デフォルトの端末プロファイル
+# 接続時の端末プロファイル（組み込みのみ。ログイン前の文字コードは常に ShiftJIS）
 default_profile = "standard"
 
 # 自動ページングを有効にする（スクロール機能のない端末向け）
@@ -356,7 +361,7 @@ template_dir = "40"
 | `ansi_enabled` | - | true | ANSIエスケープシーケンス対応 |
 | `encoding` | - | "shiftjis" | 文字エンコーディング |
 | `output_mode` | - | "ansi" | 出力モード |
-| `template_dir` | - | "80" | テンプレートディレクトリ |
+| `template_dir` | - | "80" | 未使用（テンプレートの組は `width` で決まる。互換のために読み込むだけ） |
 
 #### エンコーディング値
 
@@ -375,7 +380,8 @@ template_dir = "40"
 | `plain` | ANSIエスケープシーケンスを除去 |
 | `petscii_ctrl` | ANSIをPETSCII制御コードに変換 |
 
-カスタムプロファイルは、Telnetログイン時の端末選択画面に組み込みプロファイルと共に表示されます。
+カスタムプロファイルは、設定画面の端末プロファイルの一覧に、組み込みプロファイルと共に表示されます。
+ただし現状は、ログイン時と設定の保存時にカスタムプロファイルを参照しないため、効くのは `encoding` だけです（`docs/terminal_model.md` の Q2）。
 
 ---
 

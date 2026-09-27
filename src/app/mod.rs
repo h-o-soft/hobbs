@@ -20,7 +20,6 @@ use crate::i18n::I18nManager;
 use crate::rate_limit::{RateLimitConfig, RateLimiters};
 use crate::server::{SessionManager, TelnetSession};
 use crate::template::TemplateLoader;
-use crate::terminal::TerminalProfile;
 
 /// Main application that manages BBS functionality.
 pub struct Application {
@@ -115,20 +114,6 @@ impl Application {
             Arc::clone(&self.session_manager),
             Arc::clone(&self.chat_manager),
             Arc::clone(&self.rate_limiters),
-        )
-    }
-
-    /// Create a session handler with a specific terminal profile.
-    pub fn create_session_handler_with_profile(&self, profile: TerminalProfile) -> SessionHandler {
-        SessionHandler::with_profile(
-            Arc::clone(&self.db),
-            Arc::clone(&self.config),
-            Arc::clone(&self.i18n_manager),
-            Arc::clone(&self.template_loader),
-            Arc::clone(&self.session_manager),
-            Arc::clone(&self.chat_manager),
-            Arc::clone(&self.rate_limiters),
-            profile,
         )
     }
 

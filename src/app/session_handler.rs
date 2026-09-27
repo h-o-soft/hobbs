@@ -19,7 +19,6 @@ use crate::error::{HobbsError, Result};
 use crate::i18n::{I18n, I18nManager};
 use crate::mail::MailRepository;
 use crate::rate_limit::RateLimiters;
-use crate::screen::{create_screen_from_profile, Screen};
 use crate::server::{
     convert_caret_escape, initial_negotiation, to_wire, CharacterEncoding, EchoMode, InputResult,
     LineBuffer, NewlinePolicy, SessionManager, SessionState, TelnetParser, TelnetSession,
@@ -49,8 +48,6 @@ pub struct SessionHandler {
     /// The profile in effect afterwards lives in the session's
     /// `TerminalSettings` (`session.settings().profile`).
     connect_profile: TerminalProfile,
-    /// Screen renderer.
-    screen: Box<dyn Screen>,
     /// Current i18n instance.
     i18n: Arc<I18n>,
     /// Line buffer for input.
@@ -78,7 +75,6 @@ impl SessionHandler {
     ) -> Self {
         // Use default profile from config
         let profile = TerminalProfile::from_name(&config.terminal.default_profile);
-        let screen = create_screen_from_profile(&profile);
         let lang = &config.locale.language;
         let i18n = i18n_manager
             .get(lang)
@@ -96,7 +92,6 @@ impl SessionHandler {
             chat_manager,
             rate_limiters,
             connect_profile: profile,
-            screen,
             i18n,
             line_buffer,
             telnet_parser: TelnetParser::new(),
@@ -116,7 +111,6 @@ impl SessionHandler {
         rate_limiters: Arc<RateLimiters>,
         profile: TerminalProfile,
     ) -> Self {
-        let screen = create_screen_from_profile(&profile);
         let lang = &config.locale.language;
         let i18n = i18n_manager
             .get(lang)
@@ -134,7 +128,6 @@ impl SessionHandler {
             chat_manager,
             rate_limiters,
             connect_profile: profile,
-            screen,
             i18n,
             line_buffer,
             telnet_parser: TelnetParser::new(),
@@ -399,11 +392,8 @@ Select language / Gengo sentaku:
     ///
     /// This is the only place where a session's terminal settings change.
     /// It stores them in the session and updates the values derived from
-    /// them: input decoding (`line_buffer`), i18n and the screen renderer.
+    /// them: input decoding (`line_buffer`) and i18n.
     fn apply_settings(&mut self, session: &mut TelnetSession, settings: TerminalSettings) {
-        if settings.profile != session.settings().profile {
-            self.screen = create_screen_from_profile(&settings.profile);
-        }
         self.line_buffer.set_encoding(settings.encoding);
         self.set_language(&settings.language);
         session.set_settings(settings);
