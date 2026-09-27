@@ -31,6 +31,9 @@ pub enum EchoMode {
     Masked(char),
 }
 
+/// The Commodore DEL key (cursor left + erase) in PETSCII.
+const PETSCII_DEL: u8 = 0x14;
+
 /// A line buffer for input processing.
 #[derive(Debug)]
 pub struct LineBuffer {
@@ -249,6 +252,42 @@ impl LineBuffer {
         }
     }
 
+    /// Delete the last character (which may be multi-byte) and return the
+    /// erase echo.
+    fn backspace(&mut self) -> (InputResult, Vec<u8>) {
+        // Reset CR tracking
+        self.last_was_cr = false;
+        // Clear any pending echo bytes (incomplete multi-byte char)
+        self.pending_echo.clear();
+
+        let bytes_to_del = self.bytes_to_delete();
+        if bytes_to_del == 0 {
+            // Buffer was empty, no echo
+            return (InputResult::Buffering, vec![]);
+        }
+
+        // Calculate display width before deleting
+        let width = self.display_width_of_deleted(bytes_to_del);
+
+        // Delete the bytes
+        let new_len = self.buffer.len() - bytes_to_del;
+        self.buffer.truncate(new_len);
+
+        let echo = if self.encoding == CharacterEncoding::Petscii {
+            // PETSCII: DEL moves the cursor left and erases.
+            vec![PETSCII_DEL; width]
+        } else {
+            // Move cursor back, print spaces, move cursor back,
+            // for each column the character occupied.
+            let mut echo = Vec::with_capacity(width * 3);
+            echo.extend(std::iter::repeat_n(control::BS, width));
+            echo.extend(std::iter::repeat_n(b' ', width));
+            echo.extend(std::iter::repeat_n(control::BS, width));
+            echo
+        };
+        (InputResult::Buffering, echo)
+    }
+
     /// Process a single byte of input.
     ///
     /// Returns the input result and any bytes that should be echoed back.
@@ -278,40 +317,8 @@ impl LineBuffer {
                     (InputResult::Line(line), echo)
                 }
             }
-            control::BS | control::DEL => {
-                // Reset CR tracking
-                self.last_was_cr = false;
-                // Clear any pending echo bytes (incomplete multi-byte char)
-                self.pending_echo.clear();
-
-                // Backspace - delete the last character (which may be multi-byte)
-                let bytes_to_del = self.bytes_to_delete();
-                if bytes_to_del > 0 {
-                    // Calculate display width before deleting
-                    let width = self.display_width_of_deleted(bytes_to_del);
-
-                    // Delete the bytes
-                    let new_len = self.buffer.len() - bytes_to_del;
-                    self.buffer.truncate(new_len);
-
-                    // Echo: move cursor back, print spaces, move cursor back
-                    // Repeat for each column the character occupied
-                    let mut echo = Vec::with_capacity(width * 3);
-                    for _ in 0..width {
-                        echo.push(control::BS);
-                    }
-                    for _ in 0..width {
-                        echo.push(b' ');
-                    }
-                    for _ in 0..width {
-                        echo.push(control::BS);
-                    }
-                    (InputResult::Buffering, echo)
-                } else {
-                    // Buffer was empty, no echo
-                    (InputResult::Buffering, vec![])
-                }
-            }
+            control::BS | control::DEL => self.backspace(),
+            PETSCII_DEL if self.encoding == CharacterEncoding::Petscii => self.backspace(),
             control::ETX => {
                 // Ctrl+C - cancel
                 self.clear();
@@ -1161,5 +1168,39 @@ mod tests {
         buffer.process_byte(0x82);
         buffer.process_byte(0xA0);
         assert_eq!(buffer.bytes_to_delete(), 2);
+    }
+
+    #[test]
+    fn test_petscii_del_key_is_backspace() {
+        // The C64 DEL key sends 0x14; the erase is echoed as 0x14 too.
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::Petscii);
+        buffer.process_byte(0x41);
+        buffer.process_byte(0x42);
+        let (result, echo) = buffer.process_byte(0x14);
+        assert_eq!(result, InputResult::Buffering);
+        assert_eq!(echo, vec![0x14]);
+        let (result, _) = buffer.process_byte(0x0D);
+        assert_eq!(result, InputResult::Line("A".to_string()));
+    }
+
+    #[test]
+    fn test_petscii_bs_echo_uses_del() {
+        // On PETSCII, 0x08 is not a cursor-left code, so erase with 0x14.
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::Petscii);
+        buffer.process_byte(0x41);
+        let (_, echo) = buffer.process_byte(0x08);
+        assert_eq!(echo, vec![0x14]);
+        let (_, echo) = buffer.process_byte(0x08);
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn test_0x14_ignored_outside_petscii() {
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::ShiftJIS);
+        buffer.process_byte(b'a');
+        let (_, echo) = buffer.process_byte(0x14);
+        assert!(echo.is_empty());
+        let (result, _) = buffer.process_byte(b'\r');
+        assert_eq!(result, InputResult::Line("a".to_string()));
     }
 }

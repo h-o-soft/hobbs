@@ -246,19 +246,12 @@ impl TerminalProfile {
     /// DOS端末（80x25、CP437、ANSI対応）
     pub fn dos() -> Self { /* ... */ }
 
-    /// Commodore 64（40x25、PETSCII、ANSIなし）
+    /// Commodore 64（40x25、PETSCII、ANSI を PETSCII 制御コードに変換）
+    /// 旧 c64_petscii / c64_ansi は from_name でこれの別名として扱う
     pub fn c64() -> Self { /* ... */ }
 
-    /// Commodore 64 PETSCII制御コード使用
-    pub fn c64_petscii() -> Self { /* ... */ }
-
-    /// Commodore 64 ANSI対応版
-    pub fn c64_ansi() -> Self { /* ... */ }
-
-    /// 利用可能なプロファイル名一覧
-    pub fn available_profiles() -> Vec<&'static str> {
-        vec!["standard", "standard_utf8", "dos", "c64", "c64_petscii", "c64_ansi"]
-    }
+    /// 利用可能なプロファイル名一覧（実際の一覧は docs/terminal_model.md を参照）
+    pub fn available_profiles() -> &'static [&'static str] { /* ... */ }
 
     /// 名前からプロファイルを取得
     pub fn from_name(name: &str) -> Self { /* ... */ }

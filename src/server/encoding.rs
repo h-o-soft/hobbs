@@ -472,6 +472,12 @@ pub fn decode_petscii(bytes: &[u8]) -> DecodeResult {
 /// Characters that cannot be represented in PETSCII are replaced with '?'.
 /// The output is in PETSCII uppercase (graphics) mode.
 ///
+/// - CRLF, CR and LF each become a single CR (0x0D).
+/// - PETSCII control codes produced by [`convert_ansi_to_petscii_ctrl`]
+///   (colors, reverse, cursor movement, clear/home) are passed through.
+/// - Some ASCII symbols missing from PETSCII are substituted with the
+///   closest glyph (e.g. `|` → vertical line, `_` → lower bar).
+///
 /// # Arguments
 ///
 /// * `text` - The UTF-8 string to encode.
@@ -491,8 +497,14 @@ pub fn decode_petscii(bytes: &[u8]) -> DecodeResult {
 pub fn encode_petscii(text: &str) -> EncodeResult {
     let mut bytes = Vec::new();
     let mut had_errors = false;
+    let mut chars = text.chars().peekable();
 
-    for c in text.chars() {
+    while let Some(c) = chars.next() {
+        // PETSCII uses CR alone as the line terminator: CRLF, CR and LF all
+        // become a single CR.
+        if c == '\r' && chars.peek() == Some(&'\n') {
+            chars.next();
+        }
         match unicode_to_petscii_byte(c) {
             Some(byte) => bytes.push(byte),
             None => {
@@ -632,6 +644,33 @@ fn unicode_to_petscii_byte(c: char) -> Option<u8> {
         // Control characters
         '\r' => Some(0x0D), // Carriage return
         '\n' => Some(0x0D), // Map newline to CR (PETSCII uses CR only)
+        '\t' => Some(0x20), // No tab in PETSCII
+
+        // PETSCII control codes, represented by the code point of the same
+        // value (as produced by convert_ansi_to_petscii_ctrl).
+        '\u{05}'
+        | '\u{0E}'
+        | '\u{11}'
+        | '\u{12}'
+        | '\u{13}'
+        | '\u{1C}'
+        | '\u{1D}'
+        | '\u{1E}'
+        | '\u{1F}'
+        | '\u{81}'
+        | '\u{8E}'
+        | '\u{90}'..='\u{93}'
+        | '\u{95}'..='\u{9F}' => Some(c as u8),
+
+        // ASCII symbols missing from PETSCII: closest glyph
+        '|' => Some(0xDD),  // Vertical line
+        '_' => Some(0xA4),  // Lower one-eighth bar
+        '\\' => Some(0xCD), // Diagonal (upper left to lower right)
+        '^' => Some(0x5E),  // Up arrow
+        '`' => Some(0x27),  // Apostrophe
+        '~' => Some(0x2D),  // Hyphen
+        '{' => Some(0x28),  // (
+        '}' => Some(0x29),  // )
 
         // Basic ASCII printable (0x20-0x3F) - same as ASCII
         // This includes: space, !"#$%&'()*+,-./0123456789:;<=>?
@@ -785,11 +824,14 @@ pub fn process_output_mode(text: &str, mode: OutputMode) -> String {
 /// Convert ANSI escape sequences to PETSCII control codes.
 ///
 /// This converts common ANSI sequences to their PETSCII equivalents:
-/// - Color codes (limited palette)
-/// - Cursor movement
+/// - SGR colors, including compound parameters (`1;33`), bold/bright
+///   variants, and background colors (shown as color + reverse video)
+/// - Cursor movement (with counts) and cursor position
 /// - Clear screen
 ///
-/// Unsupported sequences are stripped.
+/// Unsupported sequences are stripped. The result contains PETSCII control
+/// codes as code points of the same value (e.g. `'\u{93}'` for CLR), which
+/// [`encode_petscii`] passes through.
 pub fn convert_ansi_to_petscii_ctrl(text: &str) -> String {
     let mut result = String::new();
     let mut chars = text.chars().peekable();
@@ -805,10 +847,7 @@ pub fn convert_ansi_to_petscii_ctrl(text: &str) -> String {
                 while let Some(&next) = chars.peek() {
                     if next.is_ascii_alphabetic() {
                         let cmd = chars.next().unwrap();
-                        // Convert the ANSI command to PETSCII
-                        if let Some(petscii) = ansi_to_petscii_ctrl(&params, cmd) {
-                            result.push(petscii);
-                        }
+                        ansi_to_petscii_ctrl(&params, cmd, &mut result);
                         break;
                     } else {
                         params.push(chars.next().unwrap());
@@ -824,49 +863,123 @@ pub fn convert_ansi_to_petscii_ctrl(text: &str) -> String {
     result
 }
 
-/// Convert a single ANSI CSI command to a PETSCII control character.
-///
-/// Returns None if the sequence has no PETSCII equivalent.
-fn ansi_to_petscii_ctrl(params: &str, cmd: char) -> Option<char> {
+/// PETSCII color codes for ANSI colors 0-7 (normal).
+const PETSCII_COLORS: [char; 8] = [
+    '\u{90}', // black
+    '\x1C',   // red
+    '\x1E',   // green
+    '\u{9E}', // yellow
+    '\x1F',   // blue
+    '\u{9C}', // magenta -> purple
+    '\u{9F}', // cyan
+    '\x05',   // white
+];
+
+/// PETSCII color codes for ANSI colors 0-7 (bold / bright).
+const PETSCII_BRIGHT_COLORS: [char; 8] = [
+    '\u{97}', // dark grey
+    '\u{96}', // light red
+    '\u{99}', // light green
+    '\u{9E}', // yellow
+    '\u{9A}', // light blue
+    '\u{9C}', // purple
+    '\u{9F}', // cyan
+    '\x05',   // white
+];
+
+const PETSCII_RVS_ON: char = '\x12';
+const PETSCII_RVS_OFF: char = '\u{92}';
+const PETSCII_DEFAULT_COLOR: char = '\x05';
+const PETSCII_HOME: char = '\x13';
+const PETSCII_CLEAR: char = '\u{93}';
+const PETSCII_UP: char = '\u{91}';
+const PETSCII_DOWN: char = '\x11';
+const PETSCII_RIGHT: char = '\x1D';
+const PETSCII_LEFT: char = '\u{9D}';
+
+/// Convert a single ANSI CSI command to PETSCII control characters,
+/// appending them to `out`. Sequences without an equivalent add nothing.
+fn ansi_to_petscii_ctrl(params: &str, cmd: char, out: &mut String) {
+    let count = || -> usize { params.parse::<usize>().unwrap_or(1).max(1) };
     match cmd {
         // SGR (Select Graphic Rendition) - colors and attributes
-        'm' => {
-            let code: u8 = params.parse().unwrap_or(0);
-            match code {
-                0 => Some('\u{0092}'), // Reset - RVS OFF
-                1 => None,             // Bold - no PETSCII equivalent
-                7 => Some('\x12'),     // Reverse - RVS ON
-                // Foreground colors (approximate mapping)
-                30 => Some('\u{0090}'), // Black
-                31 => Some('\x1C'),     // Red
-                32 => Some('\x1E'),     // Green
-                33 => Some('\u{009E}'), // Yellow
-                34 => Some('\x1F'),     // Blue
-                35 => Some('\u{009C}'), // Magenta -> Purple
-                36 => Some('\u{009F}'), // Cyan
-                37 => Some('\x05'),     // White
-                _ => None,
-            }
-        }
-        // Cursor Up
-        'A' => Some('\u{0091}'),
-        // Cursor Down
-        'B' => Some('\x11'),
-        // Cursor Forward (Right)
-        'C' => Some('\x1D'),
-        // Cursor Back (Left)
-        'D' => Some('\u{009D}'),
-        // Clear screen
+        'm' => sgr_to_petscii(params, out),
+        'A' => out.extend(std::iter::repeat_n(PETSCII_UP, count())),
+        'B' => out.extend(std::iter::repeat_n(PETSCII_DOWN, count())),
+        'C' => out.extend(std::iter::repeat_n(PETSCII_RIGHT, count())),
+        'D' => out.extend(std::iter::repeat_n(PETSCII_LEFT, count())),
         'J' => {
             if params == "2" {
-                Some('\u{0093}') // Clear screen (CLR)
-            } else {
-                None
+                out.push(PETSCII_CLEAR);
             }
         }
-        // Cursor Home
-        'H' => Some('\x13'),
-        _ => None,
+        // Cursor position: home, then move down/right.
+        'H' | 'f' => {
+            let mut parts = params.split(';');
+            let row: usize = parts
+                .next()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(1)
+                .max(1);
+            let col: usize = parts
+                .next()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(1)
+                .max(1);
+            out.push(PETSCII_HOME);
+            out.extend(std::iter::repeat_n(PETSCII_DOWN, row - 1));
+            out.extend(std::iter::repeat_n(PETSCII_RIGHT, col - 1));
+        }
+        _ => {}
+    }
+}
+
+/// Convert SGR parameters (e.g. `"1;33"`) to PETSCII control characters.
+fn sgr_to_petscii(params: &str, out: &mut String) {
+    let codes: Vec<u16> = if params.is_empty() {
+        vec![0]
+    } else {
+        params
+            .split(';')
+            .map(|p| p.parse::<u16>().unwrap_or(0))
+            .collect()
+    };
+
+    let mut bold = false;
+    let mut fg: Option<(usize, bool)> = None;
+    let mut bg: Option<usize> = None;
+    for code in codes {
+        match code {
+            0 => {
+                out.push(PETSCII_RVS_OFF);
+                out.push(PETSCII_DEFAULT_COLOR);
+                bold = false;
+                fg = None;
+                bg = None;
+            }
+            1 => bold = true,
+            22 => bold = false,
+            7 => out.push(PETSCII_RVS_ON),
+            27 | 49 => out.push(PETSCII_RVS_OFF),
+            30..=37 => fg = Some(((code - 30) as usize, false)),
+            39 => fg = Some((7, false)),
+            90..=97 => fg = Some(((code - 90) as usize, true)),
+            40..=47 => bg = Some((code - 40) as usize),
+            100..=107 => bg = Some((code - 100) as usize),
+            _ => {} // blink, underline, ... have no equivalent
+        }
+    }
+
+    if let Some(b) = bg {
+        // A background color is shown as a reverse-video block of that color.
+        out.push(PETSCII_COLORS[b]);
+        out.push(PETSCII_RVS_ON);
+    } else if let Some((f, bright)) = fg {
+        if bold || bright {
+            out.push(PETSCII_BRIGHT_COLORS[f]);
+        } else {
+            out.push(PETSCII_COLORS[f]);
+        }
     }
 }
 
@@ -1676,9 +1789,98 @@ mod tests {
 
     #[test]
     fn test_ansi_to_petscii_reset() {
+        // RVS OFF, then back to the default color (white) so colors do not bleed.
         let text = "\x1b[0mReset";
         let result = convert_ansi_to_petscii_ctrl(text);
-        assert_eq!(result, "\u{0092}Reset"); // PETSCII RVS OFF
+        assert_eq!(result, "\u{0092}\x05Reset");
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[mX"), "\u{0092}\x05X");
+    }
+
+    #[test]
+    fn test_ansi_to_petscii_compound_bold_color() {
+        // Bold + color selects the light variant.
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[1;33mY"), "\u{009E}Y"); // yellow
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[1;31mR"), "\u{0096}R"); // light red
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[1;32mG"), "\u{0099}G"); // light green
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[1;34mB"), "\u{009A}B"); // light blue
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[1;30mK"), "\u{0097}K"); // dark grey
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[94mB"), "\u{009A}B"); // bright fg
+    }
+
+    #[test]
+    fn test_ansi_to_petscii_reset_then_color() {
+        assert_eq!(
+            convert_ansi_to_petscii_ctrl("\x1b[0;1;33mY"),
+            "\u{0092}\x05\u{009E}Y"
+        );
+    }
+
+    #[test]
+    fn test_ansi_to_petscii_background_as_reverse() {
+        // Background colors become "color + RVS ON" (a colored block).
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[44m "), "\x1F\x12 "); // blue block
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[5;41m "), "\x1C\x12 "); // blink ignored
+                                                                              // With both fg and bg, the background wins.
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[37;44m "), "\x1F\x12 ");
+        // 49 (default background) turns reverse off.
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[49mX"), "\u{0092}X");
+    }
+
+    #[test]
+    fn test_ansi_to_petscii_cursor_counts_and_position() {
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[3C"), "\x1D\x1D\x1D");
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[2A"), "\u{0091}\u{0091}");
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[H"), "\x13");
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[1;1H"), "\x13");
+        // Row 2, column 3: home, 1 down, 2 right.
+        assert_eq!(
+            convert_ansi_to_petscii_ctrl("\x1b[2;3H"),
+            "\x13\x11\x1D\x1D"
+        );
+        // Erase line has no PETSCII equivalent.
+        assert_eq!(convert_ansi_to_petscii_ctrl("A\x1b[KB"), "AB");
+    }
+
+    #[test]
+    fn test_encode_petscii_crlf_is_single_cr() {
+        assert_eq!(encode_petscii("A\r\nB").bytes, vec![0x41, 0x0D, 0x42]);
+        assert_eq!(encode_petscii("A\nB").bytes, vec![0x41, 0x0D, 0x42]);
+        assert_eq!(encode_petscii("A\rB").bytes, vec![0x41, 0x0D, 0x42]);
+        assert_eq!(encode_petscii("\r\n\r\n").bytes, vec![0x0D, 0x0D]);
+    }
+
+    #[test]
+    fn test_encode_petscii_passes_control_codes() {
+        // Codes produced by convert_ansi_to_petscii_ctrl reach the wire as-is.
+        let text = "\u{0093}\x13\x05\x1C\x1E\x1F\u{009E}\x12\u{0092}\x11\u{0091}\x1D\u{009D}";
+        let result = encode_petscii(text);
+        assert_eq!(
+            result.bytes,
+            vec![0x93, 0x13, 0x05, 0x1C, 0x1E, 0x1F, 0x9E, 0x12, 0x92, 0x11, 0x91, 0x1D, 0x9D]
+        );
+        assert!(!result.had_errors);
+        // ESC is not a PETSCII code.
+        assert_eq!(encode_petscii("\x1b").bytes, vec![b'?']);
+    }
+
+    #[test]
+    fn test_encode_petscii_ascii_substitutes() {
+        // ASCII symbols missing from PETSCII map to the closest glyph.
+        let result = encode_petscii("|_\\^`~{}\t");
+        assert_eq!(
+            result.bytes,
+            vec![0xDD, 0xA4, 0xCD, 0x5E, 0x27, 0x2D, 0x28, 0x29, 0x20]
+        );
+        assert!(!result.had_errors);
+    }
+
+    #[test]
+    fn test_petscii_ctrl_pipeline() {
+        // The whole output path for a C64 (PetsciiCtrl + PETSCII).
+        let text = convert_caret_escape("^[[1;33mHi^[[0m\r\n");
+        let processed = process_output_mode(&text, OutputMode::PetsciiCtrl);
+        let bytes = encode_for_client(&processed, CharacterEncoding::Petscii);
+        assert_eq!(bytes, vec![0x9E, 0x48, 0x49, 0x92, 0x05, 0x0D]);
     }
 
     #[test]

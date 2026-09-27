@@ -297,14 +297,12 @@ HOBBSは様々な端末タイプをサポートしています。
 | `standard` | 80 | 24 | ShiftJIS | ANSI | TeraTerm, PuTTY等（日本語） |
 | `standard_utf8` | 80 | 24 | UTF-8 | ANSI | TeraTerm, PuTTY等（UTF-8） |
 | `dos` | 80 | 25 | CP437 | ANSI | DOS端末、IBM PC互換機 |
-| `c64` | 40 | 25 | PETSCII | Plain | C64（ANSI非対応） |
-| `c64_petscii` | 40 | 25 | PETSCII | PetsciiCtrl | C64（PETSCII制御コード使用） |
-| `c64_ansi` | 40 | 25 | PETSCII | ANSI | C64（ANSI対応エミュレータ） |
+| `c64` | 40 | 25 | PETSCII | PetsciiCtrl | C64（CCGMS などの端末ソフト）。旧 `c64_petscii` / `c64_ansi` はこれの別名 |
 | `40col_sjis` | 40 | 25 | ShiftJIS | ANSI | 40桁の日本語端末 |
 | `jterm40` | 40 | 25 | ShiftJIS | ANSI | C64 用の自作端末（全角も1桁として扱う） |
 | `40col_utf8` | 40 | 25 | UTF-8 | ANSI | 40桁の UTF-8 端末 |
 
-> 文字コード・端末まわりの実際の動き（いつ何が決まるか、既知の癖）は `docs/terminal_model.md` を参照してください。C64 系の3つは、現状まともに動きません。
+> 文字コード・端末まわりの実際の動き（いつ何が決まるか、既知の癖）は `docs/terminal_model.md` を参照してください。`c64` で正しく表示されるのは、現状ではログインした後です（ログイン前は ShiftJIS のため）。
 
 ### 設定項目
 
