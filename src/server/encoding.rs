@@ -897,10 +897,30 @@ const PETSCII_DOWN: char = '\x11';
 const PETSCII_RIGHT: char = '\x1D';
 const PETSCII_LEFT: char = '\u{9D}';
 
+/// Upper bound for cursor movement counts and positions. Parameters come from
+/// user content (posts, mail), so the expansion must stay bounded; 80 covers
+/// the widest supported terminal.
+const PETSCII_MAX_CURSOR_MOVE: usize = 80;
+
+/// Parse a numeric CSI parameter as a count in `1..=PETSCII_MAX_CURSOR_MOVE`.
+///
+/// Empty or invalid parameters give 1. Numbers too large for `usize` are
+/// treated as the maximum.
+fn csi_count(param: Option<&str>) -> usize {
+    let param = param.unwrap_or("");
+    if param.is_empty() || !param.bytes().all(|b| b.is_ascii_digit()) {
+        return 1;
+    }
+    param
+        .parse::<usize>()
+        .unwrap_or(PETSCII_MAX_CURSOR_MOVE)
+        .clamp(1, PETSCII_MAX_CURSOR_MOVE)
+}
+
 /// Convert a single ANSI CSI command to PETSCII control characters,
 /// appending them to `out`. Sequences without an equivalent add nothing.
 fn ansi_to_petscii_ctrl(params: &str, cmd: char, out: &mut String) {
-    let count = || -> usize { params.parse::<usize>().unwrap_or(1).max(1) };
+    let count = || csi_count(Some(params));
     match cmd {
         // SGR (Select Graphic Rendition) - colors and attributes
         'm' => sgr_to_petscii(params, out),
@@ -916,16 +936,8 @@ fn ansi_to_petscii_ctrl(params: &str, cmd: char, out: &mut String) {
         // Cursor position: home, then move down/right.
         'H' | 'f' => {
             let mut parts = params.split(';');
-            let row: usize = parts
-                .next()
-                .and_then(|p| p.parse().ok())
-                .unwrap_or(1)
-                .max(1);
-            let col: usize = parts
-                .next()
-                .and_then(|p| p.parse().ok())
-                .unwrap_or(1)
-                .max(1);
+            let row = csi_count(parts.next());
+            let col = csi_count(parts.next());
             out.push(PETSCII_HOME);
             out.extend(std::iter::repeat_n(PETSCII_DOWN, row - 1));
             out.extend(std::iter::repeat_n(PETSCII_RIGHT, col - 1));
@@ -1839,6 +1851,19 @@ mod tests {
         );
         // Erase line has no PETSCII equivalent.
         assert_eq!(convert_ansi_to_petscii_ctrl("A\x1b[KB"), "AB");
+    }
+
+    #[test]
+    fn test_ansi_to_petscii_huge_counts_are_bounded() {
+        // User content (posts, mail) can contain arbitrary numbers; the
+        // expansion must stay bounded.
+        let moved = convert_ansi_to_petscii_ctrl("\x1b[4000000000C");
+        assert_eq!(moved.chars().count(), PETSCII_MAX_CURSOR_MOVE);
+        let moved = convert_ansi_to_petscii_ctrl("\x1b[99999999999999999999A");
+        assert_eq!(moved.chars().count(), PETSCII_MAX_CURSOR_MOVE);
+        let pos = convert_ansi_to_petscii_ctrl("\x1b[4000000000;4000000000H");
+        // HOME + at most MAX downs + at most MAX rights
+        assert_eq!(pos.chars().count(), 1 + 2 * (PETSCII_MAX_CURSOR_MOVE - 1));
     }
 
     #[test]
