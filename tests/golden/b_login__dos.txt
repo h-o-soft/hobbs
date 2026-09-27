@@ -1,6 +1,21 @@
 === connect
 <<<
-\xFF\xFB\x01\xFF\xFB\x03================================================================================\r\n
+\xFF\xFB\x01\xFF\xFB\x03\r\n
+SELECT YOUR TERMINAL\r\n
+\r\n
+  1) JAPANESE  SHIFT-JIS\r\n
+  2) JAPANESE  UTF-8\r\n
+  3) ENGLISH   UTF-8\r\n
+  4) ENGLISH   CP437 (DOS/ANSI)\r\n
+  5) COMMODORE 64 (PETSCII)\r\n
+\r\n
+NUMBER [ENTER=1]: 
+
+=== connection type
+>>> 4\r
+<<<
+4\r\n
+================================================================================\r\n
      _   _  ___  ____  ____  ____\r\n
     | | | |/ _ \\| __ )| __ )/ ___|\r\n
     | |_| | | | |  _ \\|  _ \\\\___ \\\r\n
@@ -18,7 +33,7 @@
     \e[1;33m[G]\e[0m Guest    \e[1;33m[R]\e[0m Register    \e[1;33m[L]\e[0m Login    \e[1;33m[Q]\e[0m Quit\r\n
 \e[34m--------------------------------------------------------------------------------\e[0m\r\n
 \e[36mSelect:\e[0m\r\n
-[L]Login [R]Register [G]Guest [Q]Quit
+[L]Login [R]Register [G]Guest [Q]Quit > 
 
 === welcome: L
 >>> L\r
@@ -38,25 +53,25 @@ Password:
 <<<
 \r\n
 \r\n
-??????????????tester???\r\n
+Login successful. Welcome, tester!\r\n
 ================================================================================\r\n
-    ???????                          ????: tester [????]\r\n
+    Main Menu                          User: tester [Member]\r\n
 ================================================================================\r\n
 \r\n
-    [B] ???            - ?????????\r\n
-    [C] ????          - ?????????? (?? 0?)\r\n
-    [M] ???            - ????????? (?? 0 ?)\r\n
-    [F] ????          - ???????????\r\n
-    [D] ??            - ?????\r\n
-    [N] ????          - RSS???????\r\n
-    [P] ??????      - ????????????\r\n
-    [W] ????          - ???????\r\n
+    [B] Boards            - Read and post messages\r\n
+    [C] Chat          - Real-time chat (Online 0)\r\n
+    [M] Mail            - Private messages (0 unread)\r\n
+    [F] Files          - Download files\r\n
+    [D] Doors            - Door Games\r\n
+    [N] News          - Read RSS feeds\r\n
+    [P] Profile      - View/edit profile\r\n
+    [W] Members          - Member directory\r\n
 \r\n
 \r\n
-    [Q] ?????\r\n
+    [Q] Logout\r\n
 \r\n
 --------------------------------------------------------------------------------\r\n
-????????: \r\n
+Select: \r\n
 > 
 
 === menu: B (board list)
@@ -64,28 +79,28 @@ Password:
 <<<
 B\r\n
 \r\n
-=== ????? ===\r\n
+=== Board List ===\r\n
 \r\n
 \r\n
 \r\n
-  ??  ????                        ??? ??\r\n
+  No.  Title                        Replies Unread\r\n
 --------------------------------------------------------------\r\n
 \r\n
   1     ??????                         2      [31]    \r\n
 \r\n
 \r\n
 \r\n
-????????:  [U]=??????? [Q=??]: 
+Select:  [U]=Read All Unread [Q=Back]: 
 
 === board 1 (thread list)
 >>> 1\r
 <<<
 1\r\n
 \r\n
-=== ?????: ?????? ===\r\n
+=== Board List: ?????? ===\r\n
 \r\n
 \r\n
-    ??  ????                          ???\r\n
+    No.  Title                          Replies\r\n
 --------------------------------------------------------------\r\n
 \r\n
 * 1     ??? \xC4 \x82 ?? ?                             0     \r\n
@@ -94,8 +109,8 @@ B\r\n
 \r\n
 \r\n
 \r\n
-1 / 1 ???\r\n
-[N]=?? [P]=?? [U]=????? [A]=???? [W]=???????? [Q]=??: 
+Page 1 of 1\r\n
+[N]=Next [P]=Previous [U]=Read Unread [A]=Mark All Read [W]=New Thread [Q]=Back: 
 
 === thread 1 (view)
 >>> 1\r
@@ -113,18 +128,18 @@ B\r\n
 \r\n
 \r\n
 \r\n
-1 / 1 ???\r\n
-[N]=?? [P]=?? [R]=?? [Q]=??: 
+Page 1 of 1\r\n
+[N]=Next [P]=Previous [R]=Reply [Q]=Back: 
 
 === back to thread list
 >>> Q\r
 <<<
 Q\r\n
 \r\n
-=== ?????: ?????? ===\r\n
+=== Board List: ?????? ===\r\n
 \r\n
 \r\n
-    ??  ????                          ???\r\n
+    No.  Title                          Replies\r\n
 --------------------------------------------------------------\r\n
 \r\n
   1     ??? \xC4 \x82 ?? ?                             0     \r\n
@@ -133,49 +148,49 @@ Q\r\n
 \r\n
 \r\n
 \r\n
-1 / 1 ???\r\n
-[N]=?? [P]=?? [U]=????? [A]=???? [W]=???????? [Q]=??: 
+Page 1 of 1\r\n
+[N]=Next [P]=Previous [U]=Read Unread [A]=Mark All Read [W]=New Thread [Q]=Back: 
 
 === back to board list
 >>> Q\r
 <<<
 Q\r\n
 \r\n
-=== ????? ===\r\n
+=== Board List ===\r\n
 \r\n
 \r\n
 \r\n
-  ??  ????                        ??? ??\r\n
+  No.  Title                        Replies Unread\r\n
 --------------------------------------------------------------\r\n
 \r\n
   1     ??????                         2              \r\n
 \r\n
 \r\n
 \r\n
-????????:  [U]=??????? [Q=??]: 
+Select:  [U]=Read All Unread [Q=Back]: 
 
 === back to menu
 >>> Q\r
 <<<
 Q\r\n
 ================================================================================\r\n
-    ???????                          ????: tester [????]\r\n
+    Main Menu                          User: tester [Member]\r\n
 ================================================================================\r\n
 \r\n
-    [B] ???            - ?????????\r\n
-    [C] ????          - ?????????? (?? 0?)\r\n
-    [M] ???            - ????????? (?? 0 ?)\r\n
-    [F] ????          - ???????????\r\n
-    [D] ??            - ?????\r\n
-    [N] ????          - RSS???????\r\n
-    [P] ??????      - ????????????\r\n
-    [W] ????          - ???????\r\n
+    [B] Boards            - Read and post messages\r\n
+    [C] Chat          - Real-time chat (Online 0)\r\n
+    [M] Mail            - Private messages (0 unread)\r\n
+    [F] Files          - Download files\r\n
+    [D] Doors            - Door Games\r\n
+    [N] News          - Read RSS feeds\r\n
+    [P] Profile      - View/edit profile\r\n
+    [W] Members          - Member directory\r\n
 \r\n
 \r\n
-    [Q] ?????\r\n
+    [Q] Logout\r\n
 \r\n
 --------------------------------------------------------------------------------\r\n
-????????: \r\n
+Select: \r\n
 > 
 
 === menu: H (help)
@@ -183,7 +198,7 @@ Q\r\n
 <<<
 H\r\n
 \r\n
-=== ??? ===\r\n
+=== Help ===\r\n
 \r\n
   [1] About HOBBS\r\n
   [2] Navigation\r\n
@@ -191,7 +206,7 @@ H\r\n
   [4] Chat Commands\r\n
   [5] Mail Commands\r\n
 \r\n
-????????:  [Q=??]: 
+Select:  [Q=Back]: 
 
 === help: 2 (navigation)
 >>> 2\r
@@ -215,13 +230,13 @@ Main Menu:\r\n
   H   - Help\r\n
   Q   - Logout\r\n
 \r\n
-[Enter]??????????...
+Press [Enter] to continue...
 
 === help page: Enter
 >>> \r
 <<<
 \r\n
-=== ??? ===\r\n
+=== Help ===\r\n
 \r\n
   [1] About HOBBS\r\n
   [2] Navigation\r\n
@@ -229,30 +244,30 @@ Main Menu:\r\n
   [4] Chat Commands\r\n
   [5] Mail Commands\r\n
 \r\n
-????????:  [Q=??]: 
+Select:  [Q=Back]: 
 
 === help: Q (back to menu)
 >>> Q\r
 <<<
 Q\r\n
 ================================================================================\r\n
-    ???????                          ????: tester [????]\r\n
+    Main Menu                          User: tester [Member]\r\n
 ================================================================================\r\n
 \r\n
-    [B] ???            - ?????????\r\n
-    [C] ????          - ?????????? (?? 0?)\r\n
-    [M] ???            - ????????? (?? 0 ?)\r\n
-    [F] ????          - ???????????\r\n
-    [D] ??            - ?????\r\n
-    [N] ????          - RSS???????\r\n
-    [P] ??????      - ????????????\r\n
-    [W] ????          - ???????\r\n
+    [B] Boards            - Read and post messages\r\n
+    [C] Chat          - Real-time chat (Online 0)\r\n
+    [M] Mail            - Private messages (0 unread)\r\n
+    [F] Files          - Download files\r\n
+    [D] Doors            - Door Games\r\n
+    [N] News          - Read RSS feeds\r\n
+    [P] Profile      - View/edit profile\r\n
+    [W] Members          - Member directory\r\n
 \r\n
 \r\n
-    [Q] ?????\r\n
+    [Q] Logout\r\n
 \r\n
 --------------------------------------------------------------------------------\r\n
-????????: \r\n
+Select: \r\n
 > 
 
 === menu: Q (logout)

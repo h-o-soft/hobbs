@@ -49,7 +49,7 @@ tester\r\n
 Password: 
 
 === password
->>> pass1234\r
+>>> PASS1234\r
 <<<
 \r\n
 \r\n

@@ -41,14 +41,44 @@ pub struct TestClient {
 
 #[cfg(feature = "sqlite")]
 impl TestClient {
-    /// Connect to the server at the given address.
+    /// Connect to the server and choose connection type 3 (English, UTF-8)
+    /// on the connection selection screen.
+    ///
+    /// Use [`TestClient::connect_raw`] to handle the selection screen yourself.
     pub async fn connect(addr: SocketAddr) -> Result<Self, std::io::Error> {
+        let mut client = Self::connect_raw(addr).await?;
+        client.select_connection("3").await?;
+        Ok(client)
+    }
+
+    /// Connect to the server without answering the connection selection screen.
+    pub async fn connect_raw(addr: SocketAddr) -> Result<Self, std::io::Error> {
         let stream = TcpStream::connect(addr).await?;
         Ok(Self {
             stream,
             encoding: CharacterEncoding::Utf8,
             buffer: Vec::with_capacity(4096),
         })
+    }
+
+    /// Answer the connection selection screen shown right after connecting,
+    /// and decode subsequent output accordingly.
+    ///
+    /// - "1": Japanese, ShiftJIS
+    /// - "2": Japanese, UTF-8
+    /// - "3": English, UTF-8
+    /// - "4": English, CP437
+    /// - "5": Commodore 64, PETSCII
+    pub async fn select_connection(&mut self, choice: &str) -> Result<(), std::io::Error> {
+        self.recv_until("NUMBER [ENTER=").await?;
+        self.send_line(choice).await?;
+        self.encoding = match choice {
+            "1" => CharacterEncoding::ShiftJIS,
+            "4" => CharacterEncoding::Cp437,
+            "5" => CharacterEncoding::Petscii,
+            _ => CharacterEncoding::Utf8,
+        };
+        Ok(())
     }
 
     /// Set the character encoding for this client.
@@ -169,6 +199,40 @@ impl TestClient {
         }
     }
 
+    /// Receive raw bytes (Telnet commands included) until they end with
+    /// `suffix`, with a timeout.
+    pub async fn recv_raw_until(
+        &mut self,
+        suffix: &[u8],
+        duration: Duration,
+    ) -> Result<Vec<u8>, std::io::Error> {
+        let mut received = Vec::new();
+        let mut buf = [0u8; 1];
+        let result = timeout(duration, async {
+            loop {
+                match self.stream.read(&mut buf).await {
+                    Ok(0) => return Ok(()),
+                    Ok(_) => {
+                        received.push(buf[0]);
+                        if received.ends_with(suffix) {
+                            return Ok(());
+                        }
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        })
+        .await;
+        match result {
+            Ok(Ok(())) => Ok(received),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("Timeout waiting for bytes: {suffix:?} (got {received:?})"),
+            )),
+        }
+    }
+
     /// Expect a pattern in the received data.
     pub async fn expect(&mut self, pattern: &str) -> Result<String, std::io::Error> {
         let data = self.recv_until(pattern).await?;
@@ -219,42 +283,8 @@ impl TestClient {
         Ok(())
     }
 
-    /// Select language/encoding.
-    /// Handles the language selection screen that appears before the welcome screen.
-    pub async fn select_language(&mut self, choice: &str) -> Result<(), std::io::Error> {
-        // Wait for language selection screen
-        self.recv_until("Gengo").await?;
-        self.send_line(choice).await?;
-        Ok(())
-    }
-
-    /// Select language/encoding and set client encoding accordingly.
-    /// Options:
-    /// - "E" or "1": English (UTF-8)
-    /// - "J" or "2": Japanese (ShiftJIS)
-    /// - "U" or "3": Japanese (UTF-8)
-    pub async fn select_language_with_encoding(
-        &mut self,
-        choice: &str,
-    ) -> Result<(), std::io::Error> {
-        // Wait for language selection screen
-        self.recv_until("Gengo").await?;
-
-        // Set client encoding based on choice
-        match choice.to_uppercase().as_str() {
-            "E" | "1" => self.encoding = CharacterEncoding::Utf8,
-            "J" | "2" => self.encoding = CharacterEncoding::ShiftJIS,
-            "U" | "3" => self.encoding = CharacterEncoding::Utf8,
-            _ => self.encoding = CharacterEncoding::Utf8,
-        }
-
-        self.send_line(choice).await?;
-        Ok(())
-    }
-
-    /// Perform login with specific encoding.
-    /// Note: The new flow doesn't require language selection before login.
-    /// The user's saved encoding/language will be applied after successful login.
+    /// Perform login (the encoding is decided by the connection type chosen
+    /// when connecting; the user's saved language is applied after login).
     pub async fn login_with_encoding(
         &mut self,
         username: &str,
@@ -305,7 +335,8 @@ impl TestClient {
     }
 
     /// Perform registration sequence.
-    /// New flow: welcome screen (ASCII) -> choose R -> language selection -> register.
+    /// Flow: welcome screen -> choose R -> register (the language and encoding
+    /// come from the connection type).
     pub async fn register(
         &mut self,
         username: &str,
@@ -315,9 +346,6 @@ impl TestClient {
         // Wait for welcome screen (ASCII) - choose register
         self.recv_until("Select:").await?;
         self.send_line("R").await?;
-
-        // Handle language selection (appears after choosing R)
-        self.select_language("E").await?;
 
         // Wait for username prompt
         self.recv_until("Username:").await?;
@@ -346,13 +374,11 @@ impl TestClient {
     }
 
     /// Enter guest mode.
-    /// New flow: welcome screen (ASCII) -> choose G -> language selection -> menu.
+    /// Flow: welcome screen -> choose G -> menu.
     pub async fn enter_guest(&mut self) -> Result<(), std::io::Error> {
         // Wait for welcome screen
         self.recv_until("Select:").await?;
         self.send_line("G").await?;
-        // Handle language selection (appears after choosing G)
-        self.select_language("E").await?;
         // Wait for menu to appear
         let _ = self.recv_timeout(Duration::from_secs(2)).await;
         Ok(())

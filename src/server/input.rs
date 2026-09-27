@@ -298,7 +298,10 @@ impl LineBuffer {
                 self.last_was_cr = true;
                 let mut echo = std::mem::take(&mut self.pending_echo);
                 echo.push(control::CR);
-                echo.push(control::LF);
+                if self.encoding != CharacterEncoding::Petscii {
+                    // PETSCII uses CR alone as the line terminator.
+                    echo.push(control::LF);
+                }
                 let line = self.take_line();
                 (InputResult::Line(line), echo)
             }
@@ -312,7 +315,9 @@ impl LineBuffer {
                     // Standalone LF - treat as end of line
                     let mut echo = std::mem::take(&mut self.pending_echo);
                     echo.push(control::CR);
-                    echo.push(control::LF);
+                    if self.encoding != CharacterEncoding::Petscii {
+                        echo.push(control::LF);
+                    }
                     let line = self.take_line();
                     (InputResult::Line(line), echo)
                 }
@@ -1192,6 +1197,19 @@ mod tests {
         assert_eq!(echo, vec![0x14]);
         let (_, echo) = buffer.process_byte(0x08);
         assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn test_petscii_enter_echo_is_cr_only() {
+        // PETSCII uses CR alone as the line terminator.
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::Petscii);
+        buffer.process_byte(0x41);
+        let (result, echo) = buffer.process_byte(0x0D);
+        assert_eq!(result, InputResult::Line("A".to_string()));
+        assert_eq!(echo, vec![0x0D]);
+        let mut buffer = LineBuffer::with_encoding(100, CharacterEncoding::ShiftJIS);
+        let (_, echo) = buffer.process_byte(0x0D);
+        assert_eq!(echo, vec![0x0D, 0x0A]);
     }
 
     #[test]

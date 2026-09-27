@@ -1,6 +1,21 @@
 === connect
 <<<
-\xFF\xFB\x01\xFF\xFB\x03========================================\r\n
+\xFF\xFB\x01\xFF\xFB\x03\r\n
+SELECT YOUR TERMINAL\r\n
+\r\n
+  1) JAPANESE  SHIFT-JIS\r\n
+  2) JAPANESE  UTF-8\r\n
+  3) ENGLISH   UTF-8\r\n
+  4) ENGLISH   CP437 (DOS/ANSI)\r\n
+  5) COMMODORE 64 (PETSCII)\r\n
+\r\n
+NUMBER [ENTER=3]: 
+
+=== connection type
+>>> \r
+<<<
+\r\n
+========================================\r\n
    \e[5;46m    \e[0m\r\n
   \e[5;46m      \e[0m\r\n
  \e[5;46m \e[47m  \e[46m  \e[47m  \e[46m \e[0m  \e[5;41m \e[0m  \e[5;41m \e[0m   \e[5;41m    \e[0m   \e[5;41m   \e[0m  \e[5;41m   \e[0m   \e[5;41m   \e[0m\r\n
@@ -33,7 +48,7 @@
 \e[1;33m[G]\e[0mGuest \e[1;33m[R]\e[0mReg \e[1;33m[L]\e[0mLogin \e[1;33m[Q]\e[0mQuit\r\n
 \e[34m----------------------------------------\e[0m\r\n
 \e[36mSelect:\e[0m\r\n
-[L]Login [R]Register [G]Guest [Q]Quit
+[L]Login [R]Register [G]Guest [Q]Quit > 
 
 === invalid choice
 >>> X\r
@@ -41,7 +56,7 @@
 X\r\n
 Invalid choice. Please select L, R, G, or Q.\r\n
 \r\n
-[L]Login [R]Register [G]Guest [Q]Quit
+[L]Login [R]Register [G]Guest [Q]Quit > 
 
 === quit
 >>> Q\r

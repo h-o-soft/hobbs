@@ -124,19 +124,15 @@ async fn test_guest_keeps_welcome_language() {
     let server = TestServer::new().await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let mut client = TestClient::connect(server.addr()).await.unwrap();
+    // Connection type 2: Japanese, UTF-8
+    let mut client = TestClient::connect_raw(server.addr()).await.unwrap();
+    client.select_connection("2").await.unwrap();
 
-    // New flow: welcome screen (ASCII) appears first
+    // Welcome screen
     client.recv_until("Select:").await.unwrap();
 
     // Enter guest mode
     client.send_line("G").await.unwrap();
-
-    // Language selection appears after choosing G
-    client.recv_until("Gengo").await.unwrap();
-
-    // Select Japanese UTF-8
-    client.send_line("U").await.unwrap();
 
     // Wait for menu
     let response = client.recv_timeout(Duration::from_secs(2)).await.unwrap();
@@ -159,19 +155,14 @@ async fn test_guest_keeps_english_language() {
     let server = TestServer::new().await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
+    // Connection type 3: English, UTF-8
     let mut client = TestClient::connect(server.addr()).await.unwrap();
 
-    // New flow: welcome screen (ASCII) appears first
+    // Welcome screen
     client.recv_until("Select:").await.unwrap();
 
     // Enter guest mode
     client.send_line("G").await.unwrap();
-
-    // Language selection appears after choosing G
-    client.recv_until("Gengo").await.unwrap();
-
-    // Select English
-    client.send_line("E").await.unwrap();
 
     // Wait for menu
     let response = client.recv_timeout(Duration::from_secs(2)).await.unwrap();

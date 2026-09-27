@@ -24,7 +24,7 @@ use crate::server::{
     LineBuffer, NewlinePolicy, SessionManager, SessionState, TelnetParser, TelnetSession,
 };
 use crate::template::{create_system_context, TemplateContext, TemplateLoader, Value};
-use crate::terminal::settings::resolve;
+use crate::terminal::settings::{resolve, ConnectionType};
 use crate::terminal::{TerminalProfile, TerminalSettings};
 
 /// Session handler for managing a single client session.
@@ -154,7 +154,9 @@ impl SessionHandler {
             warn!("Telnet negotiation failed: {}", e);
         }
 
-        // Show welcome screen (ASCII-only, works with any encoding)
+        // Ask for the connection type (encoding and language) first, then
+        // show the welcome screen in that encoding.
+        self.select_connection(session).await?;
         self.show_welcome(session).await?;
 
         // Main session loop
@@ -175,17 +177,12 @@ impl SessionHandler {
                     // Prompt for login/guest choice
                     match self.welcome_prompt(session).await? {
                         WelcomeChoice::Login => {
-                            // Login: user's saved encoding will be applied after login
                             session.set_state(SessionState::Login);
                         }
                         WelcomeChoice::Register => {
-                            // Register: select encoding first, then register
-                            self.show_language_selection(session).await?;
                             session.set_state(SessionState::Registration);
                         }
                         WelcomeChoice::Guest => {
-                            // Guest: select encoding first, then proceed to menu
-                            self.show_language_selection(session).await?;
                             session.set_guest(true);
                             session.set_state(SessionState::MainMenu);
                         }
@@ -349,33 +346,36 @@ impl SessionHandler {
         Ok(())
     }
 
-    /// Show language/encoding selection screen.
+    /// Ask the client for the connection type (encoding and language).
     ///
-    /// This screen is shown in ASCII-only to work regardless of the current
-    /// encoding setting. After selection, the encoding and language are applied.
-    async fn show_language_selection(&mut self, session: &mut TelnetSession) -> Result<()> {
-        // Display ASCII-only selection screen
-        let selection_screen = r#"
-=======================================
-Select language / Gengo sentaku:
-=======================================
-
-[E] English (UTF-8)
-[J] Nihongo (ShiftJIS)
-[U] Nihongo (UTF-8)
-
-"#;
-        self.send(session, selection_screen).await?;
-        self.send(session, "> ").await?;
-
-        // Read user input
-        let input = self.read_line(session).await?;
-
-        // Apply selection
-        let settings = resolve::on_language_selected(session.settings(), &input);
-        self.apply_settings(session, settings);
-
-        Ok(())
+    /// The screen is plain uppercase ASCII within 40 columns, so it is
+    /// readable on any supported terminal, including a C64 in PETSCII
+    /// uppercase mode, before the encoding is known.
+    async fn select_connection(&mut self, session: &mut TelnetSession) -> Result<()> {
+        let default =
+            ConnectionType::default_for(&self.connect_profile, &self.config.locale.language);
+        let menu = format!(
+            "\n\
+             SELECT YOUR TERMINAL\n\
+             \n\
+             \x20 1) JAPANESE  SHIFT-JIS\n\
+             \x20 2) JAPANESE  UTF-8\n\
+             \x20 3) ENGLISH   UTF-8\n\
+             \x20 4) ENGLISH   CP437 (DOS/ANSI)\n\
+             \x20 5) COMMODORE 64 (PETSCII)\n\
+             \n\
+             NUMBER [ENTER={}]: ",
+            default.number()
+        );
+        loop {
+            self.send(session, &menu).await?;
+            let input = self.read_line(session).await?;
+            if let Some(connection) = ConnectionType::from_input(&input, default) {
+                let settings = resolve::on_connection_selected(connection, &self.connect_profile);
+                self.apply_settings(session, settings);
+                return Ok(());
+            }
+        }
     }
 
     /// Set the current language for i18n.
@@ -490,7 +490,6 @@ Select language / Gengo sentaku:
                     session.set_user(user.id, user.username.clone());
 
                     // Save user settings for later application
-                    let user_encoding = user.encoding;
                     let user_id = user.id;
                     let user_role = user.role;
                     let user_language = user.language.clone();
@@ -505,14 +504,11 @@ Select language / Gengo sentaku:
                         warn!("Failed to update last login: {}", e);
                     }
 
-                    // Apply the user's saved encoding, language and terminal
+                    // Apply the user's saved language and terminal (the encoding
+                    // stays the connection type's)
                     // (after user_repo borrow ends; nothing is sent before this)
-                    let settings = resolve::on_login(
-                        session.settings(),
-                        &user_language,
-                        &user_terminal,
-                        user_encoding,
-                    );
+                    let settings =
+                        resolve::on_login(session.settings(), &user_language, &user_terminal);
                     self.apply_settings(session, settings);
 
                     // Show login success message
@@ -653,10 +649,11 @@ Select language / Gengo sentaku:
         };
 
         // Create user (new scope for UserRepository)
-        // Save the encoding and language from the language selection screen
+        // Save the connection type's encoding and language, and the profile
         let request = RegistrationRequest::new(username.clone(), password, nickname)
             .with_encoding(session.encoding())
-            .with_language(self.i18n.locale());
+            .with_language(self.i18n.locale())
+            .with_terminal(session.settings().profile.name.clone());
         let user_repo = UserRepository::new(self.db.pool());
 
         // Check if this is the first user - make them SysOp

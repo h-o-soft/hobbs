@@ -51,7 +51,7 @@ goodbye = "Thank you for visiting. See you again!"
 force_disconnected = "You have been disconnected by an administrator."
 
 [welcome]
-prompt = "[L]Login [R]Register [G]Guest [Q]Quit"
+prompt = "[L]Login [R]Register [G]Guest [Q]Quit > "
 invalid_choice = "Invalid choice. Please select L, R, G, or Q."
 description_line1 = "Welcome to a retro BBS experience"
 description_line2 = "Enjoy text-based communication"

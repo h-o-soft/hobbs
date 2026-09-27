@@ -1,179 +1,150 @@
 === connect
 <<<
-\xFF\xFB\x01\xFF\xFB\x03================================================================================\r\n
-     _   _  ___  ____  ____  ____\r\n
-    | | | |/ _ \\| __ )| __ )/ ___|\r\n
-    | |_| | | | |  _ \\|  _ \\\\___ \\\r\n
-    |  _  | |_| | |_) | |_) |___) |\r\n
-    |_| |_|\\___/|____/|____/|____/\r\n
+\xFF\xFB\x01\xFF\xFB\x03\r\n
+SELECT YOUR TERMINAL\r\n
 \r\n
-                    Hobbyist Bulletin Board System\r\n
-================================================================================\r\n
+  1) JAPANESE  SHIFT-JIS\r\n
+  2) JAPANESE  UTF-8\r\n
+  3) ENGLISH   UTF-8\r\n
+  4) ENGLISH   CP437 (DOS/ANSI)\r\n
+  5) COMMODORE 64 (PETSCII)\r\n
 \r\n
-    Welcome to HOBBS!\r\n
-\r\n
-    Connected: NNNN/NN/NN NN:NN:NN\r\n
-\r\n
-\e[34m================================================================================\e[0m\r\n
-    \e[1;33m[G]\e[0m Guest    \e[1;33m[R]\e[0m Register    \e[1;33m[L]\e[0m Login    \e[1;33m[Q]\e[0m Quit\r\n
-\e[34m--------------------------------------------------------------------------------\e[0m\r\n
-\e[36mSelect:\e[0m\r\n
-[L]Login [R]Register [G]Guest [Q]Quit
+NUMBER [ENTER=1]: 
+
+=== connection type
+>>> 5\r
+<<<
+5\r\n
+========================================\r   \x9F\x12    \x92\x05\r  \x9F\x12      \x92\x05\r \x9F\x12 \x05\x12  \x9F\x12  \x05\x12  \x9F\x12 \x92\x05  \x1C\x12 \x92\x05  \x1C\x12 \x92\x05   \x1C\x12    \x92\x05   \x1C\x12   \x92\x05  \x1C\x12   \x92\x05   \x1C\x12   \x92\x05\r\x9F\x12  \x05\x12      \x9F\x12  \x92\x05 \x1C\x12 \x92\x05  \x1C\x12 \x92\x05   \x1C\x12 \x92\x05  \x1C\x12 \x92\x05   \x1C\x12 \x92\x05  \x1C\x12 \x92\x05 \x1C\x12 \x92\x05  \x1C\x12 \x92\x05 \x1C\x12 \x92\x05\r\x9F\x12  \x05\x12  \x9F\x12  \x05\x12  \x9F\x12  \x92\x05 \x1C\x12    \x92\x05 \x1C\x12 \x92\x05 \x1C\x12 \x92\x05  \x1C\x12 \x92\x05   \x1C\x12   \x92\x05  \x1C\x12   \x92\x05   \x1C\x12  \x92\x05\r\x9F\x12  \x05\x12      \x9F\x12  \x92\x05 \x1C\x12 \x92\x05  \x1C\x12 \x92\x05   \x1C\x12 \x92\x05  \x1C\x12 \x92\x05   \x1C\x12 \x92\x05  \x1C\x12 \x92\x05 \x1C\x12 \x92\x05  \x1C\x12 \x92\x05    \x1C\x12 \x92\x05\r \x9F\x12 \x05\x12  \x9F\x12  \x05\x12  \x9F\x12 \x92\x05  \x1C\x12 \x92\x05  \x1C\x12 \x92\x05   \x1C\x12    \x92\x05   \x1C\x12   \x92\x05  \x1C\x12   \x92\x05  \x1C\x12   \x92\x05\r  \x9F\x12      \x92\x05\r   \x9F\x12    \x92\x05  \x9EHOBBIEST BULLETIN BOARD SYSTEM\x92\x05\r========================================\r\r\x1E\x12========================================\r\x1F\x12   \x9F\x12    \x1F\x12                                 \r  \x9F\x12      \x1F\x12                                \r \x9F\x12 \x05\x12  \x9F\x12  \x05\x12  \x9F\x12 \x1F\x12  \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12   \x9E\x12    \x1F\x12   \x9E\x12   \x1F\x12  \x9E\x12   \x1F\x12   \x9E\x12   \x1F\x12 \r\x9F\x12  \x05\x12      \x9F\x12  \x1F\x12 \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12   \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12   \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12 \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12 \x9E\x12 \x1F\x12    \r\x9F\x12  \x05\x12  \x9F\x12  \x05\x12  \x9F\x12  \x1F\x12 \x9E\x12    \x1F\x12 \x9E\x12 \x1F\x12 \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12   \x9E\x12   \x1F\x12  \x9E\x12   \x1F\x12   \x9E\x12  \x1F\x12  \r\x9F\x12  \x05\x12      \x9F\x12  \x1F\x12 \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12   \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12   \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12 \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12    \x9E\x12 \x1F\x12 \r \x9F\x12 \x05\x12  \x9F\x12  \x05\x12  \x9F\x12 \x1F\x12  \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12   \x9E\x12    \x1F\x12   \x9E\x12   \x1F\x12  \x9E\x12   \x1F\x12  \x9E\x12   \x1F\x12  \r  \x9F\x12      \x1F\x12                                \r   \x9F\x12    \x1F\x12  HOBBIEST BULLETIN BOARD SYSTEM \r\x1E\x12========================================\x92\x05\r\r\r  WELCOME TO HOBBS!\r\r  CONNECTED: NNNN/NN/NN NN:NN:NN\r\r\x1F========================================\x92\x05\r\x9E[G]\x92\x05GUEST \x9E[R]\x92\x05REG \x9E[L]\x92\x05LOGIN \x9E[Q]\x92\x05QUIT\r\x1F----------------------------------------\x92\x05\r\x9FSELECT:\x92\x05\r[L]LOGIN [R]REGISTER [G]GUEST [Q]QUIT > 
 
 === welcome: multibyte + BS
 >>> \x82\xA0\x08\r
 <<<
-\x82\xA0\x08\x08  \x08\x08\r\n
-Invalid choice. Please select L, R, G, or Q.\r\n
-\r\n
-[L]Login [R]Register [G]Guest [Q]Quit
+\x82\xA0\x14\rINVALID CHOICE. PLEASE SELECT L, R, G, OR Q.\r\r[L]LOGIN [R]REGISTER [G]GUEST [Q]QUIT > 
 
 === welcome: L
 >>> L\r
 <<<
-L\r\n
-=== Login ===\r\n
-Username: 
+L\r=== LOGIN ===\rUSERNAME: 
 
 === username
->>> tester\r
+>>> TESTER\r
 <<<
-tester\r\n
-Password: 
+TESTER\rPASSWORD: 
 
 === password
->>> pass1234\r
+>>> PASS1234\r
 <<<
-\r\n
-\r\n
-??????????????TESTER???\r========================================\r     ???????\r        ????: TESTER\r========================================\r\r [B] ???\r [C] ????        (0?)\r [M] ???        (??0)\r [F] ????\r [D] ??\r [N] ????\r [P] ??????\r [W] ????\r\r\r\r [Q] ?????\r\r----------------------------------------\r????????: \r> 
+\r\rLOGIN SUCCESSFUL. WELCOME, TESTER!\r========================================\r     MAIN MENU\r        USER: TESTER\r========================================\r\r [B] BOARDS\r [C] CHAT        (0)\r [M] MAIL        (UNREAD0)\r [F] FILES\r [D] DOORS\r [N] NEWS\r [P] PROFILE\r [W] MEMBERS\r\r\r\r [Q] LOGOUT\r\r----------------------------------------\rSELECT: \r> 
 
 === main menu: multibyte + BS
 >>> \xC1a\x08\r
 <<<
-\xC1a\x14\r\n
-???????: \xC1\r========================================\r     ???????\r        ????: TESTER\r========================================\r\r [B] ???\r [C] ????        (0?)\r [M] ???        (??0)\r [F] ????\r [D] ??\r [N] ????\r [P] ??????\r [W] ????\r\r\r\r [Q] ?????\r\r----------------------------------------\r????????: \r> 
+\xC1a\x14\rINVALID SELECTION: \xC1\r========================================\r     MAIN MENU\r        USER: TESTER\r========================================\r\r [B] BOARDS\r [C] CHAT        (0)\r [M] MAIL        (UNREAD0)\r [F] FILES\r [D] DOORS\r [N] NEWS\r [P] PROFILE\r [W] MEMBERS\r\r\r\r [Q] LOGOUT\r\r----------------------------------------\rSELECT: \r> 
 
 === main menu: multibyte + DEL
 >>> \xC1a\x7F\r
 <<<
-\xC1a\x14\r\n
-???????: \xC1\r========================================\r     ???????\r        ????: TESTER\r========================================\r\r [B] ???\r [C] ????        (0?)\r [M] ???        (??0)\r [F] ????\r [D] ??\r [N] ????\r [P] ??????\r [W] ????\r\r\r\r [Q] ?????\r\r----------------------------------------\r????????: \r> 
+\xC1a\x14\rINVALID SELECTION: \xC1\r========================================\r     MAIN MENU\r        USER: TESTER\r========================================\r\r [B] BOARDS\r [C] CHAT        (0)\r [M] MAIL        (UNREAD0)\r [F] FILES\r [D] DOORS\r [N] NEWS\r [P] PROFILE\r [W] MEMBERS\r\r\r\r [Q] LOGOUT\r\r----------------------------------------\rSELECT: \r> 
 
 === main menu: halfwidth + BS
 >>> ab\x08\r
 <<<
-ab\x14\r\n
-???????: \xC1\r========================================\r     ???????\r        ????: TESTER\r========================================\r\r [B] ???\r [C] ????        (0?)\r [M] ???        (??0)\r [F] ????\r [D] ??\r [N] ????\r [P] ??????\r [W] ????\r\r\r\r [Q] ?????\r\r----------------------------------------\r????????: \r> 
+ab\x14\rINVALID SELECTION: \xC1\r========================================\r     MAIN MENU\r        USER: TESTER\r========================================\r\r [B] BOARDS\r [C] CHAT        (0)\r [M] MAIL        (UNREAD0)\r [F] FILES\r [D] DOORS\r [N] NEWS\r [P] PROFILE\r [W] MEMBERS\r\r\r\r [Q] LOGOUT\r\r----------------------------------------\rSELECT: \r> 
 
 === main menu: petscii DEL 0x14
 >>> ab\x14\r
 <<<
-ab\x14\r\n
-???????: \xC1\r========================================\r     ???????\r        ????: TESTER\r========================================\r\r [B] ???\r [C] ????        (0?)\r [M] ???        (??0)\r [F] ????\r [D] ??\r [N] ????\r [P] ??????\r [W] ????\r\r\r\r [Q] ?????\r\r----------------------------------------\r????????: \r> 
+ab\x14\rINVALID SELECTION: \xC1\r========================================\r     MAIN MENU\r        USER: TESTER\r========================================\r\r [B] BOARDS\r [C] CHAT        (0)\r [M] MAIL        (UNREAD0)\r [F] FILES\r [D] DOORS\r [N] NEWS\r [P] PROFILE\r [W] MEMBERS\r\r\r\r [Q] LOGOUT\r\r----------------------------------------\rSELECT: \r> 
 
 === main menu: ESC [ A (arrow up)
 >>> \e[A\r
 <<<
-[A\r\n
-???????: [A\r========================================\r     ???????\r        ????: TESTER\r========================================\r\r [B] ???\r [C] ????        (0?)\r [M] ???        (??0)\r [F] ????\r [D] ??\r [N] ????\r [P] ??????\r [W] ????\r\r\r\r [Q] ?????\r\r----------------------------------------\r????????: \r> 
+[A\rINVALID SELECTION: [A\r========================================\r     MAIN MENU\r        USER: TESTER\r========================================\r\r [B] BOARDS\r [C] CHAT        (0)\r [M] MAIL        (UNREAD0)\r [F] FILES\r [D] DOORS\r [N] NEWS\r [P] PROFILE\r [W] MEMBERS\r\r\r\r [Q] LOGOUT\r\r----------------------------------------\rSELECT: \r> 
 
 === main menu: IAC DO/WILL + text
 >>> \xFF\xFD\x01\xFF\xFB\x03x\r
 <<<
-x\r\n
-???????: \xD8\r========================================\r     ???????\r        ????: TESTER\r========================================\r\r [B] ???\r [C] ????        (0?)\r [M] ???        (??0)\r [F] ????\r [D] ??\r [N] ????\r [P] ??????\r [W] ????\r\r\r\r [Q] ?????\r\r----------------------------------------\r????????: \r> 
+x\rINVALID SELECTION: \xD8\r========================================\r     MAIN MENU\r        USER: TESTER\r========================================\r\r [B] BOARDS\r [C] CHAT        (0)\r [M] MAIL        (UNREAD0)\r [F] FILES\r [D] DOORS\r [N] NEWS\r [P] PROFILE\r [W] MEMBERS\r\r\r\r [Q] LOGOUT\r\r----------------------------------------\rSELECT: \r> 
 
 === main menu: Ctrl+C
 >>> a\x03
 <<<
 a^C\r\n
-========================================\r     ???????\r        ????: TESTER\r========================================\r\r [B] ???\r [C] ????        (0?)\r [M] ???        (??0)\r [F] ????\r [D] ??\r [N] ????\r [P] ??????\r [W] ????\r\r\r\r [Q] ?????\r\r----------------------------------------\r????????: \r> 
+========================================\r     MAIN MENU\r        USER: TESTER\r========================================\r\r [B] BOARDS\r [C] CHAT        (0)\r [M] MAIL        (UNREAD0)\r [F] FILES\r [D] DOORS\r [N] NEWS\r [P] PROFILE\r [W] MEMBERS\r\r\r\r [Q] LOGOUT\r\r----------------------------------------\rSELECT: \r> 
 
 === main menu: CR LF
 >>> z\r\n
 <<<
-z\r\n
-???????: \xDA\r========================================\r     ???????\r        ????: TESTER\r========================================\r\r [B] ???\r [C] ????        (0?)\r [M] ???        (??0)\r [F] ????\r [D] ??\r [N] ????\r [P] ??????\r [W] ????\r\r\r\r [Q] ?????\r\r----------------------------------------\r????????: \r> 
+z\rINVALID SELECTION: \xDA\r========================================\r     MAIN MENU\r        USER: TESTER\r========================================\r\r [B] BOARDS\r [C] CHAT        (0)\r [M] MAIL        (UNREAD0)\r [F] FILES\r [D] DOORS\r [N] NEWS\r [P] PROFILE\r [W] MEMBERS\r\r\r\r [Q] LOGOUT\r\r----------------------------------------\rSELECT: \r> 
 
 === main menu: CR NUL
 >>> z\r\x00
 <<<
-z\r\n
-???????: \xDA\r========================================\r     ???????\r        ????: TESTER\r========================================\r\r [B] ???\r [C] ????        (0?)\r [M] ???        (??0)\r [F] ????\r [D] ??\r [N] ????\r [P] ??????\r [W] ????\r\r\r\r [Q] ?????\r\r----------------------------------------\r????????: \r> 
+z\rINVALID SELECTION: \xDA\r========================================\r     MAIN MENU\r        USER: TESTER\r========================================\r\r [B] BOARDS\r [C] CHAT        (0)\r [M] MAIL        (UNREAD0)\r [F] FILES\r [D] DOORS\r [N] NEWS\r [P] PROFILE\r [W] MEMBERS\r\r\r\r [Q] LOGOUT\r\r----------------------------------------\rSELECT: \r> 
 
 === main menu: LF only
 >>> z\n
 <<<
-z\r\n
-???????: \xDA\r========================================\r     ???????\r        ????: TESTER\r========================================\r\r [B] ???\r [C] ????        (0?)\r [M] ???        (??0)\r [F] ????\r [D] ??\r [N] ????\r [P] ??????\r [W] ????\r\r\r\r [Q] ?????\r\r----------------------------------------\r????????: \r> 
+z\rINVALID SELECTION: \xDA\r========================================\r     MAIN MENU\r        USER: TESTER\r========================================\r\r [B] BOARDS\r [C] CHAT        (0)\r [M] MAIL        (UNREAD0)\r [F] FILES\r [D] DOORS\r [N] NEWS\r [P] PROFILE\r [W] MEMBERS\r\r\r\r [Q] LOGOUT\r\r----------------------------------------\rSELECT: \r> 
 
 === menu: B (board list)
 >>> B\r
 <<<
-B\r\n
-\r=== ????? ===\r\r\r\r  ??  ????                       ??? ??\r---------------------------------------\r\r  1   ??????                    2     [31]\r\r\r\r????????:  [U]=??????? [Q=??]: 
+B\r\r=== BOARD LIST ===\r\r\r\r  NO. TITLE                      RE- UNREAD\r---------------------------------------\r\r  1   ??????                    2     [31]\r\r\r\rSELECT:  [U]=READ ALL UNREAD [Q=BACK]: 
 
 === board list: multibyte + BS
 >>> \xC1a\x08\r
 <<<
-\xC1a\x14\r\n
-\r=== ????? ===\r\r\r\r  ??  ????                       ??? ??\r---------------------------------------\r\r  1   ??????                    2     [31]\r\r\r\r????????:  [U]=??????? [Q=??]: 
+\xC1a\x14\r\r=== BOARD LIST ===\r\r\r\r  NO. TITLE                      RE- UNREAD\r---------------------------------------\r\r  1   ??????                    2     [31]\r\r\r\rSELECT:  [U]=READ ALL UNREAD [Q=BACK]: 
 
 === board list: multibyte + DEL
 >>> \xC1a\x7F\r
 <<<
-\xC1a\x14\r\n
-\r=== ????? ===\r\r\r\r  ??  ????                       ??? ??\r---------------------------------------\r\r  1   ??????                    2     [31]\r\r\r\r????????:  [U]=??????? [Q=??]: 
+\xC1a\x14\r\r=== BOARD LIST ===\r\r\r\r  NO. TITLE                      RE- UNREAD\r---------------------------------------\r\r  1   ??????                    2     [31]\r\r\r\rSELECT:  [U]=READ ALL UNREAD [Q=BACK]: 
 
 === board list: halfwidth + BS
 >>> ab\x08\r
 <<<
-ab\x14\r\n
-\r=== ????? ===\r\r\r\r  ??  ????                       ??? ??\r---------------------------------------\r\r  1   ??????                    2     [31]\r\r\r\r????????:  [U]=??????? [Q=??]: 
+ab\x14\r\r=== BOARD LIST ===\r\r\r\r  NO. TITLE                      RE- UNREAD\r---------------------------------------\r\r  1   ??????                    2     [31]\r\r\r\rSELECT:  [U]=READ ALL UNREAD [Q=BACK]: 
 
 === board list: petscii DEL 0x14
 >>> ab\x14\r
 <<<
-ab\x14\r\n
-\r=== ????? ===\r\r\r\r  ??  ????                       ??? ??\r---------------------------------------\r\r  1   ??????                    2     [31]\r\r\r\r????????:  [U]=??????? [Q=??]: 
+ab\x14\r\r=== BOARD LIST ===\r\r\r\r  NO. TITLE                      RE- UNREAD\r---------------------------------------\r\r  1   ??????                    2     [31]\r\r\r\rSELECT:  [U]=READ ALL UNREAD [Q=BACK]: 
 
 === board list: ESC [ A (arrow up)
 >>> \e[A\r
 <<<
-[A\r\n
-\r=== ????? ===\r\r\r\r  ??  ????                       ??? ??\r---------------------------------------\r\r  1   ??????                    2     [31]\r\r\r\r????????:  [U]=??????? [Q=??]: 
+[A\r\r=== BOARD LIST ===\r\r\r\r  NO. TITLE                      RE- UNREAD\r---------------------------------------\r\r  1   ??????                    2     [31]\r\r\r\rSELECT:  [U]=READ ALL UNREAD [Q=BACK]: 
 
 === back to menu
 >>> Q\r
 <<<
-Q\r\n
-========================================\r     ???????\r        ????: TESTER\r========================================\r\r [B] ???\r [C] ????        (0?)\r [M] ???        (??0)\r [F] ????\r [D] ??\r [N] ????\r [P] ??????\r [W] ????\r\r\r\r [Q] ?????\r\r----------------------------------------\r????????: \r> 
+Q\r========================================\r     MAIN MENU\r        USER: TESTER\r========================================\r\r [B] BOARDS\r [C] CHAT        (0)\r [M] MAIL        (UNREAD0)\r [F] FILES\r [D] DOORS\r [N] NEWS\r [P] PROFILE\r [W] MEMBERS\r\r\r\r [Q] LOGOUT\r\r----------------------------------------\rSELECT: \r> 
 
 === menu: P (profile)
 >>> P\r
 <<<
-P\r\n
-========================================\r  ??????\r========================================\r\r ????ID  : TESTER\r ??????  : TESTER\r ???????        : -\r ??       : ????\r ???: NNNN/NN/NN NN:NN\r ??: NNNN/NN/NN NN:NN\r\r\r[E]=???????? [P]=??????? [S]=?? [Q]=??: 
+P\r========================================\r  PROFILE\r========================================\r\r USERNAME  : TESTER\r NICKNAME  : TESTER\r EMAIL        : -\r ROLE       : MEMBER\r MEMBER SINCE: NNNN/NN/NN NN:NN\r LAST: NNNN/NN/NN NN:NN\r\r\r[E]=EDIT PROFILE [P]=CHANGE PASSWORD [S]=SETTINGS [Q]=BACK: 
 
 === profile: P (change password)
 >>> P\r
 <<<
-P\r\n
-\r=== ??????? ===\r\r????????: 
+P\r\r=== CHANGE PASSWORD ===\r\rCURRENT PASSWORD: 
 
 === current password
 >>> wrongpw9\r
 <<<
-\r????????: 
+*\rNEW PASSWORD: 
 
 === new password
 >>> newpass99\r
 <<<
-\r?????????: 
+*\rCONFIRM PASSWORD: 
 
 === confirm password
 >>> newpass99\r
 <<<
-\r
+*\r
 
