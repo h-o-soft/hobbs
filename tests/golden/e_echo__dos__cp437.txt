@@ -1,6 +1,21 @@
 === connect
 <<<
-\xFF\xFB\x01\xFF\xFB\x03================================================================================\r\n
+\xFF\xFB\x01\xFF\xFB\x03\r\n
+SELECT YOUR TERMINAL\r\n
+\r\n
+  1) JAPANESE  SHIFT-JIS\r\n
+  2) JAPANESE  UTF-8\r\n
+  3) ENGLISH   UTF-8\r\n
+  4) ENGLISH   CP437 (DOS/ANSI)\r\n
+  5) COMMODORE 64 (PETSCII)\r\n
+\r\n
+NUMBER [ENTER=1]: 
+
+=== connection type
+>>> 4\r
+<<<
+4\r\n
+================================================================================\r\n
      _   _  ___  ____  ____  ____\r\n
     | | | |/ _ \\| __ )| __ )/ ___|\r\n
     | |_| | | | |  _ \\|  _ \\\\___ \\\r\n
@@ -18,15 +33,15 @@
     \e[1;33m[G]\e[0m Guest    \e[1;33m[R]\e[0m Register    \e[1;33m[L]\e[0m Login    \e[1;33m[Q]\e[0m Quit\r\n
 \e[34m--------------------------------------------------------------------------------\e[0m\r\n
 \e[36mSelect:\e[0m\r\n
-[L]Login [R]Register [G]Guest [Q]Quit
+[L]Login [R]Register [G]Guest [Q]Quit > 
 
 === welcome: multibyte + BS
 >>> \x82\xA0\x08\r
 <<<
-\x82\xA0\x08\x08  \x08\x08\r\n
+\x82\xA0\x08 \x08\r\n
 Invalid choice. Please select L, R, G, or Q.\r\n
 \r\n
-[L]Login [R]Register [G]Guest [Q]Quit
+[L]Login [R]Register [G]Guest [Q]Quit > 
 
 === welcome: L
 >>> L\r
@@ -46,175 +61,175 @@ Password:
 <<<
 \r\n
 \r\n
-??????????????tester???\r\n
+Login successful. Welcome, tester!\r\n
 ================================================================================\r\n
-    ???????                          ????: tester [????]\r\n
+    Main Menu                          User: tester [Member]\r\n
 ================================================================================\r\n
 \r\n
-    [B] ???            - ?????????\r\n
-    [C] ????          - ?????????? (?? 0?)\r\n
-    [M] ???            - ????????? (?? 0 ?)\r\n
-    [F] ????          - ???????????\r\n
-    [D] ??            - ?????\r\n
-    [N] ????          - RSS???????\r\n
-    [P] ??????      - ????????????\r\n
-    [W] ????          - ???????\r\n
+    [B] Boards            - Read and post messages\r\n
+    [C] Chat          - Real-time chat (Online 0)\r\n
+    [M] Mail            - Private messages (0 unread)\r\n
+    [F] Files          - Download files\r\n
+    [D] Doors            - Door Games\r\n
+    [N] News          - Read RSS feeds\r\n
+    [P] Profile      - View/edit profile\r\n
+    [W] Members          - Member directory\r\n
 \r\n
 \r\n
-    [Q] ?????\r\n
+    [Q] Logout\r\n
 \r\n
 --------------------------------------------------------------------------------\r\n
-????????: \r\n
+Select: \r\n
 > 
 
 === main menu: multibyte + BS
 >>> \x82\x94\x08\r
 <<<
 \x82\x94\x08 \x08\r\n
-???????: \x90\r\n
+Invalid selection: \x90\r\n
 ================================================================================\r\n
-    ???????                          ????: tester [????]\r\n
+    Main Menu                          User: tester [Member]\r\n
 ================================================================================\r\n
 \r\n
-    [B] ???            - ?????????\r\n
-    [C] ????          - ?????????? (?? 0?)\r\n
-    [M] ???            - ????????? (?? 0 ?)\r\n
-    [F] ????          - ???????????\r\n
-    [D] ??            - ?????\r\n
-    [N] ????          - RSS???????\r\n
-    [P] ??????      - ????????????\r\n
-    [W] ????          - ???????\r\n
+    [B] Boards            - Read and post messages\r\n
+    [C] Chat          - Real-time chat (Online 0)\r\n
+    [M] Mail            - Private messages (0 unread)\r\n
+    [F] Files          - Download files\r\n
+    [D] Doors            - Door Games\r\n
+    [N] News          - Read RSS feeds\r\n
+    [P] Profile      - View/edit profile\r\n
+    [W] Members          - Member directory\r\n
 \r\n
 \r\n
-    [Q] ?????\r\n
+    [Q] Logout\r\n
 \r\n
 --------------------------------------------------------------------------------\r\n
-????????: \r\n
+Select: \r\n
 > 
 
 === main menu: multibyte + DEL
 >>> \x82\x94\x7F\r
 <<<
 \x82\x94\x08 \x08\r\n
-???????: \x90\r\n
+Invalid selection: \x90\r\n
 ================================================================================\r\n
-    ???????                          ????: tester [????]\r\n
+    Main Menu                          User: tester [Member]\r\n
 ================================================================================\r\n
 \r\n
-    [B] ???            - ?????????\r\n
-    [C] ????          - ?????????? (?? 0?)\r\n
-    [M] ???            - ????????? (?? 0 ?)\r\n
-    [F] ????          - ???????????\r\n
-    [D] ??            - ?????\r\n
-    [N] ????          - RSS???????\r\n
-    [P] ??????      - ????????????\r\n
-    [W] ????          - ???????\r\n
+    [B] Boards            - Read and post messages\r\n
+    [C] Chat          - Real-time chat (Online 0)\r\n
+    [M] Mail            - Private messages (0 unread)\r\n
+    [F] Files          - Download files\r\n
+    [D] Doors            - Door Games\r\n
+    [N] News          - Read RSS feeds\r\n
+    [P] Profile      - View/edit profile\r\n
+    [W] Members          - Member directory\r\n
 \r\n
 \r\n
-    [Q] ?????\r\n
+    [Q] Logout\r\n
 \r\n
 --------------------------------------------------------------------------------\r\n
-????????: \r\n
+Select: \r\n
 > 
 
 === main menu: halfwidth + BS
 >>> ab\x08\r
 <<<
 ab\x08 \x08\r\n
-???????: A\r\n
+Invalid selection: A\r\n
 ================================================================================\r\n
-    ???????                          ????: tester [????]\r\n
+    Main Menu                          User: tester [Member]\r\n
 ================================================================================\r\n
 \r\n
-    [B] ???            - ?????????\r\n
-    [C] ????          - ?????????? (?? 0?)\r\n
-    [M] ???            - ????????? (?? 0 ?)\r\n
-    [F] ????          - ???????????\r\n
-    [D] ??            - ?????\r\n
-    [N] ????          - RSS???????\r\n
-    [P] ??????      - ????????????\r\n
-    [W] ????          - ???????\r\n
+    [B] Boards            - Read and post messages\r\n
+    [C] Chat          - Real-time chat (Online 0)\r\n
+    [M] Mail            - Private messages (0 unread)\r\n
+    [F] Files          - Download files\r\n
+    [D] Doors            - Door Games\r\n
+    [N] News          - Read RSS feeds\r\n
+    [P] Profile      - View/edit profile\r\n
+    [W] Members          - Member directory\r\n
 \r\n
 \r\n
-    [Q] ?????\r\n
+    [Q] Logout\r\n
 \r\n
 --------------------------------------------------------------------------------\r\n
-????????: \r\n
+Select: \r\n
 > 
 
 === main menu: petscii DEL 0x14
 >>> a\x14\r
 <<<
 a\r\n
-???????: A\r\n
+Invalid selection: A\r\n
 ================================================================================\r\n
-    ???????                          ????: tester [????]\r\n
+    Main Menu                          User: tester [Member]\r\n
 ================================================================================\r\n
 \r\n
-    [B] ???            - ?????????\r\n
-    [C] ????          - ?????????? (?? 0?)\r\n
-    [M] ???            - ????????? (?? 0 ?)\r\n
-    [F] ????          - ???????????\r\n
-    [D] ??            - ?????\r\n
-    [N] ????          - RSS???????\r\n
-    [P] ??????      - ????????????\r\n
-    [W] ????          - ???????\r\n
+    [B] Boards            - Read and post messages\r\n
+    [C] Chat          - Real-time chat (Online 0)\r\n
+    [M] Mail            - Private messages (0 unread)\r\n
+    [F] Files          - Download files\r\n
+    [D] Doors            - Door Games\r\n
+    [N] News          - Read RSS feeds\r\n
+    [P] Profile      - View/edit profile\r\n
+    [W] Members          - Member directory\r\n
 \r\n
 \r\n
-    [Q] ?????\r\n
+    [Q] Logout\r\n
 \r\n
 --------------------------------------------------------------------------------\r\n
-????????: \r\n
+Select: \r\n
 > 
 
 === main menu: ESC [ A (arrow up)
 >>> \e[A\r
 <<<
 [A\r\n
-???????: [A\r\n
+Invalid selection: [A\r\n
 ================================================================================\r\n
-    ???????                          ????: tester [????]\r\n
+    Main Menu                          User: tester [Member]\r\n
 ================================================================================\r\n
 \r\n
-    [B] ???            - ?????????\r\n
-    [C] ????          - ?????????? (?? 0?)\r\n
-    [M] ???            - ????????? (?? 0 ?)\r\n
-    [F] ????          - ???????????\r\n
-    [D] ??            - ?????\r\n
-    [N] ????          - RSS???????\r\n
-    [P] ??????      - ????????????\r\n
-    [W] ????          - ???????\r\n
+    [B] Boards            - Read and post messages\r\n
+    [C] Chat          - Real-time chat (Online 0)\r\n
+    [M] Mail            - Private messages (0 unread)\r\n
+    [F] Files          - Download files\r\n
+    [D] Doors            - Door Games\r\n
+    [N] News          - Read RSS feeds\r\n
+    [P] Profile      - View/edit profile\r\n
+    [W] Members          - Member directory\r\n
 \r\n
 \r\n
-    [Q] ?????\r\n
+    [Q] Logout\r\n
 \r\n
 --------------------------------------------------------------------------------\r\n
-????????: \r\n
+Select: \r\n
 > 
 
 === main menu: IAC DO/WILL + text
 >>> \xFF\xFD\x01\xFF\xFB\x03x\r
 <<<
 x\r\n
-???????: X\r\n
+Invalid selection: X\r\n
 ================================================================================\r\n
-    ???????                          ????: tester [????]\r\n
+    Main Menu                          User: tester [Member]\r\n
 ================================================================================\r\n
 \r\n
-    [B] ???            - ?????????\r\n
-    [C] ????          - ?????????? (?? 0?)\r\n
-    [M] ???            - ????????? (?? 0 ?)\r\n
-    [F] ????          - ???????????\r\n
-    [D] ??            - ?????\r\n
-    [N] ????          - RSS???????\r\n
-    [P] ??????      - ????????????\r\n
-    [W] ????          - ???????\r\n
+    [B] Boards            - Read and post messages\r\n
+    [C] Chat          - Real-time chat (Online 0)\r\n
+    [M] Mail            - Private messages (0 unread)\r\n
+    [F] Files          - Download files\r\n
+    [D] Doors            - Door Games\r\n
+    [N] News          - Read RSS feeds\r\n
+    [P] Profile      - View/edit profile\r\n
+    [W] Members          - Member directory\r\n
 \r\n
 \r\n
-    [Q] ?????\r\n
+    [Q] Logout\r\n
 \r\n
 --------------------------------------------------------------------------------\r\n
-????????: \r\n
+Select: \r\n
 > 
 
 === main menu: Ctrl+C
@@ -222,98 +237,98 @@ x\r\n
 <<<
 a^C\r\n
 ================================================================================\r\n
-    ???????                          ????: tester [????]\r\n
+    Main Menu                          User: tester [Member]\r\n
 ================================================================================\r\n
 \r\n
-    [B] ???            - ?????????\r\n
-    [C] ????          - ?????????? (?? 0?)\r\n
-    [M] ???            - ????????? (?? 0 ?)\r\n
-    [F] ????          - ???????????\r\n
-    [D] ??            - ?????\r\n
-    [N] ????          - RSS???????\r\n
-    [P] ??????      - ????????????\r\n
-    [W] ????          - ???????\r\n
+    [B] Boards            - Read and post messages\r\n
+    [C] Chat          - Real-time chat (Online 0)\r\n
+    [M] Mail            - Private messages (0 unread)\r\n
+    [F] Files          - Download files\r\n
+    [D] Doors            - Door Games\r\n
+    [N] News          - Read RSS feeds\r\n
+    [P] Profile      - View/edit profile\r\n
+    [W] Members          - Member directory\r\n
 \r\n
 \r\n
-    [Q] ?????\r\n
+    [Q] Logout\r\n
 \r\n
 --------------------------------------------------------------------------------\r\n
-????????: \r\n
+Select: \r\n
 > 
 
 === main menu: CR LF
 >>> z\r\n
 <<<
 z\r\n
-???????: Z\r\n
+Invalid selection: Z\r\n
 ================================================================================\r\n
-    ???????                          ????: tester [????]\r\n
+    Main Menu                          User: tester [Member]\r\n
 ================================================================================\r\n
 \r\n
-    [B] ???            - ?????????\r\n
-    [C] ????          - ?????????? (?? 0?)\r\n
-    [M] ???            - ????????? (?? 0 ?)\r\n
-    [F] ????          - ???????????\r\n
-    [D] ??            - ?????\r\n
-    [N] ????          - RSS???????\r\n
-    [P] ??????      - ????????????\r\n
-    [W] ????          - ???????\r\n
+    [B] Boards            - Read and post messages\r\n
+    [C] Chat          - Real-time chat (Online 0)\r\n
+    [M] Mail            - Private messages (0 unread)\r\n
+    [F] Files          - Download files\r\n
+    [D] Doors            - Door Games\r\n
+    [N] News          - Read RSS feeds\r\n
+    [P] Profile      - View/edit profile\r\n
+    [W] Members          - Member directory\r\n
 \r\n
 \r\n
-    [Q] ?????\r\n
+    [Q] Logout\r\n
 \r\n
 --------------------------------------------------------------------------------\r\n
-????????: \r\n
+Select: \r\n
 > 
 
 === main menu: CR NUL
 >>> z\r\x00
 <<<
 z\r\n
-???????: Z\r\n
+Invalid selection: Z\r\n
 ================================================================================\r\n
-    ???????                          ????: tester [????]\r\n
+    Main Menu                          User: tester [Member]\r\n
 ================================================================================\r\n
 \r\n
-    [B] ???            - ?????????\r\n
-    [C] ????          - ?????????? (?? 0?)\r\n
-    [M] ???            - ????????? (?? 0 ?)\r\n
-    [F] ????          - ???????????\r\n
-    [D] ??            - ?????\r\n
-    [N] ????          - RSS???????\r\n
-    [P] ??????      - ????????????\r\n
-    [W] ????          - ???????\r\n
+    [B] Boards            - Read and post messages\r\n
+    [C] Chat          - Real-time chat (Online 0)\r\n
+    [M] Mail            - Private messages (0 unread)\r\n
+    [F] Files          - Download files\r\n
+    [D] Doors            - Door Games\r\n
+    [N] News          - Read RSS feeds\r\n
+    [P] Profile      - View/edit profile\r\n
+    [W] Members          - Member directory\r\n
 \r\n
 \r\n
-    [Q] ?????\r\n
+    [Q] Logout\r\n
 \r\n
 --------------------------------------------------------------------------------\r\n
-????????: \r\n
+Select: \r\n
 > 
 
 === main menu: LF only
 >>> z\n
 <<<
 z\r\n
-???????: Z\r\n
+Invalid selection: Z\r\n
 ================================================================================\r\n
-    ???????                          ????: tester [????]\r\n
+    Main Menu                          User: tester [Member]\r\n
 ================================================================================\r\n
 \r\n
-    [B] ???            - ?????????\r\n
-    [C] ????          - ?????????? (?? 0?)\r\n
-    [M] ???            - ????????? (?? 0 ?)\r\n
-    [F] ????          - ???????????\r\n
-    [D] ??            - ?????\r\n
-    [N] ????          - RSS???????\r\n
-    [P] ??????      - ????????????\r\n
-    [W] ????          - ???????\r\n
+    [B] Boards            - Read and post messages\r\n
+    [C] Chat          - Real-time chat (Online 0)\r\n
+    [M] Mail            - Private messages (0 unread)\r\n
+    [F] Files          - Download files\r\n
+    [D] Doors            - Door Games\r\n
+    [N] News          - Read RSS feeds\r\n
+    [P] Profile      - View/edit profile\r\n
+    [W] Members          - Member directory\r\n
 \r\n
 \r\n
-    [Q] ?????\r\n
+    [Q] Logout\r\n
 \r\n
 --------------------------------------------------------------------------------\r\n
-????????: \r\n
+Select: \r\n
 > 
 
 === menu: B (board list)
@@ -321,131 +336,131 @@ z\r\n
 <<<
 B\r\n
 \r\n
-=== ????? ===\r\n
+=== Board List ===\r\n
 \r\n
 \r\n
 \r\n
-  ??  ????                        ??? ??\r\n
+  No.  Title                        Replies Unread\r\n
 --------------------------------------------------------------\r\n
 \r\n
   1     ??????                         2      [31]    \r\n
 \r\n
 \r\n
 \r\n
-????????:  [U]=??????? [Q=??]: 
+Select:  [U]=Read All Unread [Q=Back]: 
 
 === board list: multibyte + BS
 >>> \x82\x94\x08\r
 <<<
 \x82\x94\x08 \x08\r\n
 \r\n
-=== ????? ===\r\n
+=== Board List ===\r\n
 \r\n
 \r\n
 \r\n
-  ??  ????                        ??? ??\r\n
+  No.  Title                        Replies Unread\r\n
 --------------------------------------------------------------\r\n
 \r\n
   1     ??????                         2      [31]    \r\n
 \r\n
 \r\n
 \r\n
-????????:  [U]=??????? [Q=??]: 
+Select:  [U]=Read All Unread [Q=Back]: 
 
 === board list: multibyte + DEL
 >>> \x82\x94\x7F\r
 <<<
 \x82\x94\x08 \x08\r\n
 \r\n
-=== ????? ===\r\n
+=== Board List ===\r\n
 \r\n
 \r\n
 \r\n
-  ??  ????                        ??? ??\r\n
+  No.  Title                        Replies Unread\r\n
 --------------------------------------------------------------\r\n
 \r\n
   1     ??????                         2      [31]    \r\n
 \r\n
 \r\n
 \r\n
-????????:  [U]=??????? [Q=??]: 
+Select:  [U]=Read All Unread [Q=Back]: 
 
 === board list: halfwidth + BS
 >>> ab\x08\r
 <<<
 ab\x08 \x08\r\n
 \r\n
-=== ????? ===\r\n
+=== Board List ===\r\n
 \r\n
 \r\n
 \r\n
-  ??  ????                        ??? ??\r\n
+  No.  Title                        Replies Unread\r\n
 --------------------------------------------------------------\r\n
 \r\n
   1     ??????                         2      [31]    \r\n
 \r\n
 \r\n
 \r\n
-????????:  [U]=??????? [Q=??]: 
+Select:  [U]=Read All Unread [Q=Back]: 
 
 === board list: petscii DEL 0x14
 >>> a\x14\r
 <<<
 a\r\n
 \r\n
-=== ????? ===\r\n
+=== Board List ===\r\n
 \r\n
 \r\n
 \r\n
-  ??  ????                        ??? ??\r\n
+  No.  Title                        Replies Unread\r\n
 --------------------------------------------------------------\r\n
 \r\n
   1     ??????                         2      [31]    \r\n
 \r\n
 \r\n
 \r\n
-????????:  [U]=??????? [Q=??]: 
+Select:  [U]=Read All Unread [Q=Back]: 
 
 === board list: ESC [ A (arrow up)
 >>> \e[A\r
 <<<
 [A\r\n
 \r\n
-=== ????? ===\r\n
+=== Board List ===\r\n
 \r\n
 \r\n
 \r\n
-  ??  ????                        ??? ??\r\n
+  No.  Title                        Replies Unread\r\n
 --------------------------------------------------------------\r\n
 \r\n
   1     ??????                         2      [31]    \r\n
 \r\n
 \r\n
 \r\n
-????????:  [U]=??????? [Q=??]: 
+Select:  [U]=Read All Unread [Q=Back]: 
 
 === back to menu
 >>> Q\r
 <<<
 Q\r\n
 ================================================================================\r\n
-    ???????                          ????: tester [????]\r\n
+    Main Menu                          User: tester [Member]\r\n
 ================================================================================\r\n
 \r\n
-    [B] ???            - ?????????\r\n
-    [C] ????          - ?????????? (?? 0?)\r\n
-    [M] ???            - ????????? (?? 0 ?)\r\n
-    [F] ????          - ???????????\r\n
-    [D] ??            - ?????\r\n
-    [N] ????          - RSS???????\r\n
-    [P] ??????      - ????????????\r\n
-    [W] ????          - ???????\r\n
+    [B] Boards            - Read and post messages\r\n
+    [C] Chat          - Real-time chat (Online 0)\r\n
+    [M] Mail            - Private messages (0 unread)\r\n
+    [F] Files          - Download files\r\n
+    [D] Doors            - Door Games\r\n
+    [N] News          - Read RSS feeds\r\n
+    [P] Profile      - View/edit profile\r\n
+    [W] Members          - Member directory\r\n
 \r\n
 \r\n
-    [Q] ?????\r\n
+    [Q] Logout\r\n
 \r\n
 --------------------------------------------------------------------------------\r\n
-????????: \r\n
+Select: \r\n
 > 
 
 === menu: P (profile)
@@ -453,39 +468,39 @@ Q\r\n
 <<<
 P\r\n
 ================================================================================\r\n
-    ??????\r\n
+    Profile\r\n
 ================================================================================\r\n
 \r\n
-    ????ID    : tester\r\n
-    ??????    : tester\r\n
-    ???????          : -\r\n
-    ??         : ????\r\n
-    ???: NNNN/NN/NN NN:NN\r\n
-    ??????  : NNNN/NN/NN NN:NN\r\n
+    Username    : tester\r\n
+    Nickname    : tester\r\n
+    Email          : -\r\n
+    Role         : Member\r\n
+    Member since: NNNN/NN/NN NN:NN\r\n
+    Last login  : NNNN/NN/NN NN:NN\r\n
 \r\n
 \r\n
-[E]=???????? [P]=??????? [S]=?? [Q]=??: 
+[E]=Edit Profile [P]=Change Password [S]=Settings [Q]=Back: 
 
 === profile: P (change password)
 >>> P\r
 <<<
 P\r\n
 \r\n
-=== ??????? ===\r\n
+=== Change Password ===\r\n
 \r\n
-????????: 
+Current Password: 
 
 === current password
 >>> wrongpw9\r
 <<<
 \r\n
-????????: 
+New Password: 
 
 === new password
 >>> newpass99\r
 <<<
 \r\n
-?????????: 
+Confirm Password: 
 
 === confirm password
 >>> newpass99\r

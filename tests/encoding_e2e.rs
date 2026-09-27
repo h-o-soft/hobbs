@@ -183,10 +183,10 @@ async fn test_raw_bytes_from_server() {
     let filtered = filter_telnet_iac(initial);
     let text = String::from_utf8_lossy(&filtered);
 
-    // Should contain the ASCII welcome screen with G/R/L/Q options
+    // The first screen is the ASCII connection selection screen
     assert!(
-        text.contains("HOBBS") || text.contains("Select") || text.contains("Guest"),
-        "Expected ASCII welcome screen, got: {}",
+        text.contains("SELECT YOUR TERMINAL") && text.contains("COMMODORE 64"),
+        "Expected ASCII connection selection screen, got: {}",
         text
     );
 
@@ -211,18 +211,21 @@ async fn test_shiftjis_welcome_screen() {
     tokio::time::sleep(Duration::from_millis(200)).await;
     let _ = stream.read(&mut buf).await.expect("Failed to read");
 
-    // New flow: First choose Guest
-    stream.write_all(b"G\r").await.expect("Failed to send G");
+    // Choose the connection type first
+    stream
+        .write_all(b"1\r")
+        .await
+        .expect("Failed to send connection type");
 
-    // Read language selection screen
+    // Read welcome screen
     tokio::time::sleep(Duration::from_millis(300)).await;
     let _ = stream
         .read(&mut buf)
         .await
-        .expect("Failed to read language selection");
+        .expect("Failed to read welcome screen");
 
-    // Select Japanese ShiftJIS
-    stream.write_all(b"J\r").await.expect("Failed to send J");
+    // Then choose Guest
+    stream.write_all(b"G\r").await.expect("Failed to send G");
 
     // Read main menu (in ShiftJIS)
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -271,18 +274,21 @@ async fn test_utf8_welcome_screen() {
     tokio::time::sleep(Duration::from_millis(200)).await;
     let _ = stream.read(&mut buf).await.expect("Failed to read");
 
-    // New flow: First choose Guest
-    stream.write_all(b"G\r").await.expect("Failed to send G");
+    // Choose the connection type first
+    stream
+        .write_all(b"2\r")
+        .await
+        .expect("Failed to send connection type");
 
-    // Read language selection screen
+    // Read welcome screen
     tokio::time::sleep(Duration::from_millis(300)).await;
     let _ = stream
         .read(&mut buf)
         .await
-        .expect("Failed to read language selection");
+        .expect("Failed to read welcome screen");
 
-    // Select Japanese UTF-8
-    stream.write_all(b"U\r").await.expect("Failed to send");
+    // Then choose Guest
+    stream.write_all(b"G\r").await.expect("Failed to send");
 
     // Read main menu (in UTF-8)
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -326,8 +332,8 @@ async fn test_english_encoding() {
     tokio::time::sleep(Duration::from_millis(200)).await;
     let _ = stream.read(&mut buf).await.expect("Failed to read");
 
-    // Select English
-    stream.write_all(b"E\r").await.expect("Failed to send");
+    // Connection type 3: English, UTF-8
+    stream.write_all(b"3\r").await.expect("Failed to send");
 
     // Read welcome screen
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -368,15 +374,15 @@ async fn test_menu_navigation_shiftjis() {
     tokio::time::sleep(Duration::from_millis(200)).await;
     let _ = stream.read(&mut buf).await.unwrap();
 
-    // New flow: First choose Guest
-    stream.write_all(b"G\r").await.unwrap();
+    // Choose the connection type first
+    stream.write_all(b"1\r").await.unwrap();
 
-    // Read language selection screen
+    // Read welcome screen
     tokio::time::sleep(Duration::from_millis(300)).await;
     let _ = stream.read(&mut buf).await.unwrap();
 
-    // Select Japanese ShiftJIS
-    stream.write_all(b"J\r").await.unwrap();
+    // Then choose Guest
+    stream.write_all(b"G\r").await.unwrap();
 
     // Read main menu
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -418,15 +424,15 @@ async fn test_shiftjis_bytes_detailed() {
     tokio::time::sleep(Duration::from_millis(200)).await;
     let _ = stream.read(&mut buf).await.unwrap();
 
-    // New flow: First choose Guest
-    stream.write_all(b"G\r").await.unwrap();
+    // Choose the connection type first
+    stream.write_all(b"1\r").await.unwrap();
 
-    // Read language selection screen
+    // Read welcome screen
     tokio::time::sleep(Duration::from_millis(300)).await;
     let _ = stream.read(&mut buf).await.unwrap();
 
-    // Select Japanese ShiftJIS
-    stream.write_all(b"J\r").await.unwrap();
+    // Then choose Guest
+    stream.write_all(b"G\r").await.unwrap();
 
     // Read main menu with multiple reads to get all data
     tokio::time::sleep(Duration::from_millis(500)).await;

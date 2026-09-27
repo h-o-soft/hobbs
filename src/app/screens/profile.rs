@@ -286,7 +286,7 @@ impl ProfileScreen {
         user_id: i64,
     ) -> Result<Option<ScreenResult>> {
         // Get current settings
-        let (current_language, current_encoding, current_terminal, current_auto_paging) = {
+        let (current_language, current_terminal, current_auto_paging) = {
             let user_repo = UserRepository::new(ctx.db.pool());
             let user = match user_repo.get_by_id(user_id).await? {
                 Some(u) => u,
@@ -294,11 +294,13 @@ impl ProfileScreen {
             };
             (
                 user.language.clone(),
-                user.encoding,
                 user.terminal.clone(),
                 user.auto_paging,
             )
         };
+        // The encoding in effect is the connection type's (the saved one is
+        // not used at login), so an unrelated change must not switch it.
+        let current_encoding = session.encoding();
 
         ctx.send_line(session, "").await?;
         ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("menu.settings")))
@@ -496,11 +498,15 @@ impl ProfileScreen {
         };
 
         // Check if anything changed
-        let terminal_changed = new_terminal.is_some() && actual_new_terminal != current_terminal;
+        // An explicit selection is applied even when it equals the saved
+        // name: login may have substituted another profile for this
+        // connection (e.g. a saved c64 on a PC connection).
+        let terminal_selected = new_terminal.is_some();
+        let terminal_changed = terminal_selected && actual_new_terminal != current_terminal;
         let auto_paging_changed = new_auto_paging != current_auto_paging;
         if new_language == current_language
             && new_encoding == current_encoding
-            && !terminal_changed
+            && !terminal_selected
             && !auto_paging_changed
         {
             ctx.send_line(session, "").await?;
@@ -509,12 +515,12 @@ impl ProfileScreen {
 
         // Save to database
         let user_repo = UserRepository::new(ctx.db.pool());
-        let mut update = UserUpdate::new()
-            .language(new_language.clone())
-            .encoding(new_encoding);
+        let mut update = UserUpdate::new().language(new_language.clone());
 
         if terminal_changed {
-            update = update.terminal(actual_new_terminal.clone());
+            update = update
+                .terminal(actual_new_terminal.clone())
+                .encoding(new_encoding);
         }
 
         if auto_paging_changed {
@@ -531,7 +537,7 @@ impl ProfileScreen {
                 Ok(Some(ScreenResult::SettingsChanged {
                     language: new_language,
                     encoding: new_encoding,
-                    terminal_profile: if terminal_changed {
+                    terminal_profile: if terminal_selected {
                         Some(actual_new_terminal)
                     } else {
                         None

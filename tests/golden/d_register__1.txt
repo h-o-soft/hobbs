@@ -1,6 +1,21 @@
 === connect
 <<<
-\xFF\xFB\x01\xFF\xFB\x03================================================================================\r\n
+\xFF\xFB\x01\xFF\xFB\x03\r\n
+SELECT YOUR TERMINAL\r\n
+\r\n
+  1) JAPANESE  SHIFT-JIS\r\n
+  2) JAPANESE  UTF-8\r\n
+  3) ENGLISH   UTF-8\r\n
+  4) ENGLISH   CP437 (DOS/ANSI)\r\n
+  5) COMMODORE 64 (PETSCII)\r\n
+\r\n
+NUMBER [ENTER=1]: 
+
+=== connection type
+>>> 1\r
+<<<
+1\r\n
+================================================================================\r\n
      _   _  ___  ____  ____  ____\r\n
     | | | |/ _ \\| __ )| __ )/ ___|\r\n
     | |_| | | | |  _ \\|  _ \\\\___ \\\r\n
@@ -18,27 +33,12 @@
     \e[1;33m[G]\e[0m Guest    \e[1;33m[R]\e[0m Register    \e[1;33m[L]\e[0m Login    \e[1;33m[Q]\e[0m Quit\r\n
 \e[34m--------------------------------------------------------------------------------\e[0m\r\n
 \e[36mSelect:\e[0m\r\n
-[L]Login [R]Register [G]Guest [Q]Quit
+[L]Login [R]Register [G]Guest [Q]Quit > 
 
 === welcome: R
 >>> R\r
 <<<
 R\r\n
-\r\n
-=======================================\r\n
-Select language / Gengo sentaku:\r\n
-=======================================\r\n
-\r\n
-[E] English (UTF-8)\r\n
-[J] Nihongo (ShiftJIS)\r\n
-[U] Nihongo (UTF-8)\r\n
-\r\n
-> 
-
-=== language selection: J
->>> J\r
-<<<
-J\r\n
 === \x90V\x8BK\x93o\x98^ ===\r\n
 \r\n
 \x81y\x8Cx\x8D\x90\x81zTelnet\x90\xDA\x91\xB1\x82\xC5\x82\xCD\x83p\x83X\x83\x8F\x81[\x83h\x82\xCD\x88\xC3\x8D\x86\x89\xBB\x82\xB3\x82\xEA\x82\xDC\x82\xB9\x82\xF1\x81B\x91\xBC\x82\xCC\x83T\x81[\x83r\x83X\x82\xC6\x93\xAF\x82\xB6\x83p\x83X\x83\x8F\x81[\x83h\x82\xCD\x90\xE2\x91\xCE\x82\xC9\x8Eg\x97p\x82\xB5\x82\xC8\x82\xA2\x82\xC5\x82\xAD\x82\xBE\x82\xB3\x82\xA2\x81B\r\n

@@ -73,17 +73,23 @@ struct Conn {
     stream: TcpStream,
     transcript: String,
     closed: bool,
+    /// Connected as "5: Commodore 64" (PETSCII).
+    petscii: bool,
 }
 
 impl Conn {
-    async fn open(addr: SocketAddr) -> Self {
+    /// Connect and answer the connection selection screen with `connection`
+    /// (e.g. `b"1\r"`; `b"\r"` selects the server default).
+    async fn open(addr: SocketAddr, connection: &[u8]) -> Self {
         let stream = TcpStream::connect(addr).await.expect("connect");
         let mut conn = Self {
             stream,
             transcript: String::new(),
             closed: false,
+            petscii: connection == b"5\r",
         };
         conn.run("connect", b"", Until::Prompt).await;
+        conn.run("connection type", connection, Until::Prompt).await;
         conn
     }
 
@@ -259,7 +265,7 @@ impl Fixture {
         terminal: &str,
         encoding: &str,
     ) -> i64 {
-        let hash = hobbs::hash_password("pass1234").expect("hash");
+        let hash = hobbs::hash_password(password_for(encoding)).expect("hash");
         let role: Role = role.parse().unwrap_or(Role::Member);
         let encoding: CharacterEncoding = encoding.parse().expect("encoding");
         UserRepository::new(self.server.db().pool())
@@ -276,14 +282,38 @@ impl Fixture {
     }
 }
 
+/// Password of a fixture user, by saved encoding.
+///
+/// A C64 in its default (uppercase / graphics) mode sends letters as
+/// uppercase PETSCII codes, so a user registered from a C64 has an
+/// uppercase password.
+fn password_for(saved_encoding: &str) -> &'static str {
+    if saved_encoding == "petscii" {
+        "PASS1234"
+    } else {
+        "pass1234"
+    }
+}
+
 /// Log in from the welcome screen. Returns after the main menu prompt.
-async fn login(conn: &mut Conn, username: &str) {
+///
+/// On a PETSCII connection the username is typed in uppercase, as a C64 in
+/// its default mode does (usernames are case-insensitive).
+async fn login(conn: &mut Conn, username: &str, saved_encoding: &str) {
     conn.run("welcome: L", b"L\r", Until::Prompt).await;
-    let mut name = username.as_bytes().to_vec();
+    let mut name = if conn.petscii {
+        username.to_ascii_uppercase().into_bytes()
+    } else {
+        username.as_bytes().to_vec()
+    };
     name.push(b'\r');
     conn.run("username", &name, Until::Prompt).await;
-    conn.run_secret("password", b"pass1234", Until::StrictPrompt)
-        .await;
+    conn.run_secret(
+        "password",
+        password_for(saved_encoding).as_bytes(),
+        Until::StrictPrompt,
+    )
+    .await;
 }
 
 // ---------------------------------------------------------------------------
@@ -294,7 +324,8 @@ async fn scenario_connect(profile: &str) {
     let mut config = test_config();
     config.terminal.default_profile = profile.to_string();
     let fx = Fixture::new(config).await;
-    let mut conn = Conn::open(fx.addr()).await;
+    // Enter: the server default connection type for this default_profile.
+    let mut conn = Conn::open(fx.addr(), b"\r").await;
     conn.run("invalid choice", b"X\r", Until::Prompt).await;
     conn.run("quit", b"Q\r", Until::Closed).await;
     assert_golden(&format!("a_connect__{profile}"), &conn.transcript);
@@ -311,12 +342,29 @@ async fn golden_a_connect_all_profiles() {
 // 条件軸 B: ログイン後（users.terminal × users.encoding）
 // ---------------------------------------------------------------------------
 
-async fn scenario_login(case: &str, terminal: &str, encoding: &str, language: &str) {
+/// Connection type that matches a saved encoding.
+fn connection_for(encoding: &str) -> &'static [u8] {
+    match encoding {
+        "shiftjis" => b"1\r",
+        "utf8" => b"2\r",
+        "cp437" => b"4\r",
+        "petscii" => b"5\r",
+        _ => unreachable!(),
+    }
+}
+
+async fn scenario_login(
+    case: &str,
+    terminal: &str,
+    encoding: &str,
+    language: &str,
+    connection: &[u8],
+) {
     let fx = Fixture::standard().await;
     fx.create_user("tester", "member", language, terminal, encoding)
         .await;
-    let mut conn = Conn::open(fx.addr()).await;
-    login(&mut conn, "tester").await;
+    let mut conn = Conn::open(fx.addr(), connection).await;
+    login(&mut conn, "tester", encoding).await;
     conn.run("menu: B (board list)", b"B\r", Until::Prompt)
         .await;
     conn.run("board 1 (thread list)", b"1\r", Until::Prompt)
@@ -350,20 +398,30 @@ async fn golden_b_login_profile_defaults() {
         ("40col_utf8", "utf8"),
     ];
     for (terminal, encoding) in cases {
-        scenario_login(terminal, terminal, encoding, "ja").await;
+        scenario_login(terminal, terminal, encoding, "ja", connection_for(encoding)).await;
     }
 }
 
 #[tokio::test]
 async fn golden_b_login_mismatched_and_english() {
-    // DB 上で terminal と encoding が食い違っているユーザー（E1）
-    scenario_login("standard_with_utf8", "standard", "utf8", "ja").await;
-    scenario_login("c64_with_shiftjis", "c64", "shiftjis", "ja").await;
+    // DB 上で terminal と encoding が食い違っているユーザー（E1）。
+    // 接続方式（1: ShiftJIS）が保存された文字コードより優先される。
+    scenario_login("standard_with_utf8", "standard", "utf8", "ja", b"1\r").await;
+    scenario_login("c64_with_shiftjis", "c64", "shiftjis", "ja", b"1\r").await;
+    // C64 で登録したユーザーが PC（2: 日本語 UTF-8）からつなぐ（Issue #269）
+    scenario_login("c64_user_from_pc", "c64", "petscii", "ja", b"2\r").await;
     // 英語ユーザー
-    scenario_login("standard_utf8_en", "standard_utf8", "utf8", "en").await;
-    scenario_login("dos_en", "dos", "cp437", "en").await;
+    scenario_login("standard_utf8_en", "standard_utf8", "utf8", "en", b"3\r").await;
+    scenario_login("dos_en", "dos", "cp437", "en", b"4\r").await;
     // 未知のプロファイル名（Q2: standard 扱い）
-    scenario_login("unknown_profile", "no_such_profile", "shiftjis", "ja").await;
+    scenario_login(
+        "unknown_profile",
+        "no_such_profile",
+        "shiftjis",
+        "ja",
+        b"1\r",
+    )
+    .await;
 }
 
 // ---------------------------------------------------------------------------
@@ -374,8 +432,8 @@ async fn scenario_settings(index: usize, profile: &str) {
     let fx = Fixture::standard().await;
     fx.create_user("tester", "member", "ja", "standard", "shiftjis")
         .await;
-    let mut conn = Conn::open(fx.addr()).await;
-    login(&mut conn, "tester").await;
+    let mut conn = Conn::open(fx.addr(), b"1\r").await;
+    login(&mut conn, "tester", "shiftjis").await;
     conn.run("menu: P (profile)", b"P\r", Until::Prompt).await;
     conn.run("profile: S (settings)", b"S\r", Until::Prompt)
         .await;
@@ -416,16 +474,21 @@ async fn golden_c_settings_change_profile() {
 }
 
 // ---------------------------------------------------------------------------
-// 条件軸 D: ゲストと登録（言語選択 E/J/U/不正値）
+// 条件軸 D: ゲストと登録（接続方式 1〜5 / 不正値）
 // ---------------------------------------------------------------------------
 
 async fn scenario_guest(choice: &str) {
     let fx = Fixture::standard().await;
-    let mut conn = Conn::open(fx.addr()).await;
+    let mut conn = if choice == "X" {
+        // An invalid choice shows the selection again; then Enter (default).
+        let mut conn = Conn::open(fx.addr(), b"X\r").await;
+        conn.run("connection type: Enter (default)", b"\r", Until::Prompt)
+            .await;
+        conn
+    } else {
+        Conn::open(fx.addr(), format!("{choice}\r").as_bytes()).await
+    };
     conn.run("welcome: G", b"G\r", Until::Prompt).await;
-    let input = format!("{choice}\r");
-    conn.run("language selection", input.as_bytes(), Until::Prompt)
-        .await;
     conn.run("menu: B (board list)", b"B\r", Until::Prompt)
         .await;
     conn.run("board 1 (thread list)", b"1\r", Until::Prompt)
@@ -438,7 +501,7 @@ async fn scenario_guest(choice: &str) {
 
 #[tokio::test]
 async fn golden_d_guest_language_choices() {
-    for choice in ["E", "J", "U", "X"] {
+    for choice in ["1", "2", "3", "4", "5", "X"] {
         scenario_guest(choice).await;
     }
 }
@@ -446,10 +509,8 @@ async fn golden_d_guest_language_choices() {
 #[tokio::test]
 async fn golden_d_register_japanese_sjis() {
     let fx = Fixture::standard().await;
-    let mut conn = Conn::open(fx.addr()).await;
+    let mut conn = Conn::open(fx.addr(), b"1\r").await;
     conn.run("welcome: R", b"R\r", Until::Prompt).await;
-    conn.run("language selection: J", b"J\r", Until::Prompt)
-        .await;
     conn.run("username", b"newuser\r", Until::Prompt).await;
     conn.run_secret("password", b"pass1234", Until::Prompt)
         .await;
@@ -457,7 +518,7 @@ async fn golden_d_register_japanese_sjis() {
         .await;
     conn.run("nickname", b"\r", Until::StrictPrompt).await;
     conn.run("logout", b"Q\r", Until::Prompt).await;
-    assert_golden("d_register__J", &conn.transcript);
+    assert_golden("d_register__1", &conn.transcript);
 }
 
 // ---------------------------------------------------------------------------
@@ -527,15 +588,15 @@ async fn scenario_echo(terminal: &str, encoding: &str) {
     let fx = Fixture::standard().await;
     fx.create_user("tester", "member", "ja", terminal, encoding)
         .await;
-    let mut conn = Conn::open(fx.addr()).await;
-    // SessionHandler path (pre-login, always ShiftJIS on the wire).
+    let mut conn = Conn::open(fx.addr(), connection_for(encoding)).await;
+    // SessionHandler path (pre-login, in the connection type's encoding).
     conn.run(
         "welcome: multibyte + BS",
         &[0x82, 0xA0, 0x08, b'\r'],
         Until::Prompt,
     )
     .await;
-    login(&mut conn, "tester").await;
+    login(&mut conn, "tester", encoding).await;
     // SessionHandler path (main menu, user's encoding).
     for (label, input) in echo_inputs(encoding)
         .into_iter()
@@ -595,8 +656,8 @@ async fn scenario_paging(terminal: &str, encoding: &str, more_suffix: &'static [
     let fx = Fixture::standard().await;
     fx.create_user("tester", "member", "ja", terminal, encoding)
         .await;
-    let mut conn = Conn::open(fx.addr()).await;
-    login(&mut conn, "tester").await;
+    let mut conn = Conn::open(fx.addr(), connection_for(encoding)).await;
+    login(&mut conn, "tester", encoding).await;
     conn.run("menu: B (board list)", b"B\r", Until::Prompt)
         .await;
     conn.run("board 1 (thread list)", b"1\r", Until::Prompt)

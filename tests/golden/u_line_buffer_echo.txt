@@ -558,43 +558,43 @@
   res:  Buffering Line("é")
 [petscii][normal] ascii
   in:   abc\r
-  echo: abc\r\n
+  echo: abc\r
   res:  Buffering Buffering Buffering Line("♠│─")
 [petscii][normal] wide
   in:   \xC1a\r
-  echo: \xC1a\r\n
+  echo: \xC1a\r
   res:  Buffering Buffering Line("♠♠")
 [petscii][normal] wide + BS
   in:   \xC1a\x08\r
-  echo: \xC1a\x14\r\n
+  echo: \xC1a\x14\r
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][normal] wide + DEL
   in:   \xC1a\x7F\r
-  echo: \xC1a\x14\r\n
+  echo: \xC1a\x14\r
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][normal] wide + BS BS BS
   in:   \xC1a\x08\x08\x08\r
-  echo: \xC1a\x14\x14\r\n
+  echo: \xC1a\x14\x14\r
   res:  Buffering Buffering Buffering Buffering Buffering Line("")
 [petscii][normal] half + BS
   in:   ab\x08\r
-  echo: ab\x14\r\n
+  echo: ab\x14\r
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][normal] petscii DEL 0x14
   in:   a\x14\r
-  echo: a\x14\r\n
+  echo: a\x14\r
   res:  Buffering Buffering Line("")
 [petscii][normal] ESC [ A
   in:   a\e[A\r
-  echo: a[A\r\n
+  echo: a[A\r
   res:  Buffering Buffering Buffering Buffering Line("♠[A")
 [petscii][normal] IAC WILL SGA
   in:   \xFF\xFB\x03x\r
-  echo: \xFF\xFB^C\r\nx\r\n
+  echo: \xFF\xFB^C\r\nx\r
   res:  Buffering Buffering Cancel Buffering Line("♣")
 [petscii][normal] IAC DO ECHO
   in:   \xFF\xFD\x01x\r
-  echo: \xFF\xFDx\r\n
+  echo: \xFF\xFDx\r
   res:  Buffering Buffering Buffering Buffering Line("π▃♣")
 [petscii][normal] Ctrl+C
   in:   a\x03
@@ -603,60 +603,60 @@
 [petscii][normal] LF only
   in:   z\n
 
-  echo: z\r\n
+  echo: z\r
   res:  Buffering Line("♦")
 [petscii][normal] CR LF
   in:   z\r\n
 
-  echo: z\r\n
+  echo: z\r
   res:  Buffering Line("♦") Buffering
 [petscii][normal] CR NUL
   in:   z\r\x00
-  echo: z\r\n
+  echo: z\r
   res:  Buffering Line("♦") Buffering
 [petscii][normal] incomplete lead byte + CR
   in:   \xC1\r
-  echo: \xC1\r\n
+  echo: \xC1\r
   res:  Buffering Line("♠")
 [petscii][password] ascii
   in:   abc\r
-  echo: \r\n
+  echo: \r
   res:  Buffering Buffering Buffering Line("♠│─")
 [petscii][password] wide
   in:   \xC1a\r
-  echo: \r\n
+  echo: \r
   res:  Buffering Buffering Line("♠♠")
 [petscii][password] wide + BS
   in:   \xC1a\x08\r
-  echo: \x14\r\n
+  echo: \x14\r
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][password] wide + DEL
   in:   \xC1a\x7F\r
-  echo: \x14\r\n
+  echo: \x14\r
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][password] wide + BS BS BS
   in:   \xC1a\x08\x08\x08\r
-  echo: \x14\x14\r\n
+  echo: \x14\x14\r
   res:  Buffering Buffering Buffering Buffering Buffering Line("")
 [petscii][password] half + BS
   in:   ab\x08\r
-  echo: \x14\r\n
+  echo: \x14\r
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][password] petscii DEL 0x14
   in:   a\x14\r
-  echo: \x14\r\n
+  echo: \x14\r
   res:  Buffering Buffering Line("")
 [petscii][password] ESC [ A
   in:   a\e[A\r
-  echo: \r\n
+  echo: \r
   res:  Buffering Buffering Buffering Buffering Line("♠[A")
 [petscii][password] IAC WILL SGA
   in:   \xFF\xFB\x03x\r
-  echo: ^C\r\n\r\n
+  echo: ^C\r\n\r
   res:  Buffering Buffering Cancel Buffering Line("♣")
 [petscii][password] IAC DO ECHO
   in:   \xFF\xFD\x01x\r
-  echo: \r\n
+  echo: \r
   res:  Buffering Buffering Buffering Buffering Line("π▃♣")
 [petscii][password] Ctrl+C
   in:   a\x03
@@ -665,60 +665,60 @@
 [petscii][password] LF only
   in:   z\n
 
-  echo: \r\n
+  echo: \r
   res:  Buffering Line("♦")
 [petscii][password] CR LF
   in:   z\r\n
 
-  echo: \r\n
+  echo: \r
   res:  Buffering Line("♦") Buffering
 [petscii][password] CR NUL
   in:   z\r\x00
-  echo: \r\n
+  echo: \r
   res:  Buffering Line("♦") Buffering
 [petscii][password] incomplete lead byte + CR
   in:   \xC1\r
-  echo: \r\n
+  echo: \r
   res:  Buffering Line("♠")
 [petscii][masked(*)] ascii
   in:   abc\r
-  echo: ***\r\n
+  echo: ***\r
   res:  Buffering Buffering Buffering Line("♠│─")
 [petscii][masked(*)] wide
   in:   \xC1a\r
-  echo: **\r\n
+  echo: **\r
   res:  Buffering Buffering Line("♠♠")
 [petscii][masked(*)] wide + BS
   in:   \xC1a\x08\r
-  echo: **\x14\r\n
+  echo: **\x14\r
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][masked(*)] wide + DEL
   in:   \xC1a\x7F\r
-  echo: **\x14\r\n
+  echo: **\x14\r
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][masked(*)] wide + BS BS BS
   in:   \xC1a\x08\x08\x08\r
-  echo: **\x14\x14\r\n
+  echo: **\x14\x14\r
   res:  Buffering Buffering Buffering Buffering Buffering Line("")
 [petscii][masked(*)] half + BS
   in:   ab\x08\r
-  echo: **\x14\r\n
+  echo: **\x14\r
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][masked(*)] petscii DEL 0x14
   in:   a\x14\r
-  echo: *\x14\r\n
+  echo: *\x14\r
   res:  Buffering Buffering Line("")
 [petscii][masked(*)] ESC [ A
   in:   a\e[A\r
-  echo: ***\r\n
+  echo: ***\r
   res:  Buffering Buffering Buffering Buffering Line("♠[A")
 [petscii][masked(*)] IAC WILL SGA
   in:   \xFF\xFB\x03x\r
-  echo: **^C\r\n*\r\n
+  echo: **^C\r\n*\r
   res:  Buffering Buffering Cancel Buffering Line("♣")
 [petscii][masked(*)] IAC DO ECHO
   in:   \xFF\xFD\x01x\r
-  echo: ***\r\n
+  echo: ***\r
   res:  Buffering Buffering Buffering Buffering Line("π▃♣")
 [petscii][masked(*)] Ctrl+C
   in:   a\x03
@@ -727,18 +727,18 @@
 [petscii][masked(*)] LF only
   in:   z\n
 
-  echo: *\r\n
+  echo: *\r
   res:  Buffering Line("♦")
 [petscii][masked(*)] CR LF
   in:   z\r\n
 
-  echo: *\r\n
+  echo: *\r
   res:  Buffering Line("♦") Buffering
 [petscii][masked(*)] CR NUL
   in:   z\r\x00
-  echo: *\r\n
+  echo: *\r
   res:  Buffering Line("♦") Buffering
 [petscii][masked(*)] incomplete lead byte + CR
   in:   \xC1\r
-  echo: *\r\n
+  echo: *\r
   res:  Buffering Line("♠")

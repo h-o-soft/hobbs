@@ -9,18 +9,38 @@ SELECT YOUR TERMINAL\r\n
   4) ENGLISH   CP437 (DOS/ANSI)\r\n
   5) COMMODORE 64 (PETSCII)\r\n
 \r\n
-NUMBER [ENTER=5]: 
+NUMBER [ENTER=1]: 
 
 === connection type
->>> \r
+>>> 5\r
 <<<
-\r\n
+5\r\n
 ========================================\r   \x9F\x12    \x92\x05\r  \x9F\x12      \x92\x05\r \x9F\x12 \x05\x12  \x9F\x12  \x05\x12  \x9F\x12 \x92\x05  \x1C\x12 \x92\x05  \x1C\x12 \x92\x05   \x1C\x12    \x92\x05   \x1C\x12   \x92\x05  \x1C\x12   \x92\x05   \x1C\x12   \x92\x05\r\x9F\x12  \x05\x12      \x9F\x12  \x92\x05 \x1C\x12 \x92\x05  \x1C\x12 \x92\x05   \x1C\x12 \x92\x05  \x1C\x12 \x92\x05   \x1C\x12 \x92\x05  \x1C\x12 \x92\x05 \x1C\x12 \x92\x05  \x1C\x12 \x92\x05 \x1C\x12 \x92\x05\r\x9F\x12  \x05\x12  \x9F\x12  \x05\x12  \x9F\x12  \x92\x05 \x1C\x12    \x92\x05 \x1C\x12 \x92\x05 \x1C\x12 \x92\x05  \x1C\x12 \x92\x05   \x1C\x12   \x92\x05  \x1C\x12   \x92\x05   \x1C\x12  \x92\x05\r\x9F\x12  \x05\x12      \x9F\x12  \x92\x05 \x1C\x12 \x92\x05  \x1C\x12 \x92\x05   \x1C\x12 \x92\x05  \x1C\x12 \x92\x05   \x1C\x12 \x92\x05  \x1C\x12 \x92\x05 \x1C\x12 \x92\x05  \x1C\x12 \x92\x05    \x1C\x12 \x92\x05\r \x9F\x12 \x05\x12  \x9F\x12  \x05\x12  \x9F\x12 \x92\x05  \x1C\x12 \x92\x05  \x1C\x12 \x92\x05   \x1C\x12    \x92\x05   \x1C\x12   \x92\x05  \x1C\x12   \x92\x05  \x1C\x12   \x92\x05\r  \x9F\x12      \x92\x05\r   \x9F\x12    \x92\x05  \x9EHOBBIEST BULLETIN BOARD SYSTEM\x92\x05\r========================================\r\r\x1E\x12========================================\r\x1F\x12   \x9F\x12    \x1F\x12                                 \r  \x9F\x12      \x1F\x12                                \r \x9F\x12 \x05\x12  \x9F\x12  \x05\x12  \x9F\x12 \x1F\x12  \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12   \x9E\x12    \x1F\x12   \x9E\x12   \x1F\x12  \x9E\x12   \x1F\x12   \x9E\x12   \x1F\x12 \r\x9F\x12  \x05\x12      \x9F\x12  \x1F\x12 \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12   \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12   \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12 \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12 \x9E\x12 \x1F\x12    \r\x9F\x12  \x05\x12  \x9F\x12  \x05\x12  \x9F\x12  \x1F\x12 \x9E\x12    \x1F\x12 \x9E\x12 \x1F\x12 \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12   \x9E\x12   \x1F\x12  \x9E\x12   \x1F\x12   \x9E\x12  \x1F\x12  \r\x9F\x12  \x05\x12      \x9F\x12  \x1F\x12 \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12   \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12   \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12 \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12    \x9E\x12 \x1F\x12 \r \x9F\x12 \x05\x12  \x9F\x12  \x05\x12  \x9F\x12 \x1F\x12  \x9E\x12 \x1F\x12  \x9E\x12 \x1F\x12   \x9E\x12    \x1F\x12   \x9E\x12   \x1F\x12  \x9E\x12   \x1F\x12  \x9E\x12   \x1F\x12  \r  \x9F\x12      \x1F\x12                                \r   \x9F\x12    \x1F\x12  HOBBIEST BULLETIN BOARD SYSTEM \r\x1E\x12========================================\x92\x05\r\r\r  WELCOME TO HOBBS!\r\r  CONNECTED: NNNN/NN/NN NN:NN:NN\r\r\x1F========================================\x92\x05\r\x9E[G]\x92\x05GUEST \x9E[R]\x92\x05REG \x9E[L]\x92\x05LOGIN \x9E[Q]\x92\x05QUIT\r\x1F----------------------------------------\x92\x05\r\x9FSELECT:\x92\x05\r[L]LOGIN [R]REGISTER [G]GUEST [Q]QUIT > 
 
-=== invalid choice
->>> X\r
+=== welcome: G
+>>> G\r
 <<<
-X\rINVALID CHOICE. PLEASE SELECT L, R, G, OR Q.\r\r[L]LOGIN [R]REGISTER [G]GUEST [Q]QUIT > 
+G\r========================================\r     MAIN MENU\r        USER: GUEST\r========================================\r\r [B] BOARDS\r [C] CHAT        (0)\r [M] MAIL        (UNREAD0)\r [F] FILES\r [D] DOORS\r [N] NEWS\r [P] PROFILE\r [W] MEMBERS\r\r\r\r [Q] LOGOUT\r\r----------------------------------------\rSELECT: \r> 
+
+=== menu: B (board list)
+>>> B\r
+<<<
+B\r\r=== BOARD LIST ===\r\r\r\r  NO. TITLE      REPLIES\r------------------------------\r\r  1   ??????           2    \r\r\r\rSELECT:  [Q=BACK]: 
+
+=== board 1 (thread list)
+>>> 1\r
+<<<
+1\r\r=== BOARD LIST: ?????? ===\r\r\r  NO. TITLE                     REP-\r--------------------------------------\r\r  1   ??? \xC0 ? ?? ?              0   \r\r  2   ??????                    0   \r\r\r\rPAGE 1 OF 1\r[N]=NEXT [P]=PREVIOUS [W]=NEW THREAD [Q]=BACK: 
+
+=== back to board list
+>>> Q\r
+<<<
+Q\r\r=== BOARD LIST ===\r\r\r\r  NO. TITLE      REPLIES\r------------------------------\r\r  1   ??????           2    \r\r\r\rSELECT:  [Q=BACK]: 
+
+=== back to menu
+>>> Q\r
+<<<
+Q\r========================================\r     MAIN MENU\r        USER: GUEST\r========================================\r\r [B] BOARDS\r [C] CHAT        (0)\r [M] MAIL        (UNREAD0)\r [F] FILES\r [D] DOORS\r [N] NEWS\r [P] PROFILE\r [W] MEMBERS\r\r\r\r [Q] LOGOUT\r\r----------------------------------------\rSELECT: \r> 
 
 === quit
 >>> Q\r

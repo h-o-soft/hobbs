@@ -558,35 +558,35 @@
   ret:  Ok("é")
 [petscii][normal] ascii
   in:   abc\r
-  echo: abc\r\n
+  echo: abc\r
   ret:  Ok("♠│─")
 [petscii][normal] wide
   in:   \xC1a\r
-  echo: \xC1a\r\n
+  echo: \xC1a\r
   ret:  Ok("♠♠")
 [petscii][normal] wide + BS
   in:   \xC1a\x08\r
-  echo: \xC1a\x14\r\n
+  echo: \xC1a\x14\r
   ret:  Ok("♠")
 [petscii][normal] wide + DEL
   in:   \xC1a\x7F\r
-  echo: \xC1a\x14\r\n
+  echo: \xC1a\x14\r
   ret:  Ok("♠")
 [petscii][normal] wide + BS BS BS
   in:   \xC1a\x08\x08\x08\r
-  echo: \xC1a\x14\x14\r\n
+  echo: \xC1a\x14\x14\r
   ret:  Ok("")
 [petscii][normal] half + BS
   in:   ab\x08\r
-  echo: ab\x14\r\n
+  echo: ab\x14\r
   ret:  Ok("♠")
 [petscii][normal] petscii DEL 0x14
   in:   a\x14\r
-  echo: a\x14\r\n
+  echo: a\x14\r
   ret:  Ok("")
 [petscii][normal] ESC [ A
   in:   a\e[A\r
-  echo: a[A\r\n
+  echo: a[A\r
   ret:  Ok("♠[A")
 [petscii][normal] IAC WILL SGA
   in:   \xFF\xFB\x03x\r
@@ -594,7 +594,7 @@
   ret:  Ok("")
 [petscii][normal] IAC DO ECHO
   in:   \xFF\xFD\x01x\r
-  echo: \xFF\xFDx\r\n
+  echo: \xFF\xFDx\r
   ret:  Ok("π▃♣")
 [petscii][normal] Ctrl+C
   in:   a\x03
@@ -603,52 +603,52 @@
 [petscii][normal] LF only
   in:   z\n
 
-  echo: z\r\n
+  echo: z\r
   ret:  Ok("♦")
 [petscii][normal] CR LF
   in:   z\r\n
 
-  echo: z\r\n
+  echo: z\r
   ret:  Ok("♦")
 [petscii][normal] CR NUL
   in:   z\r\x00
-  echo: z\r\n
+  echo: z\r
   ret:  Ok("♦")
 [petscii][normal] incomplete lead byte + CR
   in:   \xC1\r
-  echo: \xC1\r\n
+  echo: \xC1\r
   ret:  Ok("♠")
 [petscii][password] ascii
   in:   abc\r
-  echo: 
+  echo: *
   ret:  Ok("♠│─")
 [petscii][password] wide
   in:   \xC1a\r
-  echo: 
+  echo: *
   ret:  Ok("♠♠")
 [petscii][password] wide + BS
   in:   \xC1a\x08\r
-  echo: \x14
+  echo: \x14*
   ret:  Ok("♠")
 [petscii][password] wide + DEL
   in:   \xC1a\x7F\r
-  echo: \x14
+  echo: \x14*
   ret:  Ok("♠")
 [petscii][password] wide + BS BS BS
   in:   \xC1a\x08\x08\x08\r
-  echo: \x14\x14
+  echo: \x14\x14*
   ret:  Ok("")
 [petscii][password] half + BS
   in:   ab\x08\r
-  echo: \x14
+  echo: \x14*
   ret:  Ok("♠")
 [petscii][password] petscii DEL 0x14
   in:   a\x14\r
-  echo: \x14
+  echo: \x14*
   ret:  Ok("")
 [petscii][password] ESC [ A
   in:   a\e[A\r
-  echo: 
+  echo: *
   ret:  Ok("♠[A")
 [petscii][password] IAC WILL SGA
   in:   \xFF\xFB\x03x\r
@@ -656,7 +656,7 @@
   ret:  Ok("")
 [petscii][password] IAC DO ECHO
   in:   \xFF\xFD\x01x\r
-  echo: 
+  echo: *
   ret:  Ok("π▃♣")
 [petscii][password] Ctrl+C
   in:   a\x03
@@ -665,52 +665,52 @@
 [petscii][password] LF only
   in:   z\n
 
-  echo: 
+  echo: *
   ret:  Ok("♦")
 [petscii][password] CR LF
   in:   z\r\n
 
-  echo: 
+  echo: *
   ret:  Ok("♦")
 [petscii][password] CR NUL
   in:   z\r\x00
-  echo: 
+  echo: *
   ret:  Ok("♦")
 [petscii][password] incomplete lead byte + CR
   in:   \xC1\r
-  echo: 
+  echo: *
   ret:  Ok("♠")
 [petscii][masked(*)] ascii
   in:   abc\r
-  echo: ***
+  echo: ****
   ret:  Ok("♠│─")
 [petscii][masked(*)] wide
   in:   \xC1a\r
-  echo: **
+  echo: ***
   ret:  Ok("♠♠")
 [petscii][masked(*)] wide + BS
   in:   \xC1a\x08\r
-  echo: **\x14
+  echo: **\x14*
   ret:  Ok("♠")
 [petscii][masked(*)] wide + DEL
   in:   \xC1a\x7F\r
-  echo: **\x14
+  echo: **\x14*
   ret:  Ok("♠")
 [petscii][masked(*)] wide + BS BS BS
   in:   \xC1a\x08\x08\x08\r
-  echo: **\x14\x14
+  echo: **\x14\x14*
   ret:  Ok("")
 [petscii][masked(*)] half + BS
   in:   ab\x08\r
-  echo: **\x14
+  echo: **\x14*
   ret:  Ok("♠")
 [petscii][masked(*)] petscii DEL 0x14
   in:   a\x14\r
-  echo: *\x14
+  echo: *\x14*
   ret:  Ok("")
 [petscii][masked(*)] ESC [ A
   in:   a\e[A\r
-  echo: ***
+  echo: ****
   ret:  Ok("♠[A")
 [petscii][masked(*)] IAC WILL SGA
   in:   \xFF\xFB\x03x\r
@@ -718,7 +718,7 @@
   ret:  Ok("")
 [petscii][masked(*)] IAC DO ECHO
   in:   \xFF\xFD\x01x\r
-  echo: ***
+  echo: ****
   ret:  Ok("π▃♣")
 [petscii][masked(*)] Ctrl+C
   in:   a\x03
@@ -727,18 +727,18 @@
 [petscii][masked(*)] LF only
   in:   z\n
 
-  echo: *
+  echo: **
   ret:  Ok("♦")
 [petscii][masked(*)] CR LF
   in:   z\r\n
 
-  echo: *
+  echo: **
   ret:  Ok("♦")
 [petscii][masked(*)] CR NUL
   in:   z\r\x00
-  echo: *
+  echo: **
   ret:  Ok("♦")
 [petscii][masked(*)] incomplete lead byte + CR
   in:   \xC1\r
-  echo: *
+  echo: **
   ret:  Ok("♠")

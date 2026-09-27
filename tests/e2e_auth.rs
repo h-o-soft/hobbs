@@ -121,9 +121,6 @@ async fn test_registration_duplicate_username() {
     client.recv_until("Select:").await.unwrap();
     client.send_line("R").await.unwrap();
 
-    // Language selection appears after choosing R
-    client.select_language("E").await.unwrap();
-
     // Now try to register with existing username
     client.recv_until("Username:").await.unwrap();
     client.send_line("existing").await.unwrap();
