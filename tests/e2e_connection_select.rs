@@ -142,3 +142,47 @@ async fn test_registration_saves_connection_settings() {
     assert_eq!(user.encoding, CharacterEncoding::Petscii);
     assert_eq!(user.language, "en");
 }
+
+/// A settings change that does not select a terminal keeps the connection's
+/// encoding (codex review R1-F1): a PETSCII-saved user on a UTF-8 connection
+/// who only toggles auto-paging stays on UTF-8.
+#[tokio::test]
+async fn test_settings_change_keeps_connection_encoding() {
+    let server = server().await;
+    let hash = hobbs::hash_password("password123").unwrap();
+    UserRepository::new(server.db().pool())
+        .create(
+            &NewUser::new("c64user", &hash, "c64user")
+                .with_language("ja")
+                .with_terminal("c64")
+                .with_encoding(CharacterEncoding::Petscii),
+        )
+        .await
+        .unwrap();
+
+    let mut client = TestClient::connect_raw(server.addr()).await.unwrap();
+    client.select_connection("2").await.unwrap();
+    client.recv_until_timeout("Select:", WAIT).await.unwrap();
+    client.send_line("L").await.unwrap();
+    client.recv_until_timeout("Username:", WAIT).await.unwrap();
+    client.send_line("c64user").await.unwrap();
+    client.recv_until_timeout("Password:", WAIT).await.unwrap();
+    client.send_line("password123").await.unwrap();
+    client.recv_until_timeout("> ", WAIT).await.unwrap();
+
+    // Profile → Settings: keep language, keep terminal, turn paging off.
+    client.send_line("P").await.unwrap();
+    client.recv_until_timeout("]=", WAIT).await.unwrap();
+    client.recv_until_timeout(": ", WAIT).await.unwrap();
+    client.send_line("S").await.unwrap();
+    client.recv_until_timeout("]: ", WAIT).await.unwrap(); // language
+    client.send_line("").await.unwrap();
+    client.recv_until_timeout("]: ", WAIT).await.unwrap(); // terminal / screen
+    client.send_line("").await.unwrap();
+    client.recv_until_timeout("]: ", WAIT).await.unwrap(); // auto paging
+    client.send_line("2").await.unwrap();
+
+    // Back at the main menu, still readable UTF-8 Japanese.
+    let menu = client.recv_until_timeout("> ", WAIT).await.unwrap();
+    assert!(menu.contains("掲示板"), "menu should stay UTF-8: {menu}");
+}
