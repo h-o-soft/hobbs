@@ -402,6 +402,28 @@ async fn golden_b_login_profile_defaults() {
     }
 }
 
+/// A user who saved the former built-in "jterm40", with it defined as a
+/// custom profile (config.toml.sample): behaves as jterm40 did (cjk_width 1).
+#[tokio::test]
+async fn golden_b_login_jterm40_custom() {
+    let mut config = test_config();
+    config.terminal.profiles = vec![jterm40_profile()];
+    let fx = Fixture::new(config).await;
+    fx.create_user("tester", "member", "ja", "jterm40", "shiftjis")
+        .await;
+    let mut conn = Conn::open(fx.addr(), b"1\r").await;
+    login(&mut conn, "tester", "shiftjis").await;
+    conn.run("menu: B (board list)", b"B\r", Until::Prompt)
+        .await;
+    conn.run("board 1 (thread list)", b"1\r", Until::Prompt)
+        .await;
+    conn.run("thread 1 (view)", b"1\r", Until::Prompt).await;
+    conn.run("back to thread list", b"Q\r", Until::Prompt).await;
+    conn.run("back to board list", b"Q\r", Until::Prompt).await;
+    conn.run("back to menu", b"Q\r", Until::Prompt).await;
+    assert_golden("b_login__jterm40_custom", &conn.transcript);
+}
+
 #[tokio::test]
 async fn golden_b_login_mismatched_and_english() {
     // DB 上で terminal と encoding が食い違っているユーザー（E1）。
@@ -428,8 +450,41 @@ async fn golden_b_login_mismatched_and_english() {
 // 条件軸 C: 設定画面でプロファイルを変更 → メインメニュー
 // ---------------------------------------------------------------------------
 
-async fn scenario_settings(index: usize, profile: &str) {
-    let fx = Fixture::standard().await;
+/// A custom profile (like a PC-98: ShiftJIS, 80x25) for Q2 checks.
+fn pc98_profile() -> hobbs::config::ProfileConfig {
+    hobbs::config::ProfileConfig {
+        name: "pc98".to_string(),
+        width: 80,
+        height: 25,
+        cjk_width: 2,
+        ansi_enabled: true,
+        encoding: "shiftjis".to_string(),
+        output_mode: "ansi".to_string(),
+        template_dir: "80".to_string(),
+    }
+}
+
+/// The former built-in jterm40, defined as a custom profile
+/// (the example in config.toml.sample).
+fn jterm40_profile() -> hobbs::config::ProfileConfig {
+    hobbs::config::ProfileConfig {
+        name: "jterm40".to_string(),
+        width: 40,
+        height: 25,
+        cjk_width: 1,
+        ansi_enabled: true,
+        encoding: "shiftjis".to_string(),
+        output_mode: "ansi".to_string(),
+        template_dir: "40".to_string(),
+    }
+}
+
+/// Settings screen on a ShiftJIS connection: pick screen `choice`
+/// (1: 80 columns, 2: 40 columns, 3: the custom pc98 profile).
+async fn scenario_settings(choice: usize, name: &str) {
+    let mut config = test_config();
+    config.terminal.profiles = vec![pc98_profile()];
+    let fx = Fixture::new(config).await;
     fx.create_user("tester", "member", "ja", "standard", "shiftjis")
         .await;
     let mut conn = Conn::open(fx.addr(), b"1\r").await;
@@ -438,9 +493,8 @@ async fn scenario_settings(index: usize, profile: &str) {
     conn.run("profile: S (settings)", b"S\r", Until::Prompt)
         .await;
     conn.run("language: keep", b"\r", Until::Prompt).await;
-    let choice = format!("{}\r", index + 1);
-    conn.run("terminal profile", choice.as_bytes(), Until::Prompt)
-        .await;
+    let input = format!("{choice}\r");
+    conn.run("screen", input.as_bytes(), Until::Prompt).await;
     conn.run(
         "auto paging: keep (saved, back to menu)",
         b"\r",
@@ -451,26 +505,14 @@ async fn scenario_settings(index: usize, profile: &str) {
         .await;
     conn.run("back to menu", b"Q\r", Until::Prompt).await;
     conn.run("logout", b"Q\r", Until::Prompt).await;
-    assert_golden(&format!("c_settings__{profile}"), &conn.transcript);
+    assert_golden(&format!("c_settings__{name}"), &conn.transcript);
 }
 
-/// Order in which the settings screen lists the built-in profiles
-/// (`TerminalProfile::available_profiles`).
-const SETTINGS_ORDER: [&str; 7] = [
-    "standard",
-    "standard_utf8",
-    "40col_sjis",
-    "jterm40",
-    "40col_utf8",
-    "dos",
-    "c64",
-];
-
 #[tokio::test]
-async fn golden_c_settings_change_profile() {
-    for (i, profile) in SETTINGS_ORDER.iter().enumerate() {
-        scenario_settings(i, profile).await;
-    }
+async fn golden_c_settings_change_screen() {
+    scenario_settings(1, "80").await;
+    scenario_settings(2, "40").await;
+    scenario_settings(3, "custom_pc98").await;
 }
 
 // ---------------------------------------------------------------------------

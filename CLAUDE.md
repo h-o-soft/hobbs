@@ -139,7 +139,6 @@ pub enum Role {
 | dos | 80 | 25 | 1 | CP437 | Ansi |
 | c64 | 40 | 25 | 1 | PETSCII | PetsciiCtrl |
 | 40col_sjis | 40 | 25 | 2 | ShiftJIS | Ansi |
-| jterm40 | 40 | 25 | 1 | ShiftJIS | Ansi |
 | 40col_utf8 | 40 | 25 | 2 | UTF-8 | Ansi |
 
 カスタムプロファイルは `config.toml` の `[[terminal.profiles]]` で定義可能。

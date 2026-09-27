@@ -36,12 +36,33 @@ level = "info"
 file = "logs/hobbs.log"
 
 [terminal]
-# Default terminal profile: standard (80x24), c64 (40x25, no ANSI), c64_ansi (40x25)
+# Terminal profile used when a client connects (built-in: standard, standard_utf8,
+# 40col_sjis, 40col_utf8, dos, c64, or a custom profile defined below).
+# It also decides the default of the connection type selection screen
+# (ShiftJIS -> 1, UTF-8 -> 2 (ja) / 3 (en), CP437 -> 4, PETSCII -> 5).
 default_profile = "standard"
 # Auto-paging for terminals without scroll capability
 auto_paging = true
 # Lines before pause (0 = terminal height - 4)
 paging_lines = 0
+
+# Custom terminal profiles. They are offered on the settings screen when they
+# fit the connection's encoding, and saved users keep using them.
+#
+# "jterm40" used to be a built-in profile: a special mode for a self-made
+# Commodore 64 terminal that shows ShiftJIS with ASCII and kanji in the same
+# one-cell width (cjk_width = 1). It was removed from the built-ins (see
+# docs/terminal_model.md). Uncomment this to keep it; without it, users who
+# saved "jterm40" get "40col_sjis" (kanji counted as 2 columns).
+#
+# [[terminal.profiles]]
+# name = "jterm40"
+# width = 40
+# height = 25
+# cjk_width = 1
+# ansi_enabled = true
+# encoding = "shiftjis"
+# output_mode = "ansi"
 
 [rss]
 # Whether RSS feature is enabled

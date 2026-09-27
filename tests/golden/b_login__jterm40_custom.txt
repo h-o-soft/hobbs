@@ -85,10 +85,10 @@ B\r\n
 \r\n
 \r\n
 \r\n
-  \x94\xD4~ \x83^\x83C\x83g\x83\x8B                   \x95\xD4~ \x96\xA2\x93\xC7\r\n
+  \x94\xD4\x8D\x86  \x83^\x83C\x83g\x83\x8B                       \x95\xD4\x90M\x90\x94 \x96\xA2\x93\xC7\r\n
 ---------------------------------------\r\n
 \r\n
-  1   \x93\xFA\x96{\x8C\xEA\x83{\x81[\x83h              2     [31]\r\n
+  1   \x93\xFA\x96{\x8C\xEA\x83{\x81[\x83h                    2     [31]\r\n
 \r\n
 \r\n
 \r\n
@@ -102,12 +102,12 @@ B\r\n
 === \x8Cf\x8E\xA6\x94\xC2\x88\xEA\x97\x97: \x93\xFA\x96{\x8C\xEA\x83{\x81[\x83h ===\r\n
 \r\n
 \r\n
-  \x94\xD4~ \x83^\x83C\x83g\x83\x8B                  \x95\xD4 ~\r\n
+  \x94\xD4\x8D\x86  \x83^\x83C\x83g\x83\x8B                      \x95\xD4\x90M\x90\x94 \r\n
 --------------------------------------\r\n
 \r\n
-* 1   \x83e\x83X\x83g \x84\x9F &#233; \xB6\xC5 &#128512;      0   \r\n
+* 1   \x83e\x83X\x83g \x84\x9F &#233; \xB6\xC5 &#128512;              0   \r\n
 \r\n
-* 2   \x92\xB7\x82\xA2\x83X\x83\x8C\x83b\x83h              0   \r\n
+* 2   \x92\xB7\x82\xA2\x83X\x83\x8C\x83b\x83h                    0   \r\n
 \r\n
 \r\n
 \r\n
@@ -141,12 +141,12 @@ Q\r\n
 === \x8Cf\x8E\xA6\x94\xC2\x88\xEA\x97\x97: \x93\xFA\x96{\x8C\xEA\x83{\x81[\x83h ===\r\n
 \r\n
 \r\n
-  \x94\xD4~ \x83^\x83C\x83g\x83\x8B                  \x95\xD4 ~\r\n
+  \x94\xD4\x8D\x86  \x83^\x83C\x83g\x83\x8B                      \x95\xD4\x90M\x90\x94 \r\n
 --------------------------------------\r\n
 \r\n
-  1   \x83e\x83X\x83g \x84\x9F &#233; \xB6\xC5 &#128512;      0   \r\n
+  1   \x83e\x83X\x83g \x84\x9F &#233; \xB6\xC5 &#128512;              0   \r\n
 \r\n
-  2   \x92\xB7\x82\xA2\x83X\x83\x8C\x83b\x83h              0   \r\n
+  2   \x92\xB7\x82\xA2\x83X\x83\x8C\x83b\x83h                    0   \r\n
 \r\n
 \r\n
 \r\n
@@ -162,10 +162,10 @@ Q\r\n
 \r\n
 \r\n
 \r\n
-  \x94\xD4~ \x83^\x83C\x83g\x83\x8B                   \x95\xD4~ \x96\xA2\x93\xC7\r\n
+  \x94\xD4\x8D\x86  \x83^\x83C\x83g\x83\x8B                       \x95\xD4\x90M\x90\x94 \x96\xA2\x93\xC7\r\n
 ---------------------------------------\r\n
 \r\n
-  1   \x93\xFA\x96{\x8C\xEA\x83{\x81[\x83h              2     \r\n
+  1   \x93\xFA\x96{\x8C\xEA\x83{\x81[\x83h                    2     \r\n
 \r\n
 \r\n
 \r\n
@@ -196,89 +196,4 @@ Q\r\n
 ----------------------------------------\r\n
 \x91I\x91\xF0\x82\xB5\x82\xC4\x82\xAD\x82\xBE\x82\xB3\x82\xA2: \r\n
 > 
-
-=== menu: H (help)
->>> H\r
-<<<
-H\r\n
-\r\n
-=== \x83w\x83\x8B\x83v ===\r\n
-\r\n
-  [1] About HOBBS\r\n
-  [2] Navigation\r\n
-  [3] Board Commands\r\n
-  [4] Chat Commands\r\n
-  [5] Mail Commands\r\n
-\r\n
-\x91I\x91\xF0\x82\xB5\x82\xC4\x82\xAD\x82\xBE\x82\xB3\x82\xA2:  [Q=\x96\xDF\x82\xE9]: 
-
-=== help: 2 (navigation)
->>> 2\r
-<<<
-2\r\n
-\r\n
-=== Navigation ===\r\n
-\r\n
-Common Commands:\r\n
-  Q   - Go back / Quit current screen\r\n
-  N   - Next page\r\n
-  P   - Previous page\r\n
-  #   - Select item by number\r\n
-\r\n
-Main Menu:\r\n
-  B   - Boards\r\n
-  C   - Chat\r\n
-  M   - Mail\r\n
-  F   - Files\r\n
-  P   - Profile\r\n
-  H   - Help\r\n
-  Q   - Logout\r\n
-\r\n
-[Enter]\x83L\x81[\x82\xF0\x89\x9F\x82\xB5\x82\xC4\x82\xAD\x82\xBE\x82\xB3\x82\xA2...
-
-=== help page: Enter
->>> \r
-<<<
-\r\n
-=== \x83w\x83\x8B\x83v ===\r\n
-\r\n
-  [1] About HOBBS\r\n
-  [2] Navigation\r\n
-  [3] Board Commands\r\n
-  [4] Chat Commands\r\n
-  [5] Mail Commands\r\n
-\r\n
-\x91I\x91\xF0\x82\xB5\x82\xC4\x82\xAD\x82\xBE\x82\xB3\x82\xA2:  [Q=\x96\xDF\x82\xE9]: 
-
-=== help: Q (back to menu)
->>> Q\r
-<<<
-Q\r\n
-========================================\r\n
-     \x83\x81\x83C\x83\x93\x83\x81\x83j\x83\x85\x81[\r\n
-        \x83\x86\x81[\x83U\x81[: tester\r\n
-========================================\r\n
-\r\n
- [B] \x8Cf\x8E\xA6\x94\xC2\r\n
- [C] \x83`\x83\x83\x83b\x83g        (0\x90l)\r\n
- [M] \x83\x81\x81[\x83\x8B        (\x96\xA2\x93\xC70)\r\n
- [F] \x83t\x83@\x83C\x83\x8B\r\n
- [D] \x83h\x83A\r\n
- [N] \x83j\x83\x85\x81[\x83X\r\n
- [P] \x83v\x83\x8D\x83t\x83B\x81[\x83\x8B\r\n
- [W] \x89\xEF\x88\xF5\x88\xEA\x97\x97\r\n
-\r\n
-\r\n
-\r\n
- [Q] \x83\x8D\x83O\x83A\x83E\x83g\r\n
-\r\n
-----------------------------------------\r\n
-\x91I\x91\xF0\x82\xB5\x82\xC4\x82\xAD\x82\xBE\x82\xB3\x82\xA2: \r\n
-> 
-
-=== menu: Q (logout)
->>> Q\r
-<<<
-Q\r\n
-[L]Login [R]Register [G]Guest [Q]Quit > 
 

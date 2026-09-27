@@ -10,6 +10,7 @@ use crate::db::{Role, UserRepository, UserUpdate};
 use crate::error::Result;
 use crate::server::{EchoMode, TelnetSession};
 use crate::template::Value;
+use crate::terminal::settings::resolve;
 use crate::terminal::TerminalProfile;
 
 /// Profile screen handler.
@@ -279,7 +280,11 @@ impl ProfileScreen {
         Ok(())
     }
 
-    /// Change language, encoding, and terminal settings.
+    /// Change settings: language, screen (width / custom profile) and
+    /// auto-paging.
+    ///
+    /// The character encoding is decided by the connection type chosen when
+    /// connecting, so it is shown but not changed here (plan.md D2/D3).
     async fn change_settings(
         ctx: &mut ScreenContext,
         session: &mut TelnetSession,
@@ -298,9 +303,13 @@ impl ProfileScreen {
                 user.auto_paging,
             )
         };
-        // The encoding in effect is the connection type's (the saved one is
-        // not used at login), so an unrelated change must not switch it.
-        let current_encoding = session.encoding();
+        let encoding = session.encoding();
+        let choices = Self::screen_choices(ctx, session);
+        // "Current" is the screen in effect for this connection, which may
+        // differ from the saved one (login substitutes a profile that fits
+        // the connection, e.g. a saved c64 on a PC connection).
+        let current_choice =
+            Self::current_screen_choice(ctx, &choices, &session.settings().profile.name);
 
         ctx.send_line(session, "").await?;
         ctx.send_line(session, &format!("=== {} ===", ctx.i18n.t("menu.settings")))
@@ -324,9 +333,10 @@ impl ProfileScreen {
         ctx.send_line(
             session,
             &format!(
-                "{}: {}",
+                "{}: {} ({})",
                 ctx.i18n.t("settings.encoding"),
-                current_encoding.as_str().to_uppercase()
+                encoding.as_str().to_uppercase(),
+                ctx.i18n.t("settings.encoding_from_connection")
             ),
         )
         .await?;
@@ -334,8 +344,8 @@ impl ProfileScreen {
             session,
             &format!(
                 "{}: {}",
-                ctx.i18n.t("settings.terminal_profile"),
-                Self::profile_display_name(ctx, &current_terminal)
+                ctx.i18n.t("settings.screen"),
+                choices[current_choice].1
             ),
         )
         .await?;
@@ -370,98 +380,37 @@ impl ProfileScreen {
         .await?;
 
         let lang_input = ctx.read_line(session).await?;
-        let lang_input = lang_input.trim();
-
-        let new_language = match lang_input {
+        let new_language = match lang_input.trim() {
             "1" => "en".to_string(),
             "2" => "ja".to_string(),
-            "" => current_language.clone(),
             _ => current_language.clone(),
         };
 
-        // Terminal profile selection (now includes encoding in profile)
-        // Build list of available profiles: built-in + custom from config
-        let builtin_profiles = TerminalProfile::available_profiles();
-        let custom_profiles = ctx.config.terminal.profiles.clone();
-
-        // Create list of (name, display_name) tuples
-        let mut profile_list: Vec<(String, String)> = builtin_profiles
-            .iter()
-            .map(|name| (name.to_string(), Self::profile_display_name(ctx, name)))
-            .collect();
-
-        // Add custom profiles
-        for custom in &custom_profiles {
-            let display = format!(
-                "{} ({}x{}, {})",
-                custom.name,
-                custom.width,
-                custom.height,
-                custom.encoding.to_uppercase()
-            );
-            profile_list.push((custom.name.clone(), display));
-        }
-
-        ctx.send_line(session, "").await?;
-        ctx.send_line(
-            session,
-            &format!("{}:", ctx.i18n.t("settings.terminal_profile")),
-        )
-        .await?;
-
-        // Display profile options
-        for (i, (_, display_name)) in profile_list.iter().enumerate() {
-            ctx.send_line(session, &format!("  [{}] {}", i + 1, display_name))
+        // Screen selection (only when there is something to choose)
+        let mut new_terminal: Option<String> = None;
+        if choices.len() > 1 {
+            ctx.send_line(session, "").await?;
+            ctx.send_line(session, &format!("{}:", ctx.i18n.t("settings.screen")))
                 .await?;
-        }
-
-        // Find current profile index (a former name such as "c64_ansi"
-        // resolves to the profile it is now an alias of)
-        let canonical_terminal = TerminalProfile::from_name(&current_terminal).name;
-        let current_profile_num = profile_list
-            .iter()
-            .position(|(name, _)| name == &current_terminal)
-            .or_else(|| {
-                profile_list
-                    .iter()
-                    .position(|(name, _)| name == &canonical_terminal)
-            })
-            .map(|i| (i + 1).to_string())
-            .unwrap_or_else(|| "1".to_string());
-
-        ctx.send(
-            session,
-            &format!(
-                "{} [{}]: ",
-                ctx.i18n.t("common.number"),
-                current_profile_num
-            ),
-        )
-        .await?;
-
-        let term_input = ctx.read_line(session).await?;
-        let term_input = term_input.trim();
-
-        // Get profile name and encoding from selection
-        let (new_terminal, new_encoding) = if term_input.is_empty() {
-            (None, current_encoding)
-        } else if let Ok(idx) = term_input.parse::<usize>() {
-            if idx >= 1 && idx <= profile_list.len() {
-                let profile_name = &profile_list[idx - 1].0;
-                let profile =
-                    TerminalProfile::from_name_with_custom(profile_name, &custom_profiles);
-                (Some(profile_name.clone()), profile.encoding)
-            } else {
-                (None, current_encoding)
+            for (i, (_, label)) in choices.iter().enumerate() {
+                ctx.send_line(session, &format!("  [{}] {}", i + 1, label))
+                    .await?;
             }
-        } else {
-            (None, current_encoding)
-        };
+            ctx.send(
+                session,
+                &format!("{} [{}]: ", ctx.i18n.t("common.number"), current_choice + 1),
+            )
+            .await?;
 
-        // Determine actual new terminal value
-        let actual_new_terminal = new_terminal
-            .clone()
-            .unwrap_or_else(|| current_terminal.clone());
+            let screen_input = ctx.read_line(session).await?;
+            if let Ok(idx) = screen_input.trim().parse::<usize>() {
+                // An explicit selection is always applied, even when it is
+                // the current one (codex review R2-F2 on #337).
+                if idx >= 1 && idx <= choices.len() {
+                    new_terminal = Some(choices[idx - 1].0.clone());
+                }
+            }
+        }
 
         // Auto-paging selection
         ctx.send_line(session, "").await?;
@@ -488,27 +437,15 @@ impl ProfileScreen {
         .await?;
 
         let paging_input = ctx.read_line(session).await?;
-        let paging_input = paging_input.trim();
-
-        let new_auto_paging = match paging_input {
+        let new_auto_paging = match paging_input.trim() {
             "1" => true,
             "2" => false,
-            "" => current_auto_paging, // No change
             _ => current_auto_paging,
         };
 
         // Check if anything changed
-        // An explicit selection is applied even when it equals the saved
-        // name: login may have substituted another profile for this
-        // connection (e.g. a saved c64 on a PC connection).
-        let terminal_selected = new_terminal.is_some();
-        let terminal_changed = terminal_selected && actual_new_terminal != current_terminal;
         let auto_paging_changed = new_auto_paging != current_auto_paging;
-        if new_language == current_language
-            && new_encoding == current_encoding
-            && !terminal_selected
-            && !auto_paging_changed
-        {
+        if new_language == current_language && new_terminal.is_none() && !auto_paging_changed {
             ctx.send_line(session, "").await?;
             return Ok(None);
         }
@@ -516,13 +453,11 @@ impl ProfileScreen {
         // Save to database
         let user_repo = UserRepository::new(ctx.db.pool());
         let mut update = UserUpdate::new().language(new_language.clone());
-
-        if terminal_changed {
-            update = update
-                .terminal(actual_new_terminal.clone())
-                .encoding(new_encoding);
+        if let Some(ref terminal) = new_terminal {
+            if *terminal != current_terminal {
+                update = update.terminal(terminal.clone());
+            }
         }
-
         if auto_paging_changed {
             update = update.auto_paging(new_auto_paging);
         }
@@ -536,12 +471,7 @@ impl ProfileScreen {
                 // Return SettingsChanged to signal session_handler to update
                 Ok(Some(ScreenResult::SettingsChanged {
                     language: new_language,
-                    encoding: new_encoding,
-                    terminal_profile: if terminal_selected {
-                        Some(actual_new_terminal)
-                    } else {
-                        None
-                    },
+                    terminal_profile: new_terminal,
                 }))
             }
             Err(e) => {
@@ -553,20 +483,97 @@ impl ProfileScreen {
         }
     }
 
-    /// Get display name for a terminal profile.
-    fn profile_display_name(ctx: &ScreenContext, profile: &str) -> String {
-        match profile {
-            "standard_utf8" => ctx.i18n.t("terminal.profile_standard_utf8").to_string(),
-            "dos" => ctx.i18n.t("terminal.profile_dos").to_string(),
-            // Former c64 variants (c64_petscii, c64_ansi, petscii) are aliases.
-            "c64" | "c64_petscii" | "c64_ansi" | "petscii" => {
-                ctx.i18n.t("terminal.profile_c64").to_string()
+    /// Screen choices for the settings screen on this connection.
+    fn screen_choices(ctx: &ScreenContext, session: &TelnetSession) -> Vec<(String, String)> {
+        Self::build_screen_choices(
+            session.encoding(),
+            &ctx.config.terminal.profiles,
+            &session.settings().profile,
+            |key| ctx.i18n.t(key).to_string(),
+        )
+    }
+
+    /// Build the screen choices for a connection with `encoding`:
+    /// (profile name to save, label).
+    ///
+    /// - ShiftJIS / UTF-8 connections offer 80 and 40 columns; CP437 and
+    ///   PETSCII have a fixed screen. Custom profiles are added after them.
+    /// - Every candidate is resolved the same way it is applied (custom
+    ///   profiles first), so a custom profile overriding a built-in name is
+    ///   labelled from its own size, listed once, and dropped when it does not
+    ///   fit the encoding.
+    /// - If nothing fits, `current` (the profile in effect) is offered.
+    fn build_screen_choices(
+        encoding: crate::server::CharacterEncoding,
+        custom: &[crate::config::ProfileConfig],
+        current: &TerminalProfile,
+        label: impl Fn(&str) -> String,
+    ) -> Vec<(String, String)> {
+        use crate::server::CharacterEncoding as E;
+        let builtin: &[(&str, &str)] = match encoding {
+            E::ShiftJIS => &[
+                ("standard", "settings.screen_80"),
+                ("40col_sjis", "settings.screen_40"),
+            ],
+            E::Utf8 => &[
+                ("standard_utf8", "settings.screen_80"),
+                ("40col_utf8", "settings.screen_40"),
+            ],
+            E::Cp437 => &[("dos", "terminal.profile_dos")],
+            E::Petscii => &[("c64", "terminal.profile_c64")],
+        };
+        let candidates = builtin
+            .iter()
+            .map(|&(name, key)| (name.to_string(), Some(key)))
+            .chain(custom.iter().map(|c| (c.name.clone(), None)));
+
+        let mut choices: Vec<(String, String)> = Vec::new();
+        for (name, key) in candidates {
+            if choices.iter().any(|(n, _)| n.eq_ignore_ascii_case(&name)) {
+                continue;
             }
-            "40col_sjis" => ctx.i18n.t("terminal.profile_40col_sjis").to_string(),
-            "jterm40" => ctx.i18n.t("terminal.profile_jterm40").to_string(),
-            "40col_utf8" => ctx.i18n.t("terminal.profile_40col_utf8").to_string(),
-            _ => ctx.i18n.t("terminal.profile_standard").to_string(),
+            let profile = TerminalProfile::from_name_with_custom(&name, custom);
+            if !resolve::profile_fits(&profile, encoding) {
+                continue;
+            }
+            let overridden = custom.iter().any(|c| c.name.eq_ignore_ascii_case(&name));
+            let text = match key {
+                Some(key) if !overridden => label(key),
+                _ => format!("{} ({}x{})", profile.name, profile.width, profile.height),
+            };
+            choices.push((name, text));
         }
+        if choices.is_empty() {
+            choices.push((
+                current.name.clone(),
+                format!("{} ({}x{})", current.name, current.width, current.height),
+            ));
+        }
+        choices
+    }
+
+    /// Index of the saved terminal among `choices`: the same name, otherwise
+    /// the first choice with the same width (e.g. a saved "40col_sjis" on a
+    /// UTF-8 connection selects "40 columns"), otherwise the first.
+    fn current_screen_choice(
+        ctx: &ScreenContext,
+        choices: &[(String, String)],
+        current_terminal: &str,
+    ) -> usize {
+        if let Some(i) = choices
+            .iter()
+            .position(|(name, _)| name.eq_ignore_ascii_case(current_terminal))
+        {
+            return i;
+        }
+        let custom = &ctx.config.terminal.profiles;
+        let width = TerminalProfile::from_name_with_custom(current_terminal, custom).width;
+        choices
+            .iter()
+            .position(|(name, _)| {
+                TerminalProfile::from_name_with_custom(name, custom).width == width
+            })
+            .unwrap_or(0)
     }
 
     /// Get display name for a role.
@@ -587,5 +594,97 @@ mod tests {
     #[test]
     fn test_profile_screen_exists() {
         let _ = ProfileScreen;
+    }
+
+    use crate::config::ProfileConfig;
+    use crate::server::CharacterEncoding;
+
+    fn custom(name: &str, width: u16, height: u16, encoding: &str) -> ProfileConfig {
+        ProfileConfig {
+            name: name.to_string(),
+            width,
+            height,
+            cjk_width: 2,
+            ansi_enabled: true,
+            encoding: encoding.to_string(),
+            output_mode: "ansi".to_string(),
+            template_dir: "80".to_string(),
+        }
+    }
+
+    fn choices(encoding: CharacterEncoding, customs: &[ProfileConfig]) -> Vec<(String, String)> {
+        ProfileScreen::build_screen_choices(
+            encoding,
+            customs,
+            &TerminalProfile::standard(),
+            |key| format!("<{key}>"),
+        )
+    }
+
+    #[test]
+    fn test_screen_choices_builtin() {
+        assert_eq!(
+            choices(CharacterEncoding::ShiftJIS, &[]),
+            vec![
+                ("standard".to_string(), "<settings.screen_80>".to_string()),
+                ("40col_sjis".to_string(), "<settings.screen_40>".to_string()),
+            ]
+        );
+        assert_eq!(
+            choices(CharacterEncoding::Petscii, &[]),
+            vec![("c64".to_string(), "<terminal.profile_c64>".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_screen_choices_custom_added_when_it_fits() {
+        let c = choices(
+            CharacterEncoding::Utf8,
+            &[
+                custom("pc98", 80, 25, "shiftjis"),
+                custom("petty", 40, 25, "petscii"),
+            ],
+        );
+        let names: Vec<&str> = c.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, vec!["standard_utf8", "40col_utf8", "pc98"]);
+        assert_eq!(c[2].1, "pc98 (80x25)");
+    }
+
+    /// A custom profile overriding a built-in name is resolved, labelled from
+    /// its own size, listed once, and dropped if it does not fit
+    /// (codex review R1-F1 on #338).
+    #[test]
+    fn test_screen_choices_custom_overriding_builtin_name() {
+        let c = choices(
+            CharacterEncoding::ShiftJIS,
+            &[custom("standard", 40, 25, "shiftjis")],
+        );
+        assert_eq!(
+            c,
+            vec![
+                ("standard".to_string(), "standard (40x25)".to_string()),
+                ("40col_sjis".to_string(), "<settings.screen_40>".to_string()),
+            ]
+        );
+        // An override that does not fit the connection is not offered.
+        let c = choices(
+            CharacterEncoding::ShiftJIS,
+            &[custom("standard", 80, 24, "petscii")],
+        );
+        let names: Vec<&str> = c.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, vec!["40col_sjis"]);
+    }
+
+    #[test]
+    fn test_screen_choices_never_empty() {
+        // Every candidate overridden by something that does not fit: the
+        // profile in effect is offered so the screen always has a choice.
+        let c = ProfileScreen::build_screen_choices(
+            CharacterEncoding::Petscii,
+            &[custom("c64", 80, 24, "shiftjis")],
+            &TerminalProfile::c64(),
+            |key| key.to_string(),
+        );
+        assert_eq!(c, vec![("c64".to_string(), "c64 (40x25)".to_string())]);
     }
 }
