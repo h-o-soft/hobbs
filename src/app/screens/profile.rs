@@ -498,11 +498,15 @@ impl ProfileScreen {
         };
 
         // Check if anything changed
-        let terminal_changed = new_terminal.is_some() && actual_new_terminal != current_terminal;
+        // An explicit selection is applied even when it equals the saved
+        // name: login may have substituted another profile for this
+        // connection (e.g. a saved c64 on a PC connection).
+        let terminal_selected = new_terminal.is_some();
+        let terminal_changed = terminal_selected && actual_new_terminal != current_terminal;
         let auto_paging_changed = new_auto_paging != current_auto_paging;
         if new_language == current_language
             && new_encoding == current_encoding
-            && !terminal_changed
+            && !terminal_selected
             && !auto_paging_changed
         {
             ctx.send_line(session, "").await?;
@@ -533,7 +537,7 @@ impl ProfileScreen {
                 Ok(Some(ScreenResult::SettingsChanged {
                     language: new_language,
                     encoding: new_encoding,
-                    terminal_profile: if terminal_changed {
+                    terminal_profile: if terminal_selected {
                         Some(actual_new_terminal)
                     } else {
                         None

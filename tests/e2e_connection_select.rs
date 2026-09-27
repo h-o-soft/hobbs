@@ -186,3 +186,100 @@ async fn test_settings_change_keeps_connection_encoding() {
     let menu = client.recv_until_timeout("> ", WAIT).await.unwrap();
     assert!(menu.contains("掲示板"), "menu should stay UTF-8: {menu}");
 }
+
+async fn login_raw(client: &mut TestClient, username: &str) {
+    client.recv_raw_until(b"> ", WAIT).await.unwrap();
+    client.send_line("L").await.unwrap();
+    client.recv_raw_until(b": ", WAIT).await.unwrap();
+    client.send_line(username).await.unwrap();
+    client.recv_raw_until(b": ", WAIT).await.unwrap();
+    client.send_line("password123").await.unwrap();
+    client.recv_raw_until(b"> ", WAIT).await.unwrap();
+}
+
+/// Profile → Settings, answering each prompt in order.
+async fn change_settings(client: &mut TestClient, language: &str, terminal: &str, paging: &str) {
+    client.send_line("P").await.unwrap();
+    client.recv_raw_until(b": ", WAIT).await.unwrap();
+    client.send_line("S").await.unwrap();
+    client.recv_raw_until(b"]: ", WAIT).await.unwrap();
+    client.send_line(language).await.unwrap();
+    client.recv_raw_until(b"]: ", WAIT).await.unwrap();
+    client.send_line(terminal).await.unwrap();
+    client.recv_raw_until(b"]: ", WAIT).await.unwrap();
+    client.send_line(paging).await.unwrap();
+}
+
+/// A Japanese account on a CP437 connection stays in English after an
+/// unrelated settings change (codex review R2-F1).
+#[tokio::test]
+async fn test_settings_change_keeps_language_compatible() {
+    let server = server().await;
+    let hash = hobbs::hash_password("password123").unwrap();
+    UserRepository::new(server.db().pool())
+        .create(
+            &NewUser::new("jauser", &hash, "jauser")
+                .with_language("ja")
+                .with_encoding(CharacterEncoding::ShiftJIS),
+        )
+        .await
+        .unwrap();
+
+    let mut client = TestClient::connect_raw(server.addr()).await.unwrap();
+    client.select_connection("4").await.unwrap();
+    login_raw(&mut client, "jauser").await;
+    change_settings(&mut client, "", "", "2").await;
+
+    let menu = client.recv_raw_until(b"> ", WAIT).await.unwrap();
+    let text = String::from_utf8_lossy(&menu);
+    assert!(text.contains("Boards"), "menu should stay English: {text}");
+}
+
+/// Selecting a terminal that equals the saved name still applies it when
+/// login had substituted another profile (codex review R2-F2): a C64-saved
+/// user on a UTF-8 connection who picks C64 gets PETSCII output.
+#[tokio::test]
+async fn test_settings_selecting_saved_terminal_applies_it() {
+    let server = server().await;
+    let hash = hobbs::hash_password("password123").unwrap();
+    UserRepository::new(server.db().pool())
+        .create(
+            &NewUser::new("c64user", &hash, "c64user")
+                .with_language("en")
+                .with_terminal("c64")
+                .with_encoding(CharacterEncoding::Petscii),
+        )
+        .await
+        .unwrap();
+
+    let mut client = TestClient::connect_raw(server.addr()).await.unwrap();
+    client.select_connection("3").await.unwrap();
+    login_raw(&mut client, "c64user").await;
+    // Built-in list order: standard, standard_utf8, 40col_sjis, jterm40,
+    // 40col_utf8, dos, c64.
+    change_settings(&mut client, "", "7", "").await;
+
+    let raw = client.recv_raw_until(b"> ", WAIT).await.unwrap();
+    // Skip everything up to "Settings saved" (sent before the switch).
+    let marker = b"Settings saved\r\n";
+    let start = raw
+        .windows(marker.len())
+        .position(|w| w == marker)
+        .expect("settings saved message")
+        + marker.len();
+    let after = &raw[start..];
+    assert!(!after.is_empty());
+    assert!(
+        !after.contains(&0x1B),
+        "no ANSI escapes after switching to C64"
+    );
+    assert!(!after.contains(&b'\n'), "PETSCII uses CR only");
+    // The C64 layout (40 columns) is applied, not the 80-column PC one that
+    // login had substituted: the menu's "=" separator is 40 wide.
+    let longest_rule = after
+        .split(|&b| b != b'=')
+        .map(|run| run.len())
+        .max()
+        .unwrap_or(0);
+    assert_eq!(longest_rule, 40, "40-column menu expected");
+}

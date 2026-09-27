@@ -255,7 +255,9 @@ pub mod resolve {
 
     /// Settings after the user saves the settings screen.
     ///
-    /// - encoding / language: the new values.
+    /// - encoding: the new value.
+    /// - language: the new value, or English when the encoding cannot show
+    ///   Japanese (CP437, PETSCII).
     /// - profile: `TerminalProfile::from_name(terminal)` if a profile was
     ///   selected, otherwise unchanged. QUIRK(Q2) as in [`on_login`].
     /// - output_mode: the (new) profile's output mode, made compatible with
@@ -269,6 +271,13 @@ pub mod resolve {
         let profile = match terminal {
             Some(name) => TerminalProfile::from_name(name),
             None => current.profile.clone(),
+        };
+        // As at login: English where the encoding cannot show Japanese
+        // (the chosen language is still saved for other connections).
+        let language = if can_show_japanese(encoding) {
+            language
+        } else {
+            "en"
         };
         TerminalSettings {
             output_mode: compatible_output_mode(profile.output_mode, encoding),
@@ -548,6 +557,24 @@ mod tests {
     }
 
     /// Settings screen (golden c_settings__*).
+    /// Language stays compatible with the encoding after a settings change
+    /// (codex review R2-F1).
+    #[test]
+    fn test_on_settings_changed_keeps_language_compatible() {
+        let cp437 = on_login(&selected(ConnectionType::EnglishCp437), "ja", "dos");
+        assert_eq!(cp437.language, "en");
+        // Paging-only change: the saved "ja" comes back from the screen.
+        let s = on_settings_changed(&cp437, "ja", CharacterEncoding::Cp437, None);
+        assert_eq!(s.language, "en");
+        let c64 = on_login(&selected(ConnectionType::Commodore64), "ja", "c64");
+        let s = on_settings_changed(&c64, "ja", CharacterEncoding::Petscii, None);
+        assert_eq!(s.language, "en");
+        // Japanese is kept where it can be shown.
+        let sjis = selected(ConnectionType::JapaneseShiftJis);
+        let s = on_settings_changed(&sjis, "ja", CharacterEncoding::ShiftJIS, None);
+        assert_eq!(s.language, "ja");
+    }
+
     #[test]
     fn test_on_settings_changed() {
         let before = on_login(
