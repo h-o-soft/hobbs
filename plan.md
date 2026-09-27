@@ -62,6 +62,10 @@
 - Q8: ログイン前は `default_profile` の encoding を使わず、必ず ShiftJIS。
 - Q9: BS の消去幅がバイト数で決まる（E3）。jterm40 で漢字を消すと2桁、UTF-8 の半角カナを消すと2桁消える。
 - Q10: `send_raw` だけ CRLF を正規化しない（E2）。
+- Q11（フェーズ2で判明）: エコーの書き方が経路で違う。
+  - ScreenContext はエコーモードで絞り込む。Password / Masked では1バイトの文字を `*`（または指定の文字）にし、BS の並びはそのまま返し、行末の CRLF は返さない。書き込みのエラーは無視する。
+  - SessionHandler は LineBuffer のエコーを絞り込まずにそのまま書き、エラーを呼び出し元に返す。
+  - このため、フェーズ2で1つにまとめたのは ScreenContext の3か所（`write_screen_echo`）だけにした。SessionHandler 側は変えず、コメントで明記した。
 
 ### E5. 使われていないコード
 - `src/screen`（AnsiScreen / PlainScreen）。`SessionHandler.screen` として生成しているだけで、出力には使っていない（session_handler.rs:50, 78, 422）。
@@ -157,7 +161,7 @@ server::wire      … 【新規】出力の唯一の経路（text → CRLF → o
 
 ### フェーズ2: 出力経路とエコーを1か所にまとめる
 1. `to_wire(text, encoding, output_mode, newline)` を追加し、`SessionHandler::send`、`ScreenContext::send`、`send_raw` を置き換える（Q10 は `NewlinePolicy::AsIs` で残す）。引数は今の `session.encoding()` と `session.output_mode()` をそのまま渡す。フェーズ3で導入する型には依存しない。
-2. `write_echo` を追加し、4か所のエコー分岐を置き換える。
+2. `write_echo` を追加し、4か所のエコー分岐を置き換える。（実施時の変更: SessionHandler のエコーは ScreenContext と挙動が違う（Q11）ため、まとめたのは ScreenContext の3か所だけ。名前は `write_screen_echo`（`screen_echo_bytes` が絞り込みの本体）。）
 3. 入力の読み込み（IAC を除去する / しない）は**この段階では統合しない**（Q7 を残すため）。二つの読み込み経路の違いをコメントで明示するにとどめる。
 4. ゴールデンの A〜F がすべて一致することを確認する。
 

@@ -21,9 +21,8 @@ use crate::mail::MailRepository;
 use crate::rate_limit::RateLimiters;
 use crate::screen::{create_screen_from_profile, Screen};
 use crate::server::{
-    convert_caret_escape, encode_for_client, initial_negotiation, process_output_mode,
-    CharacterEncoding, EchoMode, InputResult, LineBuffer, SessionManager, SessionState,
-    TelnetParser, TelnetSession,
+    convert_caret_escape, initial_negotiation, to_wire, CharacterEncoding, EchoMode, InputResult,
+    LineBuffer, NewlinePolicy, SessionManager, SessionState, TelnetParser, TelnetSession,
 };
 use crate::template::{create_system_context, TemplateContext, TemplateLoader, Value};
 use crate::terminal::TerminalProfile;
@@ -989,11 +988,12 @@ Select language / Gengo sentaku:
     /// Converts LF to CRLF for Telnet compatibility.
     /// Processes output according to the session's output mode (strips ANSI for Plain mode).
     async fn send(&self, session: &mut TelnetSession, data: &str) -> Result<()> {
-        // Convert LF to CRLF for Telnet (but avoid converting already-CRLF sequences)
-        let data = data.replace("\r\n", "\n").replace('\n', "\r\n");
-        // Process output according to session's output mode
-        let data = process_output_mode(&data, session.output_mode());
-        let encoded = encode_for_client(&data, session.encoding());
+        let encoded = to_wire(
+            data,
+            session.encoding(),
+            session.output_mode(),
+            NewlinePolicy::Normalize,
+        );
         session.stream_mut().write_all(&encoded).await?;
         session.stream_mut().flush().await?;
         Ok(())
@@ -1083,7 +1083,10 @@ Select language / Gengo sentaku:
         for (i, &byte) in data.iter().enumerate() {
             let (result, echo) = self.line_buffer.process_byte(byte);
 
-            // Echo back
+            // Echo back.
+            // NOTE(#325 Q11): unlike ScreenContext (`write_screen_echo`), the
+            // LineBuffer echo is written verbatim here, without echo-mode
+            // filtering, and write errors are propagated.
             if !echo.is_empty() {
                 session.stream_mut().write_all(&echo).await?;
                 session.stream_mut().flush().await?;
