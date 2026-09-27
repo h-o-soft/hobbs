@@ -972,7 +972,13 @@ fn sgr_to_petscii(params: &str, out: &mut String) {
             1 => bold = true,
             22 => bold = false,
             7 => out.push(PETSCII_RVS_ON),
-            27 | 49 => out.push(PETSCII_RVS_OFF),
+            27 => out.push(PETSCII_RVS_OFF),
+            49 => {
+                // Default background: drop a background set earlier in the
+                // same sequence, and turn reverse off.
+                bg = None;
+                out.push(PETSCII_RVS_OFF);
+            }
             30..=37 => fg = Some(((code - 30) as usize, false)),
             39 => fg = Some((7, false)),
             90..=97 => fg = Some(((code - 90) as usize, true)),
@@ -1836,6 +1842,8 @@ mod tests {
         assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[37;44m "), "\x1F\x12 ");
         // 49 (default background) turns reverse off.
         assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[49mX"), "\u{0092}X");
+        // ... also when it follows a background in the same sequence.
+        assert_eq!(convert_ansi_to_petscii_ctrl("\x1b[44;49mX"), "\u{0092}X");
     }
 
     #[test]
