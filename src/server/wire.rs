@@ -12,6 +12,9 @@ use super::encoding::{encode_for_client, process_output_mode, CharacterEncoding,
 use super::input::EchoMode;
 use super::session::TelnetSession;
 
+/// PETSCII DEL (cursor left + erase), used as the erase echo on PETSCII.
+const PETSCII_DEL: u8 = 0x14;
+
 /// How newlines in outgoing text are treated by [`to_wire`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NewlinePolicy {
@@ -46,7 +49,8 @@ pub fn to_wire(
 ///
 /// - `Normal`: the echo as-is.
 /// - `Password` / `Masked(c)`: a single non-BS byte becomes `*` / `c`;
-///   a backspace sequence (starting with BS, longer than 1) is echoed as-is;
+///   a backspace sequence (starting with BS, longer than 1) or a PETSCII
+///   erase (DEL, 0x14) is echoed as-is;
 ///   anything else (e.g. the CRLF at end of line) is not echoed.
 ///
 /// Note: `SessionHandler` does not use this filter; it writes the
@@ -55,7 +59,10 @@ pub fn screen_echo_bytes(echo: &[u8], mode: EchoMode) -> Vec<u8> {
     match mode {
         EchoMode::Normal => echo.to_vec(),
         EchoMode::Password | EchoMode::Masked(_) => {
-            if echo.len() == 1 && echo[0] != b'\x08' {
+            if echo == [PETSCII_DEL] {
+                // PETSCII erase (see LineBuffer): not a typed character.
+                echo.to_vec()
+            } else if echo.len() == 1 && echo[0] != b'\x08' {
                 match mode {
                     EchoMode::Masked(c) => vec![c as u8],
                     _ => b"*".to_vec(),
@@ -139,5 +146,16 @@ mod tests {
         );
         assert!(screen_echo_bytes(b"\r\n", EchoMode::Password).is_empty());
         assert!(screen_echo_bytes(b"\x08", EchoMode::Masked('#')).is_empty());
+    }
+
+    #[test]
+    fn test_screen_echo_bytes_petscii_erase() {
+        // A PETSCII erase (DEL 0x14) is passed through, not masked.
+        assert_eq!(screen_echo_bytes(&[0x14], EchoMode::Password), vec![0x14]);
+        assert_eq!(
+            screen_echo_bytes(&[0x14], EchoMode::Masked('#')),
+            vec![0x14]
+        );
+        assert_eq!(screen_echo_bytes(&[0x14], EchoMode::Normal), vec![0x14]);
     }
 }

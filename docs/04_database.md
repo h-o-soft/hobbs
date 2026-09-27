@@ -106,7 +106,7 @@ CREATE TABLE users (
     email       TEXT,
     role        TEXT NOT NULL DEFAULT 'member',  -- 'sysop', 'subop', 'member'
     profile     TEXT,                    -- 自己紹介
-    terminal    TEXT NOT NULL DEFAULT 'standard',  -- 'standard', 'c64', 'c64_ansi'
+    terminal    TEXT NOT NULL DEFAULT 'standard',  -- プロファイル名（docs/terminal_model.md）
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     last_login  TEXT,
     is_active   INTEGER NOT NULL DEFAULT 1
@@ -125,7 +125,7 @@ CREATE INDEX idx_users_role ON users(role);
 | email | TEXT | メールアドレス（任意） |
 | role | TEXT | 権限（sysop/subop/member） |
 | profile | TEXT | 自己紹介文 |
-| terminal | TEXT | 端末タイプ（standard/c64/c64_ansi） |
+| terminal | TEXT | 端末プロファイル名（standard/c64 など。旧名 c64_ansi 等は別名として読み替える） |
 | created_at | TEXT | 登録日時 |
 | last_login | TEXT | 最終ログイン日時 |
 | is_active | INTEGER | 有効フラグ（1=有効, 0=退会/停止） |

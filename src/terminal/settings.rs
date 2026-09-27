@@ -5,10 +5,8 @@
 //! in [`TerminalSettings`] (held by `TelnetSession`), and every change goes
 //! through one of the pure functions in [`resolve`].
 //!
-//! The rules in [`resolve`] reproduce the existing behavior exactly, including
-//! known quirks (see plan.md, Issue #325). Quirks are marked `QUIRK(Qn)`; they
-//! are intentionally kept here and are to be fixed in a later,
-//! behavior-changing phase.
+//! Known quirks that are still kept are marked `QUIRK(Qn)` (see
+//! docs/terminal_model.md).
 
 use crate::i18n::DEFAULT_LOCALE;
 use crate::server::encoding::{CharacterEncoding, OutputMode};
@@ -47,11 +45,26 @@ impl Default for TerminalSettings {
 pub mod resolve {
     use super::*;
 
+    /// Make an output mode usable with the encoding on the wire.
+    ///
+    /// PETSCII control codes only make sense in PETSCII, and ANSI escape
+    /// sequences cannot be sent in PETSCII:
+    /// - PETSCII encoding + `Ansi` → `PetsciiCtrl`
+    /// - other encodings + `PetsciiCtrl` → `Ansi`
+    fn compatible_output_mode(mode: OutputMode, encoding: CharacterEncoding) -> OutputMode {
+        match (mode, encoding) {
+            (OutputMode::Ansi, CharacterEncoding::Petscii) => OutputMode::PetsciiCtrl,
+            (OutputMode::PetsciiCtrl, e) if e != CharacterEncoding::Petscii => OutputMode::Ansi,
+            (m, _) => m,
+        }
+    }
+
     /// Settings when a client connects.
     ///
     /// - profile: the given connect profile (`terminal.default_profile`,
     ///   built-in profiles only).
-    /// - output_mode: the connect profile's output mode.
+    /// - output_mode: the connect profile's output mode, made compatible with
+    ///   the encoding (see `compatible_output_mode`).
     /// - language: the given language (`locale.language`).
     /// - encoding: unchanged from the session's current value
     ///   (ShiftJIS for a new session).
@@ -62,7 +75,7 @@ pub mod resolve {
         language: &str,
     ) -> TerminalSettings {
         TerminalSettings {
-            output_mode: profile.output_mode,
+            output_mode: compatible_output_mode(profile.output_mode, current.encoding),
             profile,
             encoding: current.encoding,
             language: language.to_string(),
@@ -77,7 +90,8 @@ pub mod resolve {
     /// - `U`/`3`: Japanese, UTF-8
     /// - anything else: English, UTF-8
     ///
-    /// Profile and output mode are unchanged.
+    /// The profile is unchanged; the output mode is made compatible with the
+    /// new encoding.
     pub fn on_language_selected(current: &TerminalSettings, input: &str) -> TerminalSettings {
         let (language, encoding) = match input.trim().to_uppercase().as_str() {
             "E" | "1" => ("en", CharacterEncoding::Utf8),
@@ -87,6 +101,7 @@ pub mod resolve {
         };
         TerminalSettings {
             encoding,
+            output_mode: compatible_output_mode(current.output_mode, encoding),
             language: language.to_string(),
             ..current.clone()
         }
@@ -98,18 +113,19 @@ pub mod resolve {
     /// - profile: `TerminalProfile::from_name(terminal)`.
     ///   QUIRK(Q2): custom profiles from config are not consulted, and an
     ///   unknown name falls back to "standard".
-    /// - output_mode: unchanged.
-    ///   QUIRK(Q1): the profile's output mode is not applied.
+    /// - output_mode: the profile's output mode, made compatible with the
+    ///   encoding (a saved C64 profile with a non-PETSCII encoding gets ANSI).
     pub fn on_login(
-        current: &TerminalSettings,
+        _current: &TerminalSettings,
         language: &str,
         terminal: &str,
         encoding: CharacterEncoding,
     ) -> TerminalSettings {
+        let profile = TerminalProfile::from_name(terminal);
         TerminalSettings {
-            profile: TerminalProfile::from_name(terminal),
+            output_mode: compatible_output_mode(profile.output_mode, encoding),
+            profile,
             encoding,
-            output_mode: current.output_mode,
             language: language.to_string(),
         }
     }
@@ -119,20 +135,22 @@ pub mod resolve {
     /// - encoding / language: the new values.
     /// - profile: `TerminalProfile::from_name(terminal)` if a profile was
     ///   selected, otherwise unchanged. QUIRK(Q2) as in [`on_login`].
-    /// - output_mode: unchanged. QUIRK(Q1) as in [`on_login`].
+    /// - output_mode: the (new) profile's output mode, made compatible with
+    ///   the encoding.
     pub fn on_settings_changed(
         current: &TerminalSettings,
         language: &str,
         encoding: CharacterEncoding,
         terminal: Option<&str>,
     ) -> TerminalSettings {
+        let profile = match terminal {
+            Some(name) => TerminalProfile::from_name(name),
+            None => current.profile.clone(),
+        };
         TerminalSettings {
-            profile: match terminal {
-                Some(name) => TerminalProfile::from_name(name),
-                None => current.profile.clone(),
-            },
+            output_mode: compatible_output_mode(profile.output_mode, encoding),
+            profile,
             encoding,
-            output_mode: current.output_mode,
             language: language.to_string(),
         }
     }
@@ -167,9 +185,8 @@ mod tests {
             ("standard", OutputMode::Ansi),
             ("standard_utf8", OutputMode::Ansi),
             ("dos", OutputMode::Ansi),
-            ("c64", OutputMode::Plain),
-            ("c64_petscii", OutputMode::PetsciiCtrl),
-            ("c64_ansi", OutputMode::Ansi),
+            // The C64 profile's PetsciiCtrl is not used over ShiftJIS (Q8).
+            ("c64", OutputMode::Ansi),
             ("40col_sjis", OutputMode::Ansi),
             ("jterm40", OutputMode::Ansi),
             ("40col_utf8", OutputMode::Ansi),
@@ -208,7 +225,7 @@ mod tests {
             ("X", "en", CharacterEncoding::Utf8),
             ("", "en", CharacterEncoding::Utf8),
         ];
-        let before = connected("c64_petscii");
+        let before = connected("c64");
         for (input, lang, enc) in table {
             let s = on_language_selected(&before, input);
             assert_eq!(s.language, lang, "{input:?}");
@@ -227,6 +244,7 @@ mod tests {
             ("standard_utf8", CharacterEncoding::Utf8),
             ("dos", CharacterEncoding::Cp437),
             ("c64", CharacterEncoding::Petscii),
+            // Former c64 variants resolve to c64.
             ("c64_petscii", CharacterEncoding::Petscii),
             ("c64_ansi", CharacterEncoding::Petscii),
             ("40col_sjis", CharacterEncoding::ShiftJIS),
@@ -241,8 +259,16 @@ mod tests {
             assert_eq!(s.profile, TerminalProfile::from_name(terminal));
             assert_eq!(s.encoding, enc, "{terminal}");
             assert_eq!(s.language, "ja");
-            // Q1: output mode stays as it was at connect.
-            assert_eq!(s.output_mode, OutputMode::Ansi, "{terminal}");
+            // The profile's output mode is applied (was QUIRK Q1), made
+            // compatible with the encoding.
+            let expected = if enc == CharacterEncoding::Petscii {
+                OutputMode::PetsciiCtrl
+            } else if s.profile.output_mode == OutputMode::PetsciiCtrl {
+                OutputMode::Ansi
+            } else {
+                s.profile.output_mode
+            };
+            assert_eq!(s.output_mode, expected, "{terminal} {enc:?}");
         }
     }
 
@@ -256,7 +282,32 @@ mod tests {
             CharacterEncoding::ShiftJIS,
         );
         assert_eq!(s.profile, TerminalProfile::standard());
-        assert_eq!(s.output_mode, OutputMode::Plain);
+        assert_eq!(s.output_mode, OutputMode::Ansi);
+    }
+
+    /// The output mode always matches the encoding actually used: PETSCII
+    /// control codes only go out through PETSCII (codex review R1-F1).
+    #[test]
+    fn test_output_mode_follows_effective_encoding() {
+        let before = connected("standard");
+        // Saved C64 profile but a non-PETSCII encoding: ANSI, not PETSCII codes.
+        let s = on_login(&before, "ja", "c64", CharacterEncoding::ShiftJIS);
+        assert_eq!(s.output_mode, OutputMode::Ansi);
+        let s = on_settings_changed(&before, "ja", CharacterEncoding::Utf8, Some("c64"));
+        assert_eq!(s.output_mode, OutputMode::Ansi);
+        // Non-C64 profile with PETSCII encoding: PETSCII control codes.
+        let s = on_login(&before, "en", "standard", CharacterEncoding::Petscii);
+        assert_eq!(s.output_mode, OutputMode::PetsciiCtrl);
+        // Connecting with a C64 default profile: the wire is still ShiftJIS
+        // before login (Q8), so ANSI is used.
+        assert_eq!(connected("c64").output_mode, OutputMode::Ansi);
+        // Language selection changes the encoding; the mode follows.
+        let c = TerminalSettings {
+            encoding: CharacterEncoding::Petscii,
+            output_mode: OutputMode::PetsciiCtrl,
+            ..connected("c64")
+        };
+        assert_eq!(on_language_selected(&c, "U").output_mode, OutputMode::Ansi);
     }
 
     /// Settings screen (golden c_settings__*).
@@ -268,20 +319,17 @@ mod tests {
             "standard",
             CharacterEncoding::ShiftJIS,
         );
-        let s = on_settings_changed(
-            &before,
-            "en",
-            CharacterEncoding::Petscii,
-            Some("c64_petscii"),
-        );
-        assert_eq!(s.profile, TerminalProfile::c64_petscii());
+        let s = on_settings_changed(&before, "en", CharacterEncoding::Petscii, Some("c64"));
+        assert_eq!(s.profile, TerminalProfile::c64());
         assert_eq!(s.encoding, CharacterEncoding::Petscii);
         assert_eq!(s.language, "en");
-        // Q1
-        assert_eq!(s.output_mode, OutputMode::Ansi);
+        // The profile's output mode is applied (was QUIRK Q1).
+        assert_eq!(s.output_mode, OutputMode::PetsciiCtrl);
 
         let kept = on_settings_changed(&s, "ja", CharacterEncoding::Utf8, None);
         assert_eq!(kept.profile, s.profile);
+        // UTF-8 on the wire: ANSI, not PETSCII control codes.
+        assert_eq!(kept.output_mode, OutputMode::Ansi);
         assert_eq!(kept.encoding, CharacterEncoding::Utf8);
         assert_eq!(kept.language, "ja");
     }

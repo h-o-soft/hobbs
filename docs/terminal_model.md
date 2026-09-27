@@ -18,6 +18,7 @@ Issue #325（挙動を変えないリファクタリング）の結果を反映�
 - この4つは `src/terminal/settings.rs` の `TerminalSettings` にまとめてあり、`TelnetSession` が持つ。
 - `profile.encoding` と `profile.output_mode` は「そのプロファイルの既定値」である。実際に回線で使う値は `TerminalSettings.encoding` と `TerminalSettings.output_mode` で、両者は食い違うことがある（下記の Q1、Q8）。
 - `SessionHandler` は、入力の文字コード（`line_buffer`）と i18n を、`apply_settings` で settings から導く。
+- output_mode は、常に encoding と合う値にする（`resolve` の `compatible_output_mode`）。PETSCII の制御コードは PETSCII でしか送らず、ANSI は PETSCII では送らない。
 
 ## 2. いつ・何から決まるか
 
@@ -27,8 +28,8 @@ Issue #325（挙動を変えないリファクタリング）の結果を反映�
 |---|---|---|---|---|---|
 | 接続時 | `on_connect` | `terminal.default_profile`（組み込みのみ） | 変えない（新しいセッションは ShiftJIS）**Q8** | 接続時のプロファイルの値 | `locale.language` |
 | 言語選択（登録・ゲスト） | `on_language_selected` | 変えない | E/1: UTF-8、J/2: ShiftJIS、U/3: UTF-8、それ以外: UTF-8 | 変えない | E/1・それ以外: en、J/2・U/3: ja |
-| ログイン | `on_login` | `users.terminal` を `from_name` で引く **Q2** | `users.encoding` | 変えない **Q1** | `users.language` |
-| 設定画面で保存 | `on_settings_changed` | 選んだプロファイル（`from_name`。選ばなければ変えない）**Q2** | 選んだプロファイルの encoding（選ばなければ今の値） | 変えない **Q1** | 選んだ言語 |
+| ログイン | `on_login` | `users.terminal` を `from_name` で引く **Q2** | `users.encoding` | プロファイルの値 | `users.language` |
+| 設定画面で保存 | `on_settings_changed` | 選んだプロファイル（`from_name`。選ばなければ変えない）**Q2** | 選んだプロファイルの encoding（選ばなければ今の値） | プロファイルの値 | 選んだ言語 |
 
 - DB では `users.terminal` と `users.encoding` を別々に保存している。そのため「standard なのに UTF-8」のような食い違いが起こりうる。
 - 接続したユーザーが見る流れ:
@@ -45,9 +46,7 @@ Issue #325（挙動を変えないリファクタリング）の結果を反映�
 | standard | 80×24 | 2 | ShiftJIS | Ansi | |
 | standard_utf8 | 80×24 | 2 | UTF-8 | Ansi | |
 | dos | 80×25 | 1 | CP437 | Ansi | 日本語は `?` になる |
-| c64 | 40×25 | 1 | PETSCII | Plain | |
-| c64_petscii | 40×25 | 1 | PETSCII | PetsciiCtrl | 制御コードが `?` になる（Q4） |
-| c64_ansi | 40×25 | 1 | PETSCII | Ansi | ESC が `?` になる（Q4） |
+| c64 | 40×25 | 1 | PETSCII | PetsciiCtrl | ANSI の色やカーソル移動を PETSCII の制御コードに変換する。旧 `c64_petscii` / `c64_ansi` / `petscii` はこれの別名 |
 | 40col_sjis | 40×25 | 2 | ShiftJIS | Ansi | |
 | jterm40 | 40×25 | **1** | ShiftJIS | Ansi | C64 用の自作端末向けの特殊モード。ASCII も漢字も同じ幅の1マスに表示する端末を想定している |
 | 40col_utf8 | 40×25 | 2 | UTF-8 | Ansi | |
@@ -75,12 +74,12 @@ Issue #325（挙動を変えないリファクタリング）の結果を反映�
 
 | ID | 内容 |
 |---|---|
-| Q1 | output_mode は接続時に1回決まるだけで、ログイン後も設定変更後も変わらない |
+| ~~Q1~~ | （解決済み）ログイン時と設定の保存時は、プロファイルの output_mode を適用する。ただし output_mode は、回線上の文字コードに合わせて調整する（PETSCII なら PetsciiCtrl、それ以外で PetsciiCtrl なら Ansi） |
 | Q2 | ログイン時と設定の保存時は、カスタムプロファイルを見ない。未知の名前は standard になる |
 | Q3 | ウェルカム、メインメニュー、ヘルプは、プロファイルに関係なく cjk_width=2 として描画される |
-| Q4 | PETSCII のエンコーダは、`\r` と `\n` 以外の制御文字（ESC、PETSCII の制御コード）を `?` にする。`\n` も 0x0D になるので、改行が CR CR になる |
-| Q5 | PetsciiCtrl は、`1;33` のような複合の SGR 指定を解釈できない |
-| Q6 | 入力の ESC と 0x14（C64 の DEL）は捨てられる |
+| ~~Q4~~ | （解決済み）PETSCII のエンコーダは PETSCII の制御コードをそのまま送り、CRLF を CR 1つにする。PETSCII に無い記号（`| _ \ ^ ~ { }` など）は近い字形に置き換える |
+| ~~Q5~~ | （解決済み）PetsciiCtrl は複合の SGR（`1;33` など）、明るい色、背景色（色＋反転で表示）、カーソル移動の回数と位置指定を扱う |
+| Q6 | 入力の ESC は捨てられる（Issue #133）。0x14（C64 の DEL）は、PETSCII のときに BS として扱い、消去のエコーも 0x14 で返すようにした（解決済み） |
 | Q7 | ScreenContext の入力は IAC を取り除かない（IAC WILL SGA の 0x03 が Ctrl+C として扱われる） |
 | Q8 | 接続時は、プロファイルの encoding を使わず ShiftJIS のまま |
 | Q9 | BS の消去幅はバイト数で決まる（jterm40 で漢字を消すと2桁、UTF-8 の半角カナでも2桁消える） |
@@ -98,7 +97,7 @@ Issue #325（挙動を変えないリファクタリング）の結果を反映�
 plan.md の決定事項 D1〜D3。一般的なパソコン通信ホストの動きに合わせる。
 
 - **D1 プリセットの整理**:
-  - C64 系の3つは、`c64`（PETSCII の制御コード方式）1つにまとめて直す。
+  - ~~C64 系の3つは、`c64`（PETSCII の制御コード方式）1つにまとめて直す。~~（実施済み）
   - `jterm40` は組み込みから外し、`config.toml.sample` のカスタムプロファイルの記入例として残す。
   - 旧名は別名として読み替える。
 - **D2 接続時の選択を優先する**: 文字コードは、毎回の接続で選んだものを使う。言語・幅・ページングは、保存してある設定を使う。ただし CP437 と PETSCII では英語にする。

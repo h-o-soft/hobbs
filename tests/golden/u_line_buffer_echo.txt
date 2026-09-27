@@ -566,24 +566,24 @@
   res:  Buffering Buffering Line("♠♠")
 [petscii][normal] wide + BS
   in:   \xC1a\x08\r
-  echo: \xC1a\x08 \x08\r\n
+  echo: \xC1a\x14\r\n
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][normal] wide + DEL
   in:   \xC1a\x7F\r
-  echo: \xC1a\x08 \x08\r\n
+  echo: \xC1a\x14\r\n
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][normal] wide + BS BS BS
   in:   \xC1a\x08\x08\x08\r
-  echo: \xC1a\x08 \x08\x08 \x08\r\n
+  echo: \xC1a\x14\x14\r\n
   res:  Buffering Buffering Buffering Buffering Buffering Line("")
 [petscii][normal] half + BS
   in:   ab\x08\r
-  echo: ab\x08 \x08\r\n
+  echo: ab\x14\r\n
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][normal] petscii DEL 0x14
   in:   a\x14\r
-  echo: a\r\n
-  res:  Buffering Buffering Line("♠")
+  echo: a\x14\r\n
+  res:  Buffering Buffering Line("")
 [petscii][normal] ESC [ A
   in:   a\e[A\r
   echo: a[A\r\n
@@ -628,24 +628,24 @@
   res:  Buffering Buffering Line("♠♠")
 [petscii][password] wide + BS
   in:   \xC1a\x08\r
-  echo: \x08 \x08\r\n
+  echo: \x14\r\n
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][password] wide + DEL
   in:   \xC1a\x7F\r
-  echo: \x08 \x08\r\n
+  echo: \x14\r\n
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][password] wide + BS BS BS
   in:   \xC1a\x08\x08\x08\r
-  echo: \x08 \x08\x08 \x08\r\n
+  echo: \x14\x14\r\n
   res:  Buffering Buffering Buffering Buffering Buffering Line("")
 [petscii][password] half + BS
   in:   ab\x08\r
-  echo: \x08 \x08\r\n
+  echo: \x14\r\n
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][password] petscii DEL 0x14
   in:   a\x14\r
-  echo: \r\n
-  res:  Buffering Buffering Line("♠")
+  echo: \x14\r\n
+  res:  Buffering Buffering Line("")
 [petscii][password] ESC [ A
   in:   a\e[A\r
   echo: \r\n
@@ -690,24 +690,24 @@
   res:  Buffering Buffering Line("♠♠")
 [petscii][masked(*)] wide + BS
   in:   \xC1a\x08\r
-  echo: **\x08 \x08\r\n
+  echo: **\x14\r\n
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][masked(*)] wide + DEL
   in:   \xC1a\x7F\r
-  echo: **\x08 \x08\r\n
+  echo: **\x14\r\n
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][masked(*)] wide + BS BS BS
   in:   \xC1a\x08\x08\x08\r
-  echo: **\x08 \x08\x08 \x08\r\n
+  echo: **\x14\x14\r\n
   res:  Buffering Buffering Buffering Buffering Buffering Line("")
 [petscii][masked(*)] half + BS
   in:   ab\x08\r
-  echo: **\x08 \x08\r\n
+  echo: **\x14\r\n
   res:  Buffering Buffering Buffering Line("♠")
 [petscii][masked(*)] petscii DEL 0x14
   in:   a\x14\r
-  echo: *\r\n
-  res:  Buffering Buffering Line("♠")
+  echo: *\x14\r\n
+  res:  Buffering Buffering Line("")
 [petscii][masked(*)] ESC [ A
   in:   a\e[A\r
   echo: ***\r\n

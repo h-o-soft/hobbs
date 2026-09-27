@@ -106,9 +106,7 @@ S\r\n
   [4] JTERM40 (40x25, ShiftJIS, CJK\x95\x9D1)\r\n
   [5] 40\x83J\x83\x89\x83\x80 (40x25, UTF-8)\r\n
   [6] DOS/IBM PC (80x25, CP437)\r\n
-  [7] C64 Plain (40x25, PETSCII)\r\n
-  [8] C64 (40x25, PETSCII\x90\xA7\x8C\xE4)\r\n
-  [9] C64 ANSI (40x25, PETSCII)\r\n
+  [7] C64 (40x25, PETSCII)\r\n
 \x94\xD4\x8D\x86 [1]: 
 
 === terminal profile

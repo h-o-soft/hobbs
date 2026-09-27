@@ -28,7 +28,8 @@ use hobbs::db::{NewUser, Role, UserRepository};
 use hobbs::server::CharacterEncoding;
 use hobbs::Config;
 
-/// Built-in profile names (as listed in `TerminalProfile::available_profiles`).
+/// Built-in profile names, plus the former c64 variants (now aliases of c64)
+/// so that users who saved those names stay covered.
 const PROFILES: [&str; 9] = [
     "standard",
     "standard_utf8",
@@ -397,7 +398,7 @@ async fn scenario_settings(index: usize, profile: &str) {
 
 /// Order in which the settings screen lists the built-in profiles
 /// (`TerminalProfile::available_profiles`).
-const SETTINGS_ORDER: [&str; 9] = [
+const SETTINGS_ORDER: [&str; 7] = [
     "standard",
     "standard_utf8",
     "40col_sjis",
@@ -405,8 +406,6 @@ const SETTINGS_ORDER: [&str; 9] = [
     "40col_utf8",
     "dos",
     "c64",
-    "c64_petscii",
-    "c64_ansi",
 ];
 
 #[tokio::test]
@@ -493,7 +492,16 @@ fn echo_inputs(encoding: &str) -> Vec<(&'static str, Vec<u8>)> {
         ("multibyte + BS", bs),
         ("multibyte + DEL", del),
         ("halfwidth + BS", halfwidth),
-        ("petscii DEL 0x14", vec![b'a', 0x14, b'\r']),
+        // On PETSCII, 0x14 (DEL key) erases a character, so type two
+        // characters to keep the line non-empty (an empty line means "back").
+        (
+            "petscii DEL 0x14",
+            if encoding == "petscii" {
+                vec![b'a', b'b', 0x14, b'\r']
+            } else {
+                vec![b'a', 0x14, b'\r']
+            },
+        ),
         ("ESC [ A (arrow up)", vec![0x1B, b'[', b'A', b'\r']),
     ]
 }

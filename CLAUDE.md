@@ -137,9 +137,7 @@ pub enum Role {
 | standard | 80 | 24 | 2 | ShiftJIS | Ansi |
 | standard_utf8 | 80 | 24 | 2 | UTF-8 | Ansi |
 | dos | 80 | 25 | 1 | CP437 | Ansi |
-| c64 | 40 | 25 | 1 | PETSCII | Plain |
-| c64_petscii | 40 | 25 | 1 | PETSCII | PetsciiCtrl |
-| c64_ansi | 40 | 25 | 1 | PETSCII | Ansi |
+| c64 | 40 | 25 | 1 | PETSCII | PetsciiCtrl |
 | 40col_sjis | 40 | 25 | 2 | ShiftJIS | Ansi |
 | jterm40 | 40 | 25 | 1 | ShiftJIS | Ansi |
 | 40col_utf8 | 40 | 25 | 2 | UTF-8 | Ansi |

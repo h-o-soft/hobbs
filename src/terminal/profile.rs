@@ -105,9 +105,12 @@ impl TerminalProfile {
         }
     }
 
-    /// Create a Commodore 64 terminal profile (40x25, CJK single-width, no ANSI, PETSCII).
+    /// Create a Commodore 64 terminal profile (40x25, PETSCII).
     ///
-    /// This profile is for Commodore 64 terminals in plain mode (no escape sequences).
+    /// Text is sent in PETSCII, and ANSI colors / cursor movement are converted
+    /// to PETSCII control codes (the usual way C64 terminal software such as
+    /// CCGMS is served). The former `c64` (plain), `c64_petscii` and
+    /// `c64_ansi` profiles are merged into this one; their names are aliases.
     pub fn c64() -> Self {
         Self {
             name: "c64".to_string(),
@@ -116,41 +119,7 @@ impl TerminalProfile {
             cjk_width: 1,
             ansi_enabled: false,
             encoding: CharacterEncoding::Petscii,
-            output_mode: OutputMode::Plain,
-            template_dir: "40".to_string(),
-        }
-    }
-
-    /// Create a Commodore 64 terminal profile with PETSCII control codes.
-    ///
-    /// This profile is for Commodore 64 terminals that use PETSCII control codes
-    /// for colors and cursor movement (not ANSI escape sequences).
-    pub fn c64_petscii() -> Self {
-        Self {
-            name: "c64_petscii".to_string(),
-            width: 40,
-            height: 25,
-            cjk_width: 1,
-            ansi_enabled: false,
-            encoding: CharacterEncoding::Petscii,
             output_mode: OutputMode::PetsciiCtrl,
-            template_dir: "40".to_string(),
-        }
-    }
-
-    /// Create a Commodore 64 ANSI terminal profile (40x25, CJK single-width, ANSI enabled).
-    ///
-    /// This profile is for Commodore 64 terminals with ANSI support added
-    /// (e.g., through software terminal emulation like CCGMS).
-    pub fn c64_ansi() -> Self {
-        Self {
-            name: "c64_ansi".to_string(),
-            width: 40,
-            height: 25,
-            cjk_width: 1,
-            ansi_enabled: true,
-            encoding: CharacterEncoding::Petscii,
-            output_mode: OutputMode::Ansi,
             template_dir: "40".to_string(),
         }
     }
@@ -346,9 +315,8 @@ impl TerminalProfile {
         match name.to_lowercase().as_str() {
             "standard_utf8" | "utf8" => Self::standard_utf8(),
             "dos" | "ibmpc" | "cp437" => Self::dos(),
-            "c64" => Self::c64(),
-            "c64_petscii" | "petscii" => Self::c64_petscii(),
-            "c64_ansi" => Self::c64_ansi(),
+            // Former c64 variants are aliases of the merged c64 profile.
+            "c64" | "c64_petscii" | "c64_ansi" | "petscii" => Self::c64(),
             "40col_sjis" | "40sjis" => Self::col40_sjis(),
             "jterm40" => Self::jterm40(),
             "40col_utf8" | "40utf8" => Self::col40_utf8(),
@@ -450,8 +418,6 @@ impl TerminalProfile {
             "40col_utf8",
             "dos",
             "c64",
-            "c64_petscii",
-            "c64_ansi",
         ]
     }
 }
@@ -508,33 +474,7 @@ mod tests {
         assert_eq!(profile.cjk_width, 1);
         assert!(!profile.ansi_enabled);
         assert_eq!(profile.encoding, CharacterEncoding::Petscii);
-        assert_eq!(profile.output_mode, OutputMode::Plain);
-        assert_eq!(profile.template_dir, "40");
-    }
-
-    #[test]
-    fn test_c64_petscii_profile() {
-        let profile = TerminalProfile::c64_petscii();
-        assert_eq!(profile.name, "c64_petscii");
-        assert_eq!(profile.width, 40);
-        assert_eq!(profile.height, 25);
-        assert_eq!(profile.cjk_width, 1);
-        assert!(!profile.ansi_enabled);
-        assert_eq!(profile.encoding, CharacterEncoding::Petscii);
         assert_eq!(profile.output_mode, OutputMode::PetsciiCtrl);
-        assert_eq!(profile.template_dir, "40");
-    }
-
-    #[test]
-    fn test_c64_ansi_profile() {
-        let profile = TerminalProfile::c64_ansi();
-        assert_eq!(profile.name, "c64_ansi");
-        assert_eq!(profile.width, 40);
-        assert_eq!(profile.height, 25);
-        assert_eq!(profile.cjk_width, 1);
-        assert!(profile.ansi_enabled);
-        assert_eq!(profile.encoding, CharacterEncoding::Petscii);
-        assert_eq!(profile.output_mode, OutputMode::Ansi);
         assert_eq!(profile.template_dir, "40");
     }
 
@@ -719,20 +659,14 @@ mod tests {
     }
 
     #[test]
-    fn test_from_name_c64_petscii() {
-        let profile = TerminalProfile::from_name("c64_petscii");
-        assert_eq!(profile, TerminalProfile::c64_petscii());
-        // Also test alias
-        assert_eq!(
-            TerminalProfile::from_name("petscii"),
-            TerminalProfile::c64_petscii()
-        );
-    }
-
-    #[test]
-    fn test_from_name_c64_ansi() {
-        let profile = TerminalProfile::from_name("c64_ansi");
-        assert_eq!(profile, TerminalProfile::c64_ansi());
+    fn test_from_name_former_c64_variants_are_aliases() {
+        for name in ["c64_petscii", "c64_ansi", "petscii"] {
+            assert_eq!(
+                TerminalProfile::from_name(name),
+                TerminalProfile::c64(),
+                "{name}"
+            );
+        }
     }
 
     #[test]
@@ -740,7 +674,7 @@ mod tests {
         assert_eq!(TerminalProfile::from_name("C64"), TerminalProfile::c64());
         assert_eq!(
             TerminalProfile::from_name("C64_ANSI"),
-            TerminalProfile::c64_ansi()
+            TerminalProfile::c64()
         );
         assert_eq!(
             TerminalProfile::from_name("STANDARD"),
@@ -758,7 +692,7 @@ mod tests {
     #[test]
     fn test_available_profiles() {
         let profiles = TerminalProfile::available_profiles();
-        assert_eq!(profiles.len(), 9);
+        assert_eq!(profiles.len(), 7);
         assert!(profiles.contains(&"standard"));
         assert!(profiles.contains(&"standard_utf8"));
         assert!(profiles.contains(&"40col_sjis"));
@@ -766,8 +700,9 @@ mod tests {
         assert!(profiles.contains(&"40col_utf8"));
         assert!(profiles.contains(&"dos"));
         assert!(profiles.contains(&"c64"));
-        assert!(profiles.contains(&"c64_petscii"));
-        assert!(profiles.contains(&"c64_ansi"));
+        // Former c64 variants are aliases, not separate entries.
+        assert!(!profiles.contains(&"c64_petscii"));
+        assert!(!profiles.contains(&"c64_ansi"));
     }
 
     #[test]
@@ -959,7 +894,7 @@ mod tests {
     #[test]
     fn test_available_profiles_includes_40col() {
         let profiles = TerminalProfile::available_profiles();
-        assert_eq!(profiles.len(), 9);
+        assert_eq!(profiles.len(), 7);
         assert!(profiles.contains(&"40col_sjis"));
         assert!(profiles.contains(&"jterm40"));
         assert!(profiles.contains(&"40col_utf8"));

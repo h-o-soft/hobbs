@@ -566,24 +566,24 @@
   ret:  Ok(Some("♠♠"))
 [petscii][normal] wide + BS
   in:   \xC1a\x08\r
-  echo: \xC1a\x08 \x08\r\n
+  echo: \xC1a\x14\r\n
   ret:  Ok(Some("♠"))
 [petscii][normal] wide + DEL
   in:   \xC1a\x7F\r
-  echo: \xC1a\x08 \x08\r\n
+  echo: \xC1a\x14\r\n
   ret:  Ok(Some("♠"))
 [petscii][normal] wide + BS BS BS
   in:   \xC1a\x08\x08\x08\r
-  echo: \xC1a\x08 \x08\x08 \x08\r\n
+  echo: \xC1a\x14\x14\r\n
   ret:  Ok(Some(""))
 [petscii][normal] half + BS
   in:   ab\x08\r
-  echo: ab\x08 \x08\r\n
+  echo: ab\x14\r\n
   ret:  Ok(Some("♠"))
 [petscii][normal] petscii DEL 0x14
   in:   a\x14\r
-  echo: a\r\n
-  ret:  Ok(Some("♠"))
+  echo: a\x14\r\n
+  ret:  Ok(Some(""))
 [petscii][normal] ESC [ A
   in:   a\e[A\r
   echo: a[A\r\n
@@ -628,24 +628,24 @@
   ret:  Ok(Some("♠♠"))
 [petscii][password] wide + BS
   in:   \xC1a\x08\r
-  echo: \x08 \x08
+  echo: \x14
   ret:  Ok(Some("♠"))
 [petscii][password] wide + DEL
   in:   \xC1a\x7F\r
-  echo: \x08 \x08
+  echo: \x14
   ret:  Ok(Some("♠"))
 [petscii][password] wide + BS BS BS
   in:   \xC1a\x08\x08\x08\r
-  echo: \x08 \x08\x08 \x08
+  echo: \x14\x14
   ret:  Ok(Some(""))
 [petscii][password] half + BS
   in:   ab\x08\r
-  echo: \x08 \x08
+  echo: \x14
   ret:  Ok(Some("♠"))
 [petscii][password] petscii DEL 0x14
   in:   a\x14\r
-  echo: 
-  ret:  Ok(Some("♠"))
+  echo: \x14
+  ret:  Ok(Some(""))
 [petscii][password] ESC [ A
   in:   a\e[A\r
   echo: 
@@ -690,24 +690,24 @@
   ret:  Ok(Some("♠♠"))
 [petscii][masked(*)] wide + BS
   in:   \xC1a\x08\r
-  echo: **\x08 \x08
+  echo: **\x14
   ret:  Ok(Some("♠"))
 [petscii][masked(*)] wide + DEL
   in:   \xC1a\x7F\r
-  echo: **\x08 \x08
+  echo: **\x14
   ret:  Ok(Some("♠"))
 [petscii][masked(*)] wide + BS BS BS
   in:   \xC1a\x08\x08\x08\r
-  echo: **\x08 \x08\x08 \x08
+  echo: **\x14\x14
   ret:  Ok(Some(""))
 [petscii][masked(*)] half + BS
   in:   ab\x08\r
-  echo: **\x08 \x08
+  echo: **\x14
   ret:  Ok(Some("♠"))
 [petscii][masked(*)] petscii DEL 0x14
   in:   a\x14\r
-  echo: *
-  ret:  Ok(Some("♠"))
+  echo: *\x14
+  ret:  Ok(Some(""))
 [petscii][masked(*)] ESC [ A
   in:   a\e[A\r
   echo: ***

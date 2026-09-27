@@ -413,10 +413,17 @@ impl ProfileScreen {
                 .await?;
         }
 
-        // Find current profile index
+        // Find current profile index (a former name such as "c64_ansi"
+        // resolves to the profile it is now an alias of)
+        let canonical_terminal = TerminalProfile::from_name(&current_terminal).name;
         let current_profile_num = profile_list
             .iter()
             .position(|(name, _)| name == &current_terminal)
+            .or_else(|| {
+                profile_list
+                    .iter()
+                    .position(|(name, _)| name == &canonical_terminal)
+            })
             .map(|i| (i + 1).to_string())
             .unwrap_or_else(|| "1".to_string());
 
@@ -545,9 +552,10 @@ impl ProfileScreen {
         match profile {
             "standard_utf8" => ctx.i18n.t("terminal.profile_standard_utf8").to_string(),
             "dos" => ctx.i18n.t("terminal.profile_dos").to_string(),
-            "c64" => ctx.i18n.t("terminal.profile_c64").to_string(),
-            "c64_petscii" => ctx.i18n.t("terminal.profile_c64_petscii").to_string(),
-            "c64_ansi" => ctx.i18n.t("terminal.profile_c64_ansi").to_string(),
+            // Former c64 variants (c64_petscii, c64_ansi, petscii) are aliases.
+            "c64" | "c64_petscii" | "c64_ansi" | "petscii" => {
+                ctx.i18n.t("terminal.profile_c64").to_string()
+            }
             "40col_sjis" => ctx.i18n.t("terminal.profile_40col_sjis").to_string(),
             "jterm40" => ctx.i18n.t("terminal.profile_jterm40").to_string(),
             "40col_utf8" => ctx.i18n.t("terminal.profile_40col_utf8").to_string(),

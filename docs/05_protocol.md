@@ -301,14 +301,12 @@ HOBBSは複数の端末タイプをサポートする。各プロファイルは
 | `standard` | 80 | 24 | 2 | ShiftJIS | Ansi | TeraTerm, PuTTY等（日本語） |
 | `standard_utf8` | 80 | 24 | 2 | UTF-8 | Ansi | TeraTerm, PuTTY等（UTF-8） |
 | `dos` | 80 | 25 | 1 | CP437 | Ansi | DOS端末、IBM PC互換機 |
-| `c64` | 40 | 25 | 1 | Petscii | Plain | C64（ANSI非対応） |
-| `c64_petscii` | 40 | 25 | 1 | Petscii | PetsciiCtrl | C64（PETSCII制御コード使用） |
-| `c64_ansi` | 40 | 25 | 1 | Petscii | Ansi | C64（ANSI対応エミュレータ） |
+| `c64` | 40 | 25 | 1 | Petscii | PetsciiCtrl | C64（CCGMS などの端末ソフト）。旧 `c64_petscii` / `c64_ansi` はこれの別名 |
 | `40col_sjis` | 40 | 25 | 2 | ShiftJIS | Ansi | 40桁の日本語端末 |
 | `jterm40` | 40 | 25 | 1 | ShiftJIS | Ansi | C64 用の自作端末（ASCII も漢字も同じ幅の1マスに表示する） |
 | `40col_utf8` | 40 | 25 | 2 | UTF-8 | Ansi | 40桁の UTF-8 端末 |
 
-C64 系の3つは、現状まともに動かない（PETSCII のエンコーダが ESC や制御コードを `?` にする）。詳細は `docs/terminal_model.md` の Q4 を参照。
+`c64` は、ANSI の色やカーソル移動を PETSCII の制御コードに変換して送る。ただしログイン前は文字コードが ShiftJIS のままなので（`docs/terminal_model.md` の Q8）、C64 で正しく表示されるのはログインした後。
 
 ### 4.2 端末プロファイル構造
 
@@ -362,38 +360,15 @@ impl TerminalProfile {
         }
     }
 
-    /// Commodore 64（40x25、PETSCII、ANSIなし）
+    /// Commodore 64（40x25、PETSCII、ANSI を PETSCII 制御コードに変換）
+    /// 旧 c64_petscii / c64_ansi は from_name でこれの別名として扱う
     pub fn c64() -> Self {
         Self {
             name: "c64".to_string(),
             width: 40, height: 25,
             cjk_width: 1, ansi_enabled: false,
             encoding: CharacterEncoding::Petscii,
-            output_mode: OutputMode::Plain,
-            template_dir: "40".to_string(),
-        }
-    }
-
-    /// Commodore 64 PETSCII制御コード使用
-    pub fn c64_petscii() -> Self {
-        Self {
-            name: "c64_petscii".to_string(),
-            width: 40, height: 25,
-            cjk_width: 1, ansi_enabled: false,
-            encoding: CharacterEncoding::Petscii,
             output_mode: OutputMode::PetsciiCtrl,
-            template_dir: "40".to_string(),
-        }
-    }
-
-    /// Commodore 64 ANSI対応エミュレータ用
-    pub fn c64_ansi() -> Self {
-        Self {
-            name: "c64_ansi".to_string(),
-            width: 40, height: 25,
-            cjk_width: 1, ansi_enabled: true,
-            encoding: CharacterEncoding::Petscii,
-            output_mode: OutputMode::Ansi,
             template_dir: "40".to_string(),
         }
     }
