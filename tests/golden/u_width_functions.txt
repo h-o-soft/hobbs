@@ -1,0 +1,80 @@
+cjk=1 "" width=0 pad8="        " trunc=[0:"" 1:"" 2:"" 3:"" 5:"" 8:""]
+cjk=1 "Hello" width=5 pad8="Hello   " trunc=[0:"" 1:"H" 2:"He" 3:"Hel" 5:"Hello" 8:"Hello"]
+cjk=1 "こんにちは" width=5 pad8="こんにちは   " trunc=[0:"" 1:"こ" 2:"こん" 3:"こんに" 5:"こんにちは" 8:"こんにちは"]
+cjk=1 "ｶﾀｶﾅ" width=4 pad8="ｶﾀｶﾅ    " trunc=[0:"" 1:"ｶ" 2:"ｶﾀ" 3:"ｶﾀｶ" 5:"ｶﾀｶﾅ" 8:"ｶﾀｶﾅ"]
+cjk=1 "café" width=4 pad8="café    " trunc=[0:"" 1:"c" 2:"ca" 3:"caf" 5:"café" 8:"café"]
+cjk=1 "─┼─" width=3 pad8="─┼─     " trunc=[0:"" 1:"─" 2:"─┼" 3:"─┼─" 5:"─┼─" 8:"─┼─"]
+cjk=1 "😀👍" width=2 pad8="😀👍      " trunc=[0:"" 1:"😀" 2:"😀👍" 3:"😀👍" 5:"😀👍" 8:"😀👍"]
+cjk=1 "e\u{301}" width=2 pad8="e\u{301}      " trunc=[0:"" 1:"e" 2:"e\u{301}" 3:"e\u{301}" 5:"e\u{301}" 8:"e\u{301}"]
+cjk=1 "ABCあいうDEF" width=9 pad8="ABCあいうDE" trunc=[0:"" 1:"A" 2:"AB" 3:"ABC" 5:"ABCあい" 8:"ABCあいうDE"]
+cjk=1 "  spaces  " width=10 pad8="  spaces" trunc=[0:"" 1:" " 2:"  " 3:"  s" 5:"  spa" 8:"  spaces"]
+cjk=1 "\u{1b}[31m赤\u{1b}[0m" width=10 pad8="\u{1b}[31m赤\u{1b}[" trunc=[0:"" 1:"\u{1b}" 2:"\u{1b}[" 3:"\u{1b}[3" 5:"\u{1b}[31m" 8:"\u{1b}[31m赤\u{1b}["]
+cjk=1 "タブ\tあり" width=5 pad8="タブ\tあり   " trunc=[0:"" 1:"タ" 2:"タブ" 3:"タブ\t" 5:"タブ\tあり" 8:"タブ\tあり"]
+cjk=2 "" width=0 pad8="        " trunc=[0:"" 1:"" 2:"" 3:"" 5:"" 8:""]
+cjk=2 "Hello" width=5 pad8="Hello   " trunc=[0:"" 1:"H" 2:"He" 3:"Hel" 5:"Hello" 8:"Hello"]
+cjk=2 "こんにちは" width=10 pad8="こんにち" trunc=[0:"" 1:"" 2:"こ" 3:"こ" 5:"こん" 8:"こんにち"]
+cjk=2 "ｶﾀｶﾅ" width=8 pad8="ｶﾀｶﾅ" trunc=[0:"" 1:"" 2:"ｶ" 3:"ｶ" 5:"ｶﾀ" 8:"ｶﾀｶﾅ"]
+cjk=2 "café" width=5 pad8="café   " trunc=[0:"" 1:"c" 2:"ca" 3:"caf" 5:"café" 8:"café"]
+cjk=2 "─┼─" width=6 pad8="─┼─  " trunc=[0:"" 1:"" 2:"─" 3:"─" 5:"─┼" 8:"─┼─"]
+cjk=2 "😀👍" width=4 pad8="😀👍    " trunc=[0:"" 1:"" 2:"😀" 3:"😀" 5:"😀👍" 8:"😀👍"]
+cjk=2 "e\u{301}" width=3 pad8="e\u{301}     " trunc=[0:"" 1:"e" 2:"e" 3:"e\u{301}" 5:"e\u{301}" 8:"e\u{301}"]
+cjk=2 "ABCあいうDEF" width=12 pad8="ABCあい" trunc=[0:"" 1:"A" 2:"AB" 3:"ABC" 5:"ABCあ" 8:"ABCあい"]
+cjk=2 "  spaces  " width=10 pad8="  spaces" trunc=[0:"" 1:" " 2:"  " 3:"  s" 5:"  spa" 8:"  spaces"]
+cjk=2 "\u{1b}[31m赤\u{1b}[0m" width=11 pad8="\u{1b}[31m赤\u{1b}" trunc=[0:"" 1:"\u{1b}" 2:"\u{1b}[" 3:"\u{1b}[3" 5:"\u{1b}[31m" 8:"\u{1b}[31m赤\u{1b}"]
+cjk=2 "タブ\tあり" width=9 pad8="タブ\tあ" trunc=[0:"" 1:"" 2:"タ" 3:"タ" 5:"タブ\t" 8:"タブ\tあ"]
+wrap[standard w=80 cjk=2] "short line"
+  => "short line"
+wrap[standard w=80 cjk=2] "The quick brown fox jumps over the lazy dog and keeps running far away"
+  => "The quick brown fox jumps over the lazy dog and keeps running far away"
+wrap[standard w=80 cjk=2] "日本語の長い文章を折り返すテストです。全角文字は一文字ずつ折り返せる。まだ続きますよ。"
+  => "日本語の長い文章を折り返すテストです。全角文字は一文字ずつ折り返せる。まだ続きま\r\nすよ。"
+wrap[standard w=80 cjk=2] "混在 mixed テキスト with ASCII words と 日本語 が 交互に 並ぶ 文章 です よ"
+  => "混在 mixed テキスト with ASCII words と 日本語 が 交互に 並ぶ 文章 です よ"
+wrap[standard w=80 cjk=2] "Averyveryveryverylongwordwithoutanyspacesthatexceedsthewidthofthescreenforsure"
+  => "Averyveryveryverylongwordwithoutanyspacesthatexceedsthewidthofthescreenforsure"
+wrap[standard w=80 cjk=2] "ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ"
+  => "ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶﾅﾊﾝｶ\r\nｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ"
+wrap[standard w=80 cjk=2] "line1\nline2 は 改行を含む\n\nline4"
+  => "line1\r\nline2 は 改行を含む\r\n\r\nline4"
+wrap[40col_sjis w=40 cjk=2] "short line"
+  => "short line"
+wrap[40col_sjis w=40 cjk=2] "The quick brown fox jumps over the lazy dog and keeps running far away"
+  => "The quick brown fox jumps over the lazy\r\ndog and keeps running far away"
+wrap[40col_sjis w=40 cjk=2] "日本語の長い文章を折り返すテストです。全角文字は一文字ずつ折り返せる。まだ続きますよ。"
+  => "日本語の長い文章を折り返すテストです。全\r\n角文字は一文字ずつ折り返せる。まだ続きま\r\nすよ。"
+wrap[40col_sjis w=40 cjk=2] "混在 mixed テキスト with ASCII words と 日本語 が 交互に 並ぶ 文章 です よ"
+  => "混在 mixed テキスト with ASCII words と\r\n日本語 が 交互に 並ぶ 文章 です よ"
+wrap[40col_sjis w=40 cjk=2] "Averyveryveryverylongwordwithoutanyspacesthatexceedsthewidthofthescreenforsure"
+  => "Averyveryveryverylongwordwithoutanyspace\r\nsthatexceedsthewidthofthescreenforsure"
+wrap[40col_sjis w=40 cjk=2] "ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ"
+  => "ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶ\r\nﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶﾅﾊﾝ\r\nｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ"
+wrap[40col_sjis w=40 cjk=2] "line1\nline2 は 改行を含む\n\nline4"
+  => "line1\r\nline2 は 改行を含む\r\n\r\nline4"
+wrap[jterm40 w=40 cjk=1] "short line"
+  => "short line"
+wrap[jterm40 w=40 cjk=1] "The quick brown fox jumps over the lazy dog and keeps running far away"
+  => "The quick brown fox jumps over the lazy\r\ndog and keeps running far away"
+wrap[jterm40 w=40 cjk=1] "日本語の長い文章を折り返すテストです。全角文字は一文字ずつ折り返せる。まだ続きますよ。"
+  => "日本語の長い文章を折り返すテストです。全角文字は一文字ずつ折り返せる。まだ続きま\r\nすよ。"
+wrap[jterm40 w=40 cjk=1] "混在 mixed テキスト with ASCII words と 日本語 が 交互に 並ぶ 文章 です よ"
+  => "混在 mixed テキスト with ASCII words と 日本語 が 交\r\n互に 並ぶ 文章 です よ"
+wrap[jterm40 w=40 cjk=1] "Averyveryveryverylongwordwithoutanyspacesthatexceedsthewidthofthescreenforsure"
+  => "Averyveryveryverylongwordwithoutanyspace\r\nsthatexceedsthewidthofthescreenforsure"
+wrap[jterm40 w=40 cjk=1] "ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ"
+  => "ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶﾅﾊﾝ\r\nｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ"
+wrap[jterm40 w=40 cjk=1] "line1\nline2 は 改行を含む\n\nline4"
+  => "line1\r\nline2 は 改行を含む\r\n\r\nline4"
+wrap[c64 w=40 cjk=1] "short line"
+  => "short line"
+wrap[c64 w=40 cjk=1] "The quick brown fox jumps over the lazy dog and keeps running far away"
+  => "The quick brown fox jumps over the lazy\r\ndog and keeps running far away"
+wrap[c64 w=40 cjk=1] "日本語の長い文章を折り返すテストです。全角文字は一文字ずつ折り返せる。まだ続きますよ。"
+  => "日本語の長い文章を折り返すテストです。全角文字は一文字ずつ折り返せる。まだ続きま\r\nすよ。"
+wrap[c64 w=40 cjk=1] "混在 mixed テキスト with ASCII words と 日本語 が 交互に 並ぶ 文章 です よ"
+  => "混在 mixed テキスト with ASCII words と 日本語 が 交\r\n互に 並ぶ 文章 です よ"
+wrap[c64 w=40 cjk=1] "Averyveryveryverylongwordwithoutanyspacesthatexceedsthewidthofthescreenforsure"
+  => "Averyveryveryverylongwordwithoutanyspace\r\nsthatexceedsthewidthofthescreenforsure"
+wrap[c64 w=40 cjk=1] "ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ"
+  => "ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶﾅﾊﾝｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ ｶﾀｶﾅﾊﾝ\r\nｶｸﾓｼ\u{ff9e}ﾚﾂﾃ\u{ff9e}ｽ"
+wrap[c64 w=40 cjk=1] "line1\nline2 は 改行を含む\n\nline4"
+  => "line1\r\nline2 は 改行を含む\r\n\r\nline4"

@@ -1,0 +1,52 @@
+=== connect
+<<<
+\xFF\xFB\x01\xFF\xFB\x03========================================\r\n
+       \r\n
+        \r\n
+                                       \r\n
+                                    \r\n
+                                      \r\n
+                                       \r\n
+                                      \r\n
+        \r\n
+         Hobbiest Bulletin Board System\r\n
+========================================\r\n
+\r\n
+========================================\r\n
+                                        \r\n
+                                        \r\n
+                                        \r\n
+                                        \r\n
+                                        \r\n
+                                        \r\n
+                                        \r\n
+                                        \r\n
+         Hobbiest Bulletin Board System \r\n
+========================================\r\n
+\r\n
+\r\n
+  Welcome to HOBBS!\r\n
+\r\n
+  Connected: NNNN/NN/NN NN:NN:NN\r\n
+\r\n
+========================================\r\n
+[G]Guest [R]Reg [L]Login [Q]Quit\r\n
+----------------------------------------\r\n
+Select:\r\n
+[L]Login [R]Register [G]Guest [Q]Quit
+
+=== invalid choice
+>>> X\r
+<<<
+X\r\n
+Invalid choice. Please select L, R, G, or Q.\r\n
+\r\n
+[L]Login [R]Register [G]Guest [Q]Quit
+
+=== quit
+>>> Q\r
+<<<
+Q\r\n
+Thank you for visiting. See you again!\r\n
+
+

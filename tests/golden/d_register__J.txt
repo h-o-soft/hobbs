@@ -1,0 +1,98 @@
+=== connect
+<<<
+\xFF\xFB\x01\xFF\xFB\x03================================================================================\r\n
+     _   _  ___  ____  ____  ____\r\n
+    | | | |/ _ \\| __ )| __ )/ ___|\r\n
+    | |_| | | | |  _ \\|  _ \\\\___ \\\r\n
+    |  _  | |_| | |_) | |_) |___) |\r\n
+    |_| |_|\\___/|____/|____/|____/\r\n
+\r\n
+                    Hobbyist Bulletin Board System\r\n
+================================================================================\r\n
+\r\n
+    Welcome to HOBBS!\r\n
+\r\n
+    Connected: NNNN/NN/NN NN:NN:NN\r\n
+\r\n
+\e[34m================================================================================\e[0m\r\n
+    \e[1;33m[G]\e[0m Guest    \e[1;33m[R]\e[0m Register    \e[1;33m[L]\e[0m Login    \e[1;33m[Q]\e[0m Quit\r\n
+\e[34m--------------------------------------------------------------------------------\e[0m\r\n
+\e[36mSelect:\e[0m\r\n
+[L]Login [R]Register [G]Guest [Q]Quit
+
+=== welcome: R
+>>> R\r
+<<<
+R\r\n
+\r\n
+=======================================\r\n
+Select language / Gengo sentaku:\r\n
+=======================================\r\n
+\r\n
+[E] English (UTF-8)\r\n
+[J] Nihongo (ShiftJIS)\r\n
+[U] Nihongo (UTF-8)\r\n
+\r\n
+> 
+
+=== language selection: J
+>>> J\r
+<<<
+J\r\n
+=== \x90V\x8BK\x93o\x98^ ===\r\n
+\r\n
+\x81y\x8Cx\x8D\x90\x81zTelnet\x90\xDA\x91\xB1\x82\xC5\x82\xCD\x83p\x83X\x83\x8F\x81[\x83h\x82\xCD\x88\xC3\x8D\x86\x89\xBB\x82\xB3\x82\xEA\x82\xDC\x82\xB9\x82\xF1\x81B\x91\xBC\x82\xCC\x83T\x81[\x83r\x83X\x82\xC6\x93\xAF\x82\xB6\x83p\x83X\x83\x8F\x81[\x83h\x82\xCD\x90\xE2\x91\xCE\x82\xC9\x8Eg\x97p\x82\xB5\x82\xC8\x82\xA2\x82\xC5\x82\xAD\x82\xBE\x82\xB3\x82\xA2\x81B\r\n
+\r\n
+\x83\x86\x81[\x83U\x81[ID: 
+
+=== username
+>>> newuser\r
+<<<
+newuser\r\n
+\x83p\x83X\x83\x8F\x81[\x83h: 
+
+=== password
+>>> pass1234\r
+<<<
+\r\n
+\r\n
+\x83p\x83X\x83\x8F\x81[\x83h\x81i\x8Am\x94F\x81j: 
+
+=== password confirm
+>>> pass1234\r
+<<<
+\r\n
+\r\n
+\x83j\x83b\x83N\x83l\x81[\x83\x80: 
+
+=== nickname
+>>> \r
+<<<
+\r\n
+\x93o\x98^\x82\xAA\x8A\xAE\x97\xB9\x82\xB5\x82\xDC\x82\xB5\x82\xBD\x81B\x82\xE6\x82\xA4\x82\xB1\x82\xBB\x81Anewuser\x82\xB3\x82\xF1\x81I\r\n
+================================================================================\r\n
+    \x83\x81\x83C\x83\x93\x83\x81\x83j\x83\x85\x81[                          \x83\x86\x81[\x83U\x81[: newuser [\x88\xEA\x94\xCA\x89\xEF\x88\xF5]\r\n
+================================================================================\r\n
+\r\n
+    [B] \x8Cf\x8E\xA6\x94\xC2            - \x8Cf\x8E\xA6\x94\xC2\x82\xCC\x89{\x97\x97\x81E\x93\x8A\x8De\r\n
+    [C] \x83`\x83\x83\x83b\x83g          - \x83\x8A\x83A\x83\x8B\x83^\x83C\x83\x80\x83`\x83\x83\x83b\x83g (\x8C\xBB\x8D\xDD 0\x90l)\r\n
+    [M] \x83\x81\x81[\x83\x8B            - \x83v\x83\x89\x83C\x83x\x81[\x83g\x83\x81\x81[\x83\x8B (\x96\xA2\x93\xC7 0 \x8C\x8F)\r\n
+    [F] \x83t\x83@\x83C\x83\x8B          - \x83t\x83@\x83C\x83\x8B\x82\xCC\x83_\x83E\x83\x93\x83\x8D\x81[\x83h\r\n
+    [D] \x83h\x83A            - \x83h\x83A\x83Q\x81[\x83\x80\r\n
+    [N] \x83j\x83\x85\x81[\x83X          - RSS\x83t\x83B\x81[\x83h\x82\xCC\x89{\x97\x97\r\n
+    [P] \x83v\x83\x8D\x83t\x83B\x81[\x83\x8B      - \x83v\x83\x8D\x83t\x83B\x81[\x83\x8B\x82\xCC\x95\\\x8E\xA6\x81E\x95\xD2\x8FW\r\n
+    [W] \x89\xEF\x88\xF5\x88\xEA\x97\x97          - \x93o\x98^\x89\xEF\x88\xF5\x82\xCC\x88\xEA\x97\x97\r\n
+\r\n
+\r\n
+    [Q] \x83\x8D\x83O\x83A\x83E\x83g\r\n
+\r\n
+--------------------------------------------------------------------------------\r\n
+\x91I\x91\xF0\x82\xB5\x82\xC4\x82\xAD\x82\xBE\x82\xB3\x82\xA2: \r\n
+> 
+
+=== logout
+>>> Q\r
+<<<
+Q\r\n
+[L]Login [R]Register [G]Guest [Q]Quit > 
+

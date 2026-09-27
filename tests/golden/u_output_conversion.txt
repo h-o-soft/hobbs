@@ -1,0 +1,143 @@
+input: "ASCII only\r\n"
+  [Ansi][shiftjis] ASCII only\r\n
+  [Ansi][utf8] ASCII only\r\n
+  [Ansi][cp437] ASCII only\r\n
+  [Ansi][petscii] ASCII ONLY\r\r
+  [Plain][shiftjis] ASCII only\r\n
+  [Plain][utf8] ASCII only\r\n
+  [Plain][cp437] ASCII only\r\n
+  [Plain][petscii] ASCII ONLY\r\r
+  [PetsciiCtrl][shiftjis] ASCII only\r\n
+  [PetsciiCtrl][utf8] ASCII only\r\n
+  [PetsciiCtrl][cp437] ASCII only\r\n
+  [PetsciiCtrl][petscii] ASCII ONLY\r\r
+input: "日本語テキスト\r\n"
+  [Ansi][shiftjis] \x93\xFA\x96{\x8C\xEA\x83e\x83L\x83X\x83g\r\n
+  [Ansi][utf8] \xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E\xE3\x83\x86\xE3\x82\xAD\xE3\x82\xB9\xE3\x83\x88\r\n
+  [Ansi][cp437] ???????\r\n
+  [Ansi][petscii] ???????\r\r
+  [Plain][shiftjis] \x93\xFA\x96{\x8C\xEA\x83e\x83L\x83X\x83g\r\n
+  [Plain][utf8] \xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E\xE3\x83\x86\xE3\x82\xAD\xE3\x82\xB9\xE3\x83\x88\r\n
+  [Plain][cp437] ???????\r\n
+  [Plain][petscii] ???????\r\r
+  [PetsciiCtrl][shiftjis] \x93\xFA\x96{\x8C\xEA\x83e\x83L\x83X\x83g\r\n
+  [PetsciiCtrl][utf8] \xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E\xE3\x83\x86\xE3\x82\xAD\xE3\x82\xB9\xE3\x83\x88\r\n
+  [PetsciiCtrl][cp437] ???????\r\n
+  [PetsciiCtrl][petscii] ???????\r\r
+input: "^[[31m赤^[[0m ^[[1;33m黄^[[0m ^[[5;46mblink^[[0m\r\n"
+  [Ansi][shiftjis] \e[31m\x90\xD4\e[0m \e[1;33m\x89\xA9\e[0m \e[5;46mblink\e[0m\r\n
+  [Ansi][utf8] \e[31m\xE8\xB5\xA4\e[0m \e[1;33m\xE9\xBB\x84\e[0m \e[5;46mblink\e[0m\r\n
+  [Ansi][cp437] \e[31m?\e[0m \e[1;33m?\e[0m \e[5;46mblink\e[0m\r\n
+  [Ansi][petscii] ?[31M??[0M ?[1;33M??[0M ?[5;46MBLINK?[0M\r\r
+  [Plain][shiftjis] \x90\xD4 \x89\xA9 blink\r\n
+  [Plain][utf8] \xE8\xB5\xA4 \xE9\xBB\x84 blink\r\n
+  [Plain][cp437] ? ? blink\r\n
+  [Plain][petscii] ? ? BLINK\r\r
+  [PetsciiCtrl][shiftjis] \x1C\x90\xD4&#146; &#146;\x89\xA9&#146; &#146;blink&#146;\r\n
+  [PetsciiCtrl][utf8] \x1C\xE8\xB5\xA4\xC2\x92 \xC2\x92\xE9\xBB\x84\xC2\x92 \xC2\x92blink\xC2\x92\r\n
+  [PetsciiCtrl][cp437] \x1C?? ??? ?blink?\r\n
+  [PetsciiCtrl][petscii] ??? ??? ?BLINK?\r\r
+input: "^[[2J^[[H^[[3A^[[10C^[[7mRVS^[[0m\r\n"
+  [Ansi][shiftjis] \e[2J\e[H\e[3A\e[10C\e[7mRVS\e[0m\r\n
+  [Ansi][utf8] \e[2J\e[H\e[3A\e[10C\e[7mRVS\e[0m\r\n
+  [Ansi][cp437] \e[2J\e[H\e[3A\e[10C\e[7mRVS\e[0m\r\n
+  [Ansi][petscii] ?[2J?[H?[3A?[10C?[7MRVS?[0M\r\r
+  [Plain][shiftjis] RVS\r\n
+  [Plain][utf8] RVS\r\n
+  [Plain][cp437] RVS\r\n
+  [Plain][petscii] RVS\r\r
+  [PetsciiCtrl][shiftjis] &#147;\x13&#145;\x1D\x12RVS&#146;\r\n
+  [PetsciiCtrl][utf8] \xC2\x93\x13\xC2\x91\x1D\x12RVS\xC2\x92\r\n
+  [PetsciiCtrl][cp437] ?\x13?\x1D\x12RVS?\r\n
+  [PetsciiCtrl][petscii] ?????RVS?\r\r
+input: "é ö ü ─ │ ┼ ░ ▒ █ ½\r\n"
+  [Ansi][shiftjis] &#233; &#246; &#252; \x84\x9F \x84\xA0 \x84\xA9 &#9617; &#9618; &#9608; &#189;\r\n
+  [Ansi][utf8] \xC3\xA9 \xC3\xB6 \xC3\xBC \xE2\x94\x80 \xE2\x94\x82 \xE2\x94\xBC \xE2\x96\x91 \xE2\x96\x92 \xE2\x96\x88 \xC2\xBD\r\n
+  [Ansi][cp437] \x82 \x94 \x81 \xC4 \xB3 \xC5 \xB0 \xB1 \xDB \xAB\r\n
+  [Ansi][petscii] ? ? ? \xC0 \xC2 \xDB ? ? \xA0 ?\r\r
+  [Plain][shiftjis] &#233; &#246; &#252; \x84\x9F \x84\xA0 \x84\xA9 &#9617; &#9618; &#9608; &#189;\r\n
+  [Plain][utf8] \xC3\xA9 \xC3\xB6 \xC3\xBC \xE2\x94\x80 \xE2\x94\x82 \xE2\x94\xBC \xE2\x96\x91 \xE2\x96\x92 \xE2\x96\x88 \xC2\xBD\r\n
+  [Plain][cp437] \x82 \x94 \x81 \xC4 \xB3 \xC5 \xB0 \xB1 \xDB \xAB\r\n
+  [Plain][petscii] ? ? ? \xC0 \xC2 \xDB ? ? \xA0 ?\r\r
+  [PetsciiCtrl][shiftjis] &#233; &#246; &#252; \x84\x9F \x84\xA0 \x84\xA9 &#9617; &#9618; &#9608; &#189;\r\n
+  [PetsciiCtrl][utf8] \xC3\xA9 \xC3\xB6 \xC3\xBC \xE2\x94\x80 \xE2\x94\x82 \xE2\x94\xBC \xE2\x96\x91 \xE2\x96\x92 \xE2\x96\x88 \xC2\xBD\r\n
+  [PetsciiCtrl][cp437] \x82 \x94 \x81 \xC4 \xB3 \xC5 \xB0 \xB1 \xDB \xAB\r\n
+  [PetsciiCtrl][petscii] ? ? ? \xC0 \xC2 \xDB ? ? \xA0 ?\r\r
+input: "ｶﾀｶﾅ 〜 − — ～ ① ㈱ 髙\r\n"
+  [Ansi][shiftjis] \xB6\xC0\xB6\xC5 \x81` \x81| \x81\\ \x81` \x87@ \x87\x8A \xFB\xFC\r\n
+  [Ansi][utf8] \xEF\xBD\xB6\xEF\xBE\x80\xEF\xBD\xB6\xEF\xBE\x85 \xE3\x80\x9C \xE2\x88\x92 \xE2\x80\x94 \xEF\xBD\x9E \xE2\x91\xA0 \xE3\x88\xB1 \xE9\xAB\x99\r\n
+  [Ansi][cp437] ???? ? ? ? ? ? ? ?\r\n
+  [Ansi][petscii] ???? ? ? ? ? ? ? ?\r\r
+  [Plain][shiftjis] \xB6\xC0\xB6\xC5 \x81` \x81| \x81\\ \x81` \x87@ \x87\x8A \xFB\xFC\r\n
+  [Plain][utf8] \xEF\xBD\xB6\xEF\xBE\x80\xEF\xBD\xB6\xEF\xBE\x85 \xE3\x80\x9C \xE2\x88\x92 \xE2\x80\x94 \xEF\xBD\x9E \xE2\x91\xA0 \xE3\x88\xB1 \xE9\xAB\x99\r\n
+  [Plain][cp437] ???? ? ? ? ? ? ? ?\r\n
+  [Plain][petscii] ???? ? ? ? ? ? ? ?\r\r
+  [PetsciiCtrl][shiftjis] \xB6\xC0\xB6\xC5 \x81` \x81| \x81\\ \x81` \x87@ \x87\x8A \xFB\xFC\r\n
+  [PetsciiCtrl][utf8] \xEF\xBD\xB6\xEF\xBE\x80\xEF\xBD\xB6\xEF\xBE\x85 \xE3\x80\x9C \xE2\x88\x92 \xE2\x80\x94 \xEF\xBD\x9E \xE2\x91\xA0 \xE3\x88\xB1 \xE9\xAB\x99\r\n
+  [PetsciiCtrl][cp437] ???? ? ? ? ? ? ? ?\r\n
+  [PetsciiCtrl][petscii] ???? ? ? ? ? ? ? ?\r\r
+input: "😀 emoji\r\n"
+  [Ansi][shiftjis] &#128512; emoji\r\n
+  [Ansi][utf8] \xF0\x9F\x98\x80 emoji\r\n
+  [Ansi][cp437] ? emoji\r\n
+  [Ansi][petscii] ? EMOJI\r\r
+  [Plain][shiftjis] &#128512; emoji\r\n
+  [Plain][utf8] \xF0\x9F\x98\x80 emoji\r\n
+  [Plain][cp437] ? emoji\r\n
+  [Plain][petscii] ? EMOJI\r\r
+  [PetsciiCtrl][shiftjis] &#128512; emoji\r\n
+  [PetsciiCtrl][utf8] \xF0\x9F\x98\x80 emoji\r\n
+  [PetsciiCtrl][cp437] ? emoji\r\n
+  [PetsciiCtrl][petscii] ? EMOJI\r\r
+input: "lower UPPER 0123 @[]\\^_`{|}~\r\n"
+  [Ansi][shiftjis] lower UPPER 0123 @[]\\^_`{|}~\r\n
+  [Ansi][utf8] lower UPPER 0123 @[]\\^_`{|}~\r\n
+  [Ansi][cp437] lower UPPER 0123 @[]\\^_`{|}~\r\n
+  [Ansi][petscii] LOWER UPPER 0123 @[]????????\r\r
+  [Plain][shiftjis] lower UPPER 0123 @[]\\^_`{|}~\r\n
+  [Plain][utf8] lower UPPER 0123 @[]\\^_`{|}~\r\n
+  [Plain][cp437] lower UPPER 0123 @[]\\^_`{|}~\r\n
+  [Plain][petscii] LOWER UPPER 0123 @[]????????\r\r
+  [PetsciiCtrl][shiftjis] lower UPPER 0123 @[]\\^_`{|}~\r\n
+  [PetsciiCtrl][utf8] lower UPPER 0123 @[]\\^_`{|}~\r\n
+  [PetsciiCtrl][cp437] lower UPPER 0123 @[]\\^_`{|}~\r\n
+  [PetsciiCtrl][petscii] LOWER UPPER 0123 @[]????????\r\r
+input: "\u{a0}nbsp ÿÿ\r\n"
+  [Ansi][shiftjis] &#160;nbsp &#255;&#255;\r\n
+  [Ansi][utf8] \xC2\xA0nbsp \xC3\xBF\xC3\xBF\r\n
+  [Ansi][cp437] \xFFnbsp \x98\x98\r\n
+  [Ansi][petscii] ?NBSP ??\r\r
+  [Plain][shiftjis] &#160;nbsp &#255;&#255;\r\n
+  [Plain][utf8] \xC2\xA0nbsp \xC3\xBF\xC3\xBF\r\n
+  [Plain][cp437] \xFFnbsp \x98\x98\r\n
+  [Plain][petscii] ?NBSP ??\r\r
+  [PetsciiCtrl][shiftjis] &#160;nbsp &#255;&#255;\r\n
+  [PetsciiCtrl][utf8] \xC2\xA0nbsp \xC3\xBF\xC3\xBF\r\n
+  [PetsciiCtrl][cp437] \xFFnbsp \x98\x98\r\n
+  [PetsciiCtrl][petscii] ?NBSP ??\r\r
+input: "\t tab \u{7}bell \u{8}bs\r\n"
+  [Ansi][shiftjis] \x09 tab \x07bell \x08bs\r\n
+  [Ansi][utf8] \x09 tab \x07bell \x08bs\r\n
+  [Ansi][cp437] \x09 tab \x07bell \x08bs\r\n
+  [Ansi][petscii] ? TAB ?BELL ?BS\r\r
+  [Plain][shiftjis] \x09 tab \x07bell \x08bs\r\n
+  [Plain][utf8] \x09 tab \x07bell \x08bs\r\n
+  [Plain][cp437] \x09 tab \x07bell \x08bs\r\n
+  [Plain][petscii] ? TAB ?BELL ?BS\r\r
+  [PetsciiCtrl][shiftjis] \x09 tab \x07bell \x08bs\r\n
+  [PetsciiCtrl][utf8] \x09 tab \x07bell \x08bs\r\n
+  [PetsciiCtrl][cp437] \x09 tab \x07bell \x08bs\r\n
+  [PetsciiCtrl][petscii] ? TAB ?BELL ?BS\r\r
+input: "bare LF\nand CR\ronly\r\n"
+  [Ansi][shiftjis] bare LF\nand CR\ronly\r\n
+  [Ansi][utf8] bare LF\nand CR\ronly\r\n
+  [Ansi][cp437] bare LF\nand CR\ronly\r\n
+  [Ansi][petscii] BARE LF\rAND CR\rONLY\r\r
+  [Plain][shiftjis] bare LF\nand CR\ronly\r\n
+  [Plain][utf8] bare LF\nand CR\ronly\r\n
+  [Plain][cp437] bare LF\nand CR\ronly\r\n
+  [Plain][petscii] BARE LF\rAND CR\rONLY\r\r
+  [PetsciiCtrl][shiftjis] bare LF\nand CR\ronly\r\n
+  [PetsciiCtrl][utf8] bare LF\nand CR\ronly\r\n
+  [PetsciiCtrl][cp437] bare LF\nand CR\ronly\r\n
+  [PetsciiCtrl][petscii] BARE LF\rAND CR\rONLY\r\r

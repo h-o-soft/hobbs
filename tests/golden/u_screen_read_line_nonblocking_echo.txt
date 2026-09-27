@@ -1,0 +1,744 @@
+[shiftjis][normal] ascii
+  in:   abc\r
+  echo: abc\r\n
+  ret:  Ok(Some("abc"))
+[shiftjis][normal] wide
+  in:   \x82\xA0\x82\xA2\r
+  echo: \x82\xA0\x82\xA2\r\n
+  ret:  Ok(Some("あい"))
+[shiftjis][normal] wide + BS
+  in:   \x82\xA0\x82\xA2\x08\r
+  echo: \x82\xA0\x82\xA2\x08\x08  \x08\x08\r\n
+  ret:  Ok(Some("あ"))
+[shiftjis][normal] wide + DEL
+  in:   \x82\xA0\x82\xA2\x7F\r
+  echo: \x82\xA0\x82\xA2\x08\x08  \x08\x08\r\n
+  ret:  Ok(Some("あ"))
+[shiftjis][normal] wide + BS BS BS
+  in:   \x82\xA0\x82\xA2\x08\x08\x08\r
+  echo: \x82\xA0\x82\xA2\x08\x08  \x08\x08\x08\x08  \x08\x08\r\n
+  ret:  Ok(Some(""))
+[shiftjis][normal] half + BS
+  in:   \xB6\xC5\x08\r
+  echo: \xB6\xC5\x08 \x08\r\n
+  ret:  Ok(Some("ｶ"))
+[shiftjis][normal] petscii DEL 0x14
+  in:   a\x14\r
+  echo: a\r\n
+  ret:  Ok(Some("a"))
+[shiftjis][normal] ESC [ A
+  in:   a\e[A\r
+  echo: a[A\r\n
+  ret:  Ok(Some("a[A"))
+[shiftjis][normal] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: \xFF^C\r\n
+  ret:  Ok(Some(""))
+[shiftjis][normal] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: \xFF\xFDx\r\n
+  ret:  Ok(Some("��x"))
+[shiftjis][normal] Ctrl+C
+  in:   a\x03
+  echo: a^C\r\n
+  ret:  Ok(Some(""))
+[shiftjis][normal] LF only
+  in:   z\n
+
+  echo: z\r\n
+  ret:  Ok(Some("z"))
+[shiftjis][normal] CR LF
+  in:   z\r\n
+
+  echo: z\r\n
+  ret:  Ok(Some("z"))
+[shiftjis][normal] CR NUL
+  in:   z\r\x00
+  echo: z\r\n
+  ret:  Ok(Some("z"))
+[shiftjis][normal] incomplete lead byte + CR
+  in:   \x82\r
+  echo: \x82\r\n
+  ret:  Ok(Some("�"))
+[shiftjis][password] ascii
+  in:   abc\r
+  echo: 
+  ret:  Ok(Some("abc"))
+[shiftjis][password] wide
+  in:   \x82\xA0\x82\xA2\r
+  echo: 
+  ret:  Ok(Some("あい"))
+[shiftjis][password] wide + BS
+  in:   \x82\xA0\x82\xA2\x08\r
+  echo: \x08\x08  \x08\x08
+  ret:  Ok(Some("あ"))
+[shiftjis][password] wide + DEL
+  in:   \x82\xA0\x82\xA2\x7F\r
+  echo: \x08\x08  \x08\x08
+  ret:  Ok(Some("あ"))
+[shiftjis][password] wide + BS BS BS
+  in:   \x82\xA0\x82\xA2\x08\x08\x08\r
+  echo: \x08\x08  \x08\x08\x08\x08  \x08\x08
+  ret:  Ok(Some(""))
+[shiftjis][password] half + BS
+  in:   \xB6\xC5\x08\r
+  echo: \x08 \x08
+  ret:  Ok(Some("ｶ"))
+[shiftjis][password] petscii DEL 0x14
+  in:   a\x14\r
+  echo: 
+  ret:  Ok(Some("a"))
+[shiftjis][password] ESC [ A
+  in:   a\e[A\r
+  echo: 
+  ret:  Ok(Some("a[A"))
+[shiftjis][password] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: 
+  ret:  Ok(Some(""))
+[shiftjis][password] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: 
+  ret:  Ok(Some("��x"))
+[shiftjis][password] Ctrl+C
+  in:   a\x03
+  echo: 
+  ret:  Ok(Some(""))
+[shiftjis][password] LF only
+  in:   z\n
+
+  echo: 
+  ret:  Ok(Some("z"))
+[shiftjis][password] CR LF
+  in:   z\r\n
+
+  echo: 
+  ret:  Ok(Some("z"))
+[shiftjis][password] CR NUL
+  in:   z\r\x00
+  echo: 
+  ret:  Ok(Some("z"))
+[shiftjis][password] incomplete lead byte + CR
+  in:   \x82\r
+  echo: 
+  ret:  Ok(Some("�"))
+[shiftjis][masked(*)] ascii
+  in:   abc\r
+  echo: ***
+  ret:  Ok(Some("abc"))
+[shiftjis][masked(*)] wide
+  in:   \x82\xA0\x82\xA2\r
+  echo: **
+  ret:  Ok(Some("あい"))
+[shiftjis][masked(*)] wide + BS
+  in:   \x82\xA0\x82\xA2\x08\r
+  echo: **\x08\x08  \x08\x08
+  ret:  Ok(Some("あ"))
+[shiftjis][masked(*)] wide + DEL
+  in:   \x82\xA0\x82\xA2\x7F\r
+  echo: **\x08\x08  \x08\x08
+  ret:  Ok(Some("あ"))
+[shiftjis][masked(*)] wide + BS BS BS
+  in:   \x82\xA0\x82\xA2\x08\x08\x08\r
+  echo: **\x08\x08  \x08\x08\x08\x08  \x08\x08
+  ret:  Ok(Some(""))
+[shiftjis][masked(*)] half + BS
+  in:   \xB6\xC5\x08\r
+  echo: **\x08 \x08
+  ret:  Ok(Some("ｶ"))
+[shiftjis][masked(*)] petscii DEL 0x14
+  in:   a\x14\r
+  echo: *
+  ret:  Ok(Some("a"))
+[shiftjis][masked(*)] ESC [ A
+  in:   a\e[A\r
+  echo: ***
+  ret:  Ok(Some("a[A"))
+[shiftjis][masked(*)] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: *
+  ret:  Ok(Some(""))
+[shiftjis][masked(*)] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: ***
+  ret:  Ok(Some("��x"))
+[shiftjis][masked(*)] Ctrl+C
+  in:   a\x03
+  echo: *
+  ret:  Ok(Some(""))
+[shiftjis][masked(*)] LF only
+  in:   z\n
+
+  echo: *
+  ret:  Ok(Some("z"))
+[shiftjis][masked(*)] CR LF
+  in:   z\r\n
+
+  echo: *
+  ret:  Ok(Some("z"))
+[shiftjis][masked(*)] CR NUL
+  in:   z\r\x00
+  echo: *
+  ret:  Ok(Some("z"))
+[shiftjis][masked(*)] incomplete lead byte + CR
+  in:   \x82\r
+  echo: 
+  ret:  Ok(Some("�"))
+[utf8][normal] ascii
+  in:   abc\r
+  echo: abc\r\n
+  ret:  Ok(Some("abc"))
+[utf8][normal] wide
+  in:   \xE3\x81\x82\xE3\x81\x84\r
+  echo: \xE3\x81\x82\xE3\x81\x84\r\n
+  ret:  Ok(Some("あい"))
+[utf8][normal] wide + BS
+  in:   \xE3\x81\x82\xE3\x81\x84\x08\r
+  echo: \xE3\x81\x82\xE3\x81\x84\x08\x08  \x08\x08\r\n
+  ret:  Ok(Some("あ"))
+[utf8][normal] wide + DEL
+  in:   \xE3\x81\x82\xE3\x81\x84\x7F\r
+  echo: \xE3\x81\x82\xE3\x81\x84\x08\x08  \x08\x08\r\n
+  ret:  Ok(Some("あ"))
+[utf8][normal] wide + BS BS BS
+  in:   \xE3\x81\x82\xE3\x81\x84\x08\x08\x08\r
+  echo: \xE3\x81\x82\xE3\x81\x84\x08\x08  \x08\x08\x08\x08  \x08\x08\r\n
+  ret:  Ok(Some(""))
+[utf8][normal] half + BS
+  in:   \xEF\xBD\xB6\xEF\xBE\x85\x08\r
+  echo: \xEF\xBD\xB6\xEF\xBE\x85\x08\x08  \x08\x08\r\n
+  ret:  Ok(Some("ｶ"))
+[utf8][normal] petscii DEL 0x14
+  in:   a\x14\r
+  echo: a\r\n
+  ret:  Ok(Some("a"))
+[utf8][normal] ESC [ A
+  in:   a\e[A\r
+  echo: a[A\r\n
+  ret:  Ok(Some("a[A"))
+[utf8][normal] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: \xFF\xFB^C\r\n
+  ret:  Ok(Some(""))
+[utf8][normal] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: \xFF\xFDx\r\n
+  ret:  Ok(Some("��x"))
+[utf8][normal] Ctrl+C
+  in:   a\x03
+  echo: a^C\r\n
+  ret:  Ok(Some(""))
+[utf8][normal] LF only
+  in:   z\n
+
+  echo: z\r\n
+  ret:  Ok(Some("z"))
+[utf8][normal] CR LF
+  in:   z\r\n
+
+  echo: z\r\n
+  ret:  Ok(Some("z"))
+[utf8][normal] CR NUL
+  in:   z\r\x00
+  echo: z\r\n
+  ret:  Ok(Some("z"))
+[utf8][normal] incomplete lead byte + CR
+  in:   \xE3\r
+  echo: \xE3\r\n
+  ret:  Ok(Some("�"))
+[utf8][password] ascii
+  in:   abc\r
+  echo: 
+  ret:  Ok(Some("abc"))
+[utf8][password] wide
+  in:   \xE3\x81\x82\xE3\x81\x84\r
+  echo: 
+  ret:  Ok(Some("あい"))
+[utf8][password] wide + BS
+  in:   \xE3\x81\x82\xE3\x81\x84\x08\r
+  echo: \x08\x08  \x08\x08
+  ret:  Ok(Some("あ"))
+[utf8][password] wide + DEL
+  in:   \xE3\x81\x82\xE3\x81\x84\x7F\r
+  echo: \x08\x08  \x08\x08
+  ret:  Ok(Some("あ"))
+[utf8][password] wide + BS BS BS
+  in:   \xE3\x81\x82\xE3\x81\x84\x08\x08\x08\r
+  echo: \x08\x08  \x08\x08\x08\x08  \x08\x08
+  ret:  Ok(Some(""))
+[utf8][password] half + BS
+  in:   \xEF\xBD\xB6\xEF\xBE\x85\x08\r
+  echo: \x08\x08  \x08\x08
+  ret:  Ok(Some("ｶ"))
+[utf8][password] petscii DEL 0x14
+  in:   a\x14\r
+  echo: 
+  ret:  Ok(Some("a"))
+[utf8][password] ESC [ A
+  in:   a\e[A\r
+  echo: 
+  ret:  Ok(Some("a[A"))
+[utf8][password] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: 
+  ret:  Ok(Some(""))
+[utf8][password] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: 
+  ret:  Ok(Some("��x"))
+[utf8][password] Ctrl+C
+  in:   a\x03
+  echo: 
+  ret:  Ok(Some(""))
+[utf8][password] LF only
+  in:   z\n
+
+  echo: 
+  ret:  Ok(Some("z"))
+[utf8][password] CR LF
+  in:   z\r\n
+
+  echo: 
+  ret:  Ok(Some("z"))
+[utf8][password] CR NUL
+  in:   z\r\x00
+  echo: 
+  ret:  Ok(Some("z"))
+[utf8][password] incomplete lead byte + CR
+  in:   \xE3\r
+  echo: 
+  ret:  Ok(Some("�"))
+[utf8][masked(*)] ascii
+  in:   abc\r
+  echo: ***
+  ret:  Ok(Some("abc"))
+[utf8][masked(*)] wide
+  in:   \xE3\x81\x82\xE3\x81\x84\r
+  echo: **
+  ret:  Ok(Some("あい"))
+[utf8][masked(*)] wide + BS
+  in:   \xE3\x81\x82\xE3\x81\x84\x08\r
+  echo: **\x08\x08  \x08\x08
+  ret:  Ok(Some("あ"))
+[utf8][masked(*)] wide + DEL
+  in:   \xE3\x81\x82\xE3\x81\x84\x7F\r
+  echo: **\x08\x08  \x08\x08
+  ret:  Ok(Some("あ"))
+[utf8][masked(*)] wide + BS BS BS
+  in:   \xE3\x81\x82\xE3\x81\x84\x08\x08\x08\r
+  echo: **\x08\x08  \x08\x08\x08\x08  \x08\x08
+  ret:  Ok(Some(""))
+[utf8][masked(*)] half + BS
+  in:   \xEF\xBD\xB6\xEF\xBE\x85\x08\r
+  echo: **\x08\x08  \x08\x08
+  ret:  Ok(Some("ｶ"))
+[utf8][masked(*)] petscii DEL 0x14
+  in:   a\x14\r
+  echo: *
+  ret:  Ok(Some("a"))
+[utf8][masked(*)] ESC [ A
+  in:   a\e[A\r
+  echo: ***
+  ret:  Ok(Some("a[A"))
+[utf8][masked(*)] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: **
+  ret:  Ok(Some(""))
+[utf8][masked(*)] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: ***
+  ret:  Ok(Some("��x"))
+[utf8][masked(*)] Ctrl+C
+  in:   a\x03
+  echo: *
+  ret:  Ok(Some(""))
+[utf8][masked(*)] LF only
+  in:   z\n
+
+  echo: *
+  ret:  Ok(Some("z"))
+[utf8][masked(*)] CR LF
+  in:   z\r\n
+
+  echo: *
+  ret:  Ok(Some("z"))
+[utf8][masked(*)] CR NUL
+  in:   z\r\x00
+  echo: *
+  ret:  Ok(Some("z"))
+[utf8][masked(*)] incomplete lead byte + CR
+  in:   \xE3\r
+  echo: 
+  ret:  Ok(Some("�"))
+[cp437][normal] ascii
+  in:   abc\r
+  echo: abc\r\n
+  ret:  Ok(Some("abc"))
+[cp437][normal] wide
+  in:   \x82\x94\r
+  echo: \x82\x94\r\n
+  ret:  Ok(Some("éö"))
+[cp437][normal] wide + BS
+  in:   \x82\x94\x08\r
+  echo: \x82\x94\x08 \x08\r\n
+  ret:  Ok(Some("é"))
+[cp437][normal] wide + DEL
+  in:   \x82\x94\x7F\r
+  echo: \x82\x94\x08 \x08\r\n
+  ret:  Ok(Some("é"))
+[cp437][normal] wide + BS BS BS
+  in:   \x82\x94\x08\x08\x08\r
+  echo: \x82\x94\x08 \x08\x08 \x08\r\n
+  ret:  Ok(Some(""))
+[cp437][normal] half + BS
+  in:   ab\x08\r
+  echo: ab\x08 \x08\r\n
+  ret:  Ok(Some("a"))
+[cp437][normal] petscii DEL 0x14
+  in:   a\x14\r
+  echo: a\r\n
+  ret:  Ok(Some("a"))
+[cp437][normal] ESC [ A
+  in:   a\e[A\r
+  echo: a[A\r\n
+  ret:  Ok(Some("a[A"))
+[cp437][normal] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: \xFF\xFB^C\r\n
+  ret:  Ok(Some(""))
+[cp437][normal] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: \xFF\xFDx\r\n
+  ret:  Ok(Some("\u{a0}²x"))
+[cp437][normal] Ctrl+C
+  in:   a\x03
+  echo: a^C\r\n
+  ret:  Ok(Some(""))
+[cp437][normal] LF only
+  in:   z\n
+
+  echo: z\r\n
+  ret:  Ok(Some("z"))
+[cp437][normal] CR LF
+  in:   z\r\n
+
+  echo: z\r\n
+  ret:  Ok(Some("z"))
+[cp437][normal] CR NUL
+  in:   z\r\x00
+  echo: z\r\n
+  ret:  Ok(Some("z"))
+[cp437][normal] incomplete lead byte + CR
+  in:   \x82\r
+  echo: \x82\r\n
+  ret:  Ok(Some("é"))
+[cp437][password] ascii
+  in:   abc\r
+  echo: 
+  ret:  Ok(Some("abc"))
+[cp437][password] wide
+  in:   \x82\x94\r
+  echo: 
+  ret:  Ok(Some("éö"))
+[cp437][password] wide + BS
+  in:   \x82\x94\x08\r
+  echo: \x08 \x08
+  ret:  Ok(Some("é"))
+[cp437][password] wide + DEL
+  in:   \x82\x94\x7F\r
+  echo: \x08 \x08
+  ret:  Ok(Some("é"))
+[cp437][password] wide + BS BS BS
+  in:   \x82\x94\x08\x08\x08\r
+  echo: \x08 \x08\x08 \x08
+  ret:  Ok(Some(""))
+[cp437][password] half + BS
+  in:   ab\x08\r
+  echo: \x08 \x08
+  ret:  Ok(Some("a"))
+[cp437][password] petscii DEL 0x14
+  in:   a\x14\r
+  echo: 
+  ret:  Ok(Some("a"))
+[cp437][password] ESC [ A
+  in:   a\e[A\r
+  echo: 
+  ret:  Ok(Some("a[A"))
+[cp437][password] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: 
+  ret:  Ok(Some(""))
+[cp437][password] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: 
+  ret:  Ok(Some("\u{a0}²x"))
+[cp437][password] Ctrl+C
+  in:   a\x03
+  echo: 
+  ret:  Ok(Some(""))
+[cp437][password] LF only
+  in:   z\n
+
+  echo: 
+  ret:  Ok(Some("z"))
+[cp437][password] CR LF
+  in:   z\r\n
+
+  echo: 
+  ret:  Ok(Some("z"))
+[cp437][password] CR NUL
+  in:   z\r\x00
+  echo: 
+  ret:  Ok(Some("z"))
+[cp437][password] incomplete lead byte + CR
+  in:   \x82\r
+  echo: 
+  ret:  Ok(Some("é"))
+[cp437][masked(*)] ascii
+  in:   abc\r
+  echo: ***
+  ret:  Ok(Some("abc"))
+[cp437][masked(*)] wide
+  in:   \x82\x94\r
+  echo: **
+  ret:  Ok(Some("éö"))
+[cp437][masked(*)] wide + BS
+  in:   \x82\x94\x08\r
+  echo: **\x08 \x08
+  ret:  Ok(Some("é"))
+[cp437][masked(*)] wide + DEL
+  in:   \x82\x94\x7F\r
+  echo: **\x08 \x08
+  ret:  Ok(Some("é"))
+[cp437][masked(*)] wide + BS BS BS
+  in:   \x82\x94\x08\x08\x08\r
+  echo: **\x08 \x08\x08 \x08
+  ret:  Ok(Some(""))
+[cp437][masked(*)] half + BS
+  in:   ab\x08\r
+  echo: **\x08 \x08
+  ret:  Ok(Some("a"))
+[cp437][masked(*)] petscii DEL 0x14
+  in:   a\x14\r
+  echo: *
+  ret:  Ok(Some("a"))
+[cp437][masked(*)] ESC [ A
+  in:   a\e[A\r
+  echo: ***
+  ret:  Ok(Some("a[A"))
+[cp437][masked(*)] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: **
+  ret:  Ok(Some(""))
+[cp437][masked(*)] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: ***
+  ret:  Ok(Some("\u{a0}²x"))
+[cp437][masked(*)] Ctrl+C
+  in:   a\x03
+  echo: *
+  ret:  Ok(Some(""))
+[cp437][masked(*)] LF only
+  in:   z\n
+
+  echo: *
+  ret:  Ok(Some("z"))
+[cp437][masked(*)] CR LF
+  in:   z\r\n
+
+  echo: *
+  ret:  Ok(Some("z"))
+[cp437][masked(*)] CR NUL
+  in:   z\r\x00
+  echo: *
+  ret:  Ok(Some("z"))
+[cp437][masked(*)] incomplete lead byte + CR
+  in:   \x82\r
+  echo: *
+  ret:  Ok(Some("é"))
+[petscii][normal] ascii
+  in:   abc\r
+  echo: abc\r\n
+  ret:  Ok(Some("♠│─"))
+[petscii][normal] wide
+  in:   \xC1a\r
+  echo: \xC1a\r\n
+  ret:  Ok(Some("♠♠"))
+[petscii][normal] wide + BS
+  in:   \xC1a\x08\r
+  echo: \xC1a\x08 \x08\r\n
+  ret:  Ok(Some("♠"))
+[petscii][normal] wide + DEL
+  in:   \xC1a\x7F\r
+  echo: \xC1a\x08 \x08\r\n
+  ret:  Ok(Some("♠"))
+[petscii][normal] wide + BS BS BS
+  in:   \xC1a\x08\x08\x08\r
+  echo: \xC1a\x08 \x08\x08 \x08\r\n
+  ret:  Ok(Some(""))
+[petscii][normal] half + BS
+  in:   ab\x08\r
+  echo: ab\x08 \x08\r\n
+  ret:  Ok(Some("♠"))
+[petscii][normal] petscii DEL 0x14
+  in:   a\x14\r
+  echo: a\r\n
+  ret:  Ok(Some("♠"))
+[petscii][normal] ESC [ A
+  in:   a\e[A\r
+  echo: a[A\r\n
+  ret:  Ok(Some("♠[A"))
+[petscii][normal] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: \xFF\xFB^C\r\n
+  ret:  Ok(Some(""))
+[petscii][normal] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: \xFF\xFDx\r\n
+  ret:  Ok(Some("π▃♣"))
+[petscii][normal] Ctrl+C
+  in:   a\x03
+  echo: a^C\r\n
+  ret:  Ok(Some(""))
+[petscii][normal] LF only
+  in:   z\n
+
+  echo: z\r\n
+  ret:  Ok(Some("♦"))
+[petscii][normal] CR LF
+  in:   z\r\n
+
+  echo: z\r\n
+  ret:  Ok(Some("♦"))
+[petscii][normal] CR NUL
+  in:   z\r\x00
+  echo: z\r\n
+  ret:  Ok(Some("♦"))
+[petscii][normal] incomplete lead byte + CR
+  in:   \xC1\r
+  echo: \xC1\r\n
+  ret:  Ok(Some("♠"))
+[petscii][password] ascii
+  in:   abc\r
+  echo: 
+  ret:  Ok(Some("♠│─"))
+[petscii][password] wide
+  in:   \xC1a\r
+  echo: 
+  ret:  Ok(Some("♠♠"))
+[petscii][password] wide + BS
+  in:   \xC1a\x08\r
+  echo: \x08 \x08
+  ret:  Ok(Some("♠"))
+[petscii][password] wide + DEL
+  in:   \xC1a\x7F\r
+  echo: \x08 \x08
+  ret:  Ok(Some("♠"))
+[petscii][password] wide + BS BS BS
+  in:   \xC1a\x08\x08\x08\r
+  echo: \x08 \x08\x08 \x08
+  ret:  Ok(Some(""))
+[petscii][password] half + BS
+  in:   ab\x08\r
+  echo: \x08 \x08
+  ret:  Ok(Some("♠"))
+[petscii][password] petscii DEL 0x14
+  in:   a\x14\r
+  echo: 
+  ret:  Ok(Some("♠"))
+[petscii][password] ESC [ A
+  in:   a\e[A\r
+  echo: 
+  ret:  Ok(Some("♠[A"))
+[petscii][password] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: 
+  ret:  Ok(Some(""))
+[petscii][password] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: 
+  ret:  Ok(Some("π▃♣"))
+[petscii][password] Ctrl+C
+  in:   a\x03
+  echo: 
+  ret:  Ok(Some(""))
+[petscii][password] LF only
+  in:   z\n
+
+  echo: 
+  ret:  Ok(Some("♦"))
+[petscii][password] CR LF
+  in:   z\r\n
+
+  echo: 
+  ret:  Ok(Some("♦"))
+[petscii][password] CR NUL
+  in:   z\r\x00
+  echo: 
+  ret:  Ok(Some("♦"))
+[petscii][password] incomplete lead byte + CR
+  in:   \xC1\r
+  echo: 
+  ret:  Ok(Some("♠"))
+[petscii][masked(*)] ascii
+  in:   abc\r
+  echo: ***
+  ret:  Ok(Some("♠│─"))
+[petscii][masked(*)] wide
+  in:   \xC1a\r
+  echo: **
+  ret:  Ok(Some("♠♠"))
+[petscii][masked(*)] wide + BS
+  in:   \xC1a\x08\r
+  echo: **\x08 \x08
+  ret:  Ok(Some("♠"))
+[petscii][masked(*)] wide + DEL
+  in:   \xC1a\x7F\r
+  echo: **\x08 \x08
+  ret:  Ok(Some("♠"))
+[petscii][masked(*)] wide + BS BS BS
+  in:   \xC1a\x08\x08\x08\r
+  echo: **\x08 \x08\x08 \x08
+  ret:  Ok(Some(""))
+[petscii][masked(*)] half + BS
+  in:   ab\x08\r
+  echo: **\x08 \x08
+  ret:  Ok(Some("♠"))
+[petscii][masked(*)] petscii DEL 0x14
+  in:   a\x14\r
+  echo: *
+  ret:  Ok(Some("♠"))
+[petscii][masked(*)] ESC [ A
+  in:   a\e[A\r
+  echo: ***
+  ret:  Ok(Some("♠[A"))
+[petscii][masked(*)] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: **
+  ret:  Ok(Some(""))
+[petscii][masked(*)] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: ***
+  ret:  Ok(Some("π▃♣"))
+[petscii][masked(*)] Ctrl+C
+  in:   a\x03
+  echo: *
+  ret:  Ok(Some(""))
+[petscii][masked(*)] LF only
+  in:   z\n
+
+  echo: *
+  ret:  Ok(Some("♦"))
+[petscii][masked(*)] CR LF
+  in:   z\r\n
+
+  echo: *
+  ret:  Ok(Some("♦"))
+[petscii][masked(*)] CR NUL
+  in:   z\r\x00
+  echo: *
+  ret:  Ok(Some("♦"))
+[petscii][masked(*)] incomplete lead byte + CR
+  in:   \xC1\r
+  echo: *
+  ret:  Ok(Some("♠"))
