@@ -141,9 +141,12 @@ pub enum Role {
 | c64_petscii | 40 | 25 | 1 | PETSCII | PetsciiCtrl |
 | c64_ansi | 40 | 25 | 1 | PETSCII | Ansi |
 | 40col_sjis | 40 | 25 | 2 | ShiftJIS | Ansi |
+| jterm40 | 40 | 25 | 1 | ShiftJIS | Ansi |
 | 40col_utf8 | 40 | 25 | 2 | UTF-8 | Ansi |
 
 カスタムプロファイルは `config.toml` の `[[terminal.profiles]]` で定義可能。
+
+文字コード・プロファイル・出力モード・言語がいつ何から決まるか、既知の癖、ゴールデンテスト（`tests/golden/`）の使い方は `docs/terminal_model.md` を参照。端末まわりを変更するときは、ゴールデンに差分が出ないこと（または差分が意図したものであること）を確認する。
 
 ### 国際化 (i18n)
 
@@ -210,8 +213,7 @@ hobbs/
 │   ├── config.rs
 │   ├── error.rs          # HobbsError定義
 │   ├── server/           # Telnetサーバ層
-│   ├── terminal/         # 端末プロファイル
-│   ├── screen/           # 画面表示
+│   ├── terminal/         # 端末プロファイル・設定・表示幅
 │   ├── auth/             # 認証・会員管理
 │   ├── board/            # 掲示板
 │   ├── chat/             # チャット
@@ -299,4 +301,5 @@ type:
 - `05_protocol.md` - プロトコル仕様
 - `06_screens.md` - 画面設計
 - `07_security.md` - セキュリティ仕様
+- `terminal_model.md` - 端末・文字コードのしくみ（現状と既知の癖）
 - `operation_guide.md` - 運用ガイド

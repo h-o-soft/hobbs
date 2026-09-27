@@ -13,15 +13,12 @@ pub mod wire;
 
 pub use encoding::{
     convert_ansi_to_petscii_ctrl, convert_caret_escape, decode_cp437, decode_from_client,
-    decode_from_client_detailed, decode_petscii, decode_shiftjis, decode_shiftjis_strict,
-    encode_cp437, encode_for_client, encode_for_client_detailed, encode_petscii, encode_shiftjis,
-    encode_shiftjis_strict, process_output_mode, strip_ansi_sequences, CharacterEncoding,
-    DecodeResult, EncodeResult, OutputMode,
+    decode_petscii, decode_shiftjis, encode_cp437, encode_for_client, encode_petscii,
+    encode_shiftjis, process_output_mode, strip_ansi_sequences, CharacterEncoding, DecodeResult,
+    EncodeResult, OutputMode,
 };
 pub use input::{EchoMode, InputResult, LineBuffer, MultiLineBuffer};
 pub use listener::{ConnectionPermit, TelnetServer};
 pub use session::{SessionInfo, SessionManager, SessionState, TelnetSession};
 pub use telnet::{iac, initial_negotiation, option, NegotiationState, TelnetCommand, TelnetParser};
-pub use wire::{
-    normalize_newlines, screen_echo_bytes, to_wire, write_screen_echo, NewlinePolicy,
-};
+pub use wire::{normalize_newlines, screen_echo_bytes, to_wire, write_screen_echo, NewlinePolicy};

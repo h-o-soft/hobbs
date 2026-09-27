@@ -324,7 +324,10 @@ impl Default for LoggingConfig {
 /// Terminal configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct TerminalConfig {
-    /// Default terminal profile (standard, standard_utf8, dos, c64, c64_petscii, c64_ansi, or custom).
+    /// Terminal profile applied when a client connects (a built-in profile name:
+    /// standard, standard_utf8, dos, c64, c64_petscii, c64_ansi, 40col_sjis,
+    /// jterm40, 40col_utf8). Custom profiles are not consulted here.
+    /// See docs/terminal_model.md.
     #[serde(default = "default_terminal_profile")]
     pub default_profile: String,
     /// Enable auto-paging for terminals without scroll capability.
@@ -375,7 +378,8 @@ pub struct ProfileConfig {
     /// Output mode (ansi, plain, petscii_ctrl).
     #[serde(default = "default_profile_output_mode")]
     pub output_mode: String,
-    /// Template directory name (relative to templates/).
+    /// Unused. Kept so that existing config files still parse.
+    /// The template set is chosen from `width` (see docs/terminal_model.md).
     #[serde(default = "default_profile_template_dir")]
     pub template_dir: String,
 }

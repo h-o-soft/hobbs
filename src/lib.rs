@@ -17,7 +17,6 @@ pub mod logging;
 pub mod mail;
 pub mod rate_limit;
 pub mod rss;
-pub mod screen;
 pub mod script;
 pub mod server;
 pub mod template;
@@ -72,15 +71,11 @@ pub use rss::{
     DEFAULT_CHECK_INTERVAL_SECS, DEFAULT_FETCH_INTERVAL, MAX_CONSECUTIVE_ERRORS,
     MAX_DESCRIPTION_LENGTH as MAX_RSS_DESCRIPTION_LENGTH, MAX_FEED_SIZE, MAX_ITEMS_PER_FEED,
 };
-pub use screen::{
-    create_screen, create_screen_from_profile, AnsiScreen, Color, PlainScreen, Screen,
-};
 pub use server::{
-    decode_from_client, decode_shiftjis, decode_shiftjis_strict, encode_for_client,
-    encode_shiftjis, encode_shiftjis_strict, initial_negotiation, CharacterEncoding, DecodeResult,
-    EchoMode, EncodeResult, InputResult, LineBuffer, MultiLineBuffer, NegotiationState,
-    SessionInfo, SessionManager as TelnetSessionManager, SessionState, TelnetCommand, TelnetParser,
-    TelnetServer, TelnetSession,
+    decode_from_client, decode_shiftjis, encode_for_client, encode_shiftjis, initial_negotiation,
+    CharacterEncoding, DecodeResult, EchoMode, EncodeResult, InputResult, LineBuffer,
+    MultiLineBuffer, NegotiationState, SessionInfo, SessionManager as TelnetSessionManager,
+    SessionState, TelnetCommand, TelnetParser, TelnetServer, TelnetSession,
 };
 pub use terminal::TerminalProfile;
 
