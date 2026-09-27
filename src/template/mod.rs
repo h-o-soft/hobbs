@@ -43,37 +43,9 @@ pub use loader::{create_system_context, TemplateLoader, WIDTH_40, WIDTH_80};
 pub use parser::{Node, Parser};
 pub use renderer::Renderer;
 
-/// Calculate the display width of a string considering CJK character width.
-pub fn display_width(s: &str, cjk_width: usize) -> usize {
-    if cjk_width == 1 {
-        s.chars().count()
-    } else {
-        s.chars().map(|c| if c.is_ascii() { 1 } else { 2 }).sum()
-    }
-}
-
-/// Truncate a string to fit within the specified display width.
-pub fn truncate_to_width(s: &str, max_width: usize, cjk_width: usize) -> String {
-    let mut result = String::new();
-    let mut current_width = 0;
-
-    for c in s.chars() {
-        let char_width = if cjk_width == 1 || c.is_ascii() {
-            1
-        } else {
-            2
-        };
-
-        if current_width + char_width > max_width {
-            break;
-        }
-
-        result.push(c);
-        current_width += char_width;
-    }
-
-    result
-}
+// Display width calculation lives in `crate::terminal::width`; re-exported
+// here because the template renderer and existing callers use these paths.
+pub use crate::terminal::width::{display_width, truncate_to_width};
 
 /// Template-related errors.
 #[derive(Error, Debug)]
