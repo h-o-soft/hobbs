@@ -18,6 +18,7 @@ Issue #325（挙動を変えないリファクタリング）の結果を反映�
 - この4つは `src/terminal/settings.rs` の `TerminalSettings` にまとめてあり、`TelnetSession` が持つ。
 - `profile.encoding` と `profile.output_mode` は「そのプロファイルの既定値」である。実際に回線で使う値は `TerminalSettings.encoding` と `TerminalSettings.output_mode` で、両者は食い違うことがある（下記の Q1、Q8）。
 - `SessionHandler` は、入力の文字コード（`line_buffer`）と i18n を、`apply_settings` で settings から導く。
+- output_mode は、常に encoding と合う値にする（`resolve` の `compatible_output_mode`）。PETSCII の制御コードは PETSCII でしか送らず、ANSI は PETSCII では送らない。
 
 ## 2. いつ・何から決まるか
 
@@ -73,7 +74,7 @@ Issue #325（挙動を変えないリファクタリング）の結果を反映�
 
 | ID | 内容 |
 |---|---|
-| ~~Q1~~ | （解決済み）ログイン時と設定の保存時は、プロファイルの output_mode を適用する |
+| ~~Q1~~ | （解決済み）ログイン時と設定の保存時は、プロファイルの output_mode を適用する。ただし output_mode は、回線上の文字コードに合わせて調整する（PETSCII なら PetsciiCtrl、それ以外で PetsciiCtrl なら Ansi） |
 | Q2 | ログイン時と設定の保存時は、カスタムプロファイルを見ない。未知の名前は standard になる |
 | Q3 | ウェルカム、メインメニュー、ヘルプは、プロファイルに関係なく cjk_width=2 として描画される |
 | ~~Q4~~ | （解決済み）PETSCII のエンコーダは PETSCII の制御コードをそのまま送り、CRLF を CR 1つにする。PETSCII に無い記号（`| _ \ ^ ~ { }` など）は近い字形に置き換える |
