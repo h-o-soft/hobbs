@@ -5,6 +5,8 @@
 //! ANSI support, etc.).
 
 mod profile;
+pub mod settings;
 pub mod width;
 
 pub use profile::TerminalProfile;
+pub use settings::TerminalSettings;

@@ -172,8 +172,7 @@ impl ScreenContext {
                 if is_last {
                     // Last segment: send without trailing CRLF (might be a prompt)
                     if !segment.is_empty() {
-                        let encoded =
-                            to_wire(segment, encoding, output_mode, NewlinePolicy::AsIs);
+                        let encoded = to_wire(segment, encoding, output_mode, NewlinePolicy::AsIs);
                         session.stream_mut().write_all(&encoded).await?;
                     }
                 } else {

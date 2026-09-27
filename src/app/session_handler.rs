@@ -25,7 +25,8 @@ use crate::server::{
     LineBuffer, NewlinePolicy, SessionManager, SessionState, TelnetParser, TelnetSession,
 };
 use crate::template::{create_system_context, TemplateContext, TemplateLoader, Value};
-use crate::terminal::TerminalProfile;
+use crate::terminal::settings::resolve;
+use crate::terminal::{TerminalProfile, TerminalSettings};
 
 /// Session handler for managing a single client session.
 pub struct SessionHandler {
@@ -43,8 +44,11 @@ pub struct SessionHandler {
     chat_manager: Arc<ChatRoomManager>,
     /// Rate limiters for user actions.
     rate_limiters: Arc<RateLimiters>,
-    /// Terminal profile.
-    profile: TerminalProfile,
+    /// Terminal profile applied when a client connects.
+    ///
+    /// The profile in effect afterwards lives in the session's
+    /// `TerminalSettings` (`session.settings().profile`).
+    connect_profile: TerminalProfile,
     /// Screen renderer.
     screen: Box<dyn Screen>,
     /// Current i18n instance.
@@ -91,7 +95,7 @@ impl SessionHandler {
             session_manager,
             chat_manager,
             rate_limiters,
-            profile,
+            connect_profile: profile,
             screen,
             i18n,
             line_buffer,
@@ -129,7 +133,7 @@ impl SessionHandler {
             session_manager,
             chat_manager,
             rate_limiters,
-            profile,
+            connect_profile: profile,
             screen,
             i18n,
             line_buffer,
@@ -141,8 +145,13 @@ impl SessionHandler {
 
     /// Run the session loop.
     pub async fn run(&mut self, session: &mut TelnetSession) -> Result<()> {
-        // Set output mode from profile (encoding is set later via language selection or login)
-        session.set_output_mode(self.profile.output_mode);
+        // Initial terminal settings (encoding is set later via language selection or login)
+        let settings = resolve::on_connect(
+            session.settings(),
+            self.connect_profile.clone(),
+            &self.config.locale.language,
+        );
+        self.apply_settings(session, settings);
 
         // Register session
         self.session_manager.register(session).await;
@@ -217,7 +226,7 @@ impl SessionHandler {
                     }
                 },
                 SessionState::Board => {
-                    let mut screen_ctx = self.create_screen_context();
+                    let mut screen_ctx = self.create_screen_context(session.settings());
                     match super::screens::BoardScreen::run_list(&mut screen_ctx, session).await? {
                         super::screens::ScreenResult::Logout => {
                             session.clear_user();
@@ -232,7 +241,7 @@ impl SessionHandler {
                     }
                 }
                 SessionState::Chat => {
-                    let mut screen_ctx = self.create_screen_context();
+                    let mut screen_ctx = self.create_screen_context(session.settings());
                     match super::screens::ChatScreen::run_list(&mut screen_ctx, session).await? {
                         super::screens::ScreenResult::Logout => {
                             session.clear_user();
@@ -247,7 +256,7 @@ impl SessionHandler {
                     }
                 }
                 SessionState::Mail => {
-                    let mut screen_ctx = self.create_screen_context();
+                    let mut screen_ctx = self.create_screen_context(session.settings());
                     match super::screens::MailScreen::run_inbox(&mut screen_ctx, session).await? {
                         super::screens::ScreenResult::Logout => {
                             session.clear_user();
@@ -262,7 +271,7 @@ impl SessionHandler {
                     }
                 }
                 SessionState::Files => {
-                    let mut screen_ctx = self.create_screen_context();
+                    let mut screen_ctx = self.create_screen_context(session.settings());
                     match super::screens::FileScreen::run_browser(&mut screen_ctx, session, None)
                         .await?
                     {
@@ -279,7 +288,7 @@ impl SessionHandler {
                     }
                 }
                 SessionState::Script => {
-                    let mut screen_ctx = self.create_screen_context();
+                    let mut screen_ctx = self.create_screen_context(session.settings());
                     match super::screens::ScriptScreen::run(&mut screen_ctx, session).await? {
                         super::screens::ScreenResult::Logout => {
                             session.clear_user();
@@ -294,7 +303,7 @@ impl SessionHandler {
                     }
                 }
                 SessionState::Admin => {
-                    let mut screen_ctx = self.create_screen_context();
+                    let mut screen_ctx = self.create_screen_context(session.settings());
                     match super::screens::AdminScreen::run(&mut screen_ctx, session).await? {
                         super::screens::ScreenResult::Logout => {
                             session.clear_user();
@@ -309,7 +318,7 @@ impl SessionHandler {
                     }
                 }
                 SessionState::News => {
-                    let mut screen_ctx = self.create_screen_context();
+                    let mut screen_ctx = self.create_screen_context(session.settings());
                     match super::screens::RssScreen::run(&mut screen_ctx, session).await? {
                         super::screens::ScreenResult::Logout => {
                             session.clear_user();
@@ -368,35 +377,10 @@ Select language / Gengo sentaku:
 
         // Read user input
         let input = self.read_line(session).await?;
-        let input = input.trim().to_uppercase();
 
         // Apply selection
-        match input.as_str() {
-            "E" | "1" => {
-                // English (UTF-8)
-                self.set_language("en");
-                session.set_encoding(CharacterEncoding::Utf8);
-                self.line_buffer.set_encoding(CharacterEncoding::Utf8);
-            }
-            "J" | "2" => {
-                // Japanese (ShiftJIS)
-                self.set_language("ja");
-                session.set_encoding(CharacterEncoding::ShiftJIS);
-                self.line_buffer.set_encoding(CharacterEncoding::ShiftJIS);
-            }
-            "U" | "3" => {
-                // Japanese (UTF-8)
-                self.set_language("ja");
-                session.set_encoding(CharacterEncoding::Utf8);
-                self.line_buffer.set_encoding(CharacterEncoding::Utf8);
-            }
-            _ => {
-                // Default to English (UTF-8) for invalid input
-                self.set_language("en");
-                session.set_encoding(CharacterEncoding::Utf8);
-                self.line_buffer.set_encoding(CharacterEncoding::Utf8);
-            }
-        }
+        let settings = resolve::on_language_selected(session.settings(), &input);
+        self.apply_settings(session, settings);
 
         Ok(())
     }
@@ -411,23 +395,26 @@ Select language / Gengo sentaku:
             .unwrap_or_else(|| Arc::new(I18n::empty(lang)));
     }
 
-    /// Set the terminal profile.
+    /// Apply new terminal settings.
     ///
-    /// Updates the profile and recreates the screen renderer.
-    fn set_terminal_profile(&mut self, profile_name: &str) {
-        let new_profile = TerminalProfile::from_name(profile_name);
-        if new_profile != self.profile {
-            self.profile = new_profile.clone();
-            self.screen = create_screen_from_profile(&new_profile);
+    /// This is the only place where a session's terminal settings change.
+    /// It stores them in the session and updates the values derived from
+    /// them: input decoding (`line_buffer`), i18n and the screen renderer.
+    fn apply_settings(&mut self, session: &mut TelnetSession, settings: TerminalSettings) {
+        if settings.profile != session.settings().profile {
+            self.screen = create_screen_from_profile(&settings.profile);
         }
+        self.line_buffer.set_encoding(settings.encoding);
+        self.set_language(&settings.language);
+        session.set_settings(settings);
     }
 
     /// Show the welcome screen.
     async fn show_welcome(&self, session: &mut TelnetSession) -> Result<()> {
         let context = self.create_context();
-        let content = self
-            .template_loader
-            .render("welcome", self.profile.width, &context)?;
+        let content =
+            self.template_loader
+                .render("welcome", session.settings().profile.width, &context)?;
         let content = convert_caret_escape(&content);
         self.send(session, &content).await
     }
@@ -512,11 +499,8 @@ Select language / Gengo sentaku:
                     self.login_limiter.clear(&peer_addr);
                     session.set_user(user.id, user.username.clone());
 
-                    // Apply user's encoding preference
-                    session.set_encoding(user.encoding);
-                    self.line_buffer.set_encoding(user.encoding);
-
                     // Save user settings for later application
+                    let user_encoding = user.encoding;
                     let user_id = user.id;
                     let user_role = user.role;
                     let user_language = user.language.clone();
@@ -531,9 +515,15 @@ Select language / Gengo sentaku:
                         warn!("Failed to update last login: {}", e);
                     }
 
-                    // Now apply language and terminal preferences (after user_repo borrow ends)
-                    self.set_language(&user_language);
-                    self.set_terminal_profile(&user_terminal);
+                    // Apply the user's saved encoding, language and terminal
+                    // (after user_repo borrow ends; nothing is sent before this)
+                    let settings = resolve::on_login(
+                        session.settings(),
+                        &user_language,
+                        &user_terminal,
+                        user_encoding,
+                    );
+                    self.apply_settings(session, settings);
 
                     // Show login success message
                     self.send_line(
@@ -750,7 +740,7 @@ Select language / Gengo sentaku:
             }
             MenuAction::Profile => {
                 if is_logged_in {
-                    let mut screen_ctx = self.create_screen_context();
+                    let mut screen_ctx = self.create_screen_context(session.settings());
                     match super::screens::ProfileScreen::run(&mut screen_ctx, session).await? {
                         super::screens::ScreenResult::Logout => {
                             return Ok(MenuResult::Logout);
@@ -764,12 +754,13 @@ Select language / Gengo sentaku:
                             terminal_profile,
                         } => {
                             // Apply new settings to session
-                            session.set_encoding(encoding);
-                            self.line_buffer.set_encoding(encoding);
-                            self.set_language(&language);
-                            if let Some(profile) = terminal_profile {
-                                self.set_terminal_profile(&profile);
-                            }
+                            let settings = resolve::on_settings_changed(
+                                session.settings(),
+                                &language,
+                                encoding,
+                                terminal_profile.as_deref(),
+                            );
+                            self.apply_settings(session, settings);
                         }
                         _ => {}
                     }
@@ -779,7 +770,7 @@ Select language / Gengo sentaku:
                 }
             }
             MenuAction::MemberList => {
-                let mut screen_ctx = self.create_screen_context();
+                let mut screen_ctx = self.create_screen_context(session.settings());
                 match super::screens::MemberScreen::run(&mut screen_ctx, session).await? {
                     super::screens::ScreenResult::Logout => {
                         return Ok(MenuResult::Logout);
@@ -799,7 +790,7 @@ Select language / Gengo sentaku:
                 }
             }
             MenuAction::Help => {
-                let mut screen_ctx = self.create_screen_context();
+                let mut screen_ctx = self.create_screen_context(session.settings());
                 let _ = super::screens::HelpScreen::run(&mut screen_ctx, session).await;
             }
             MenuAction::Logout => {
@@ -918,9 +909,9 @@ Select language / Gengo sentaku:
         context.set("menu.login", Value::bool(menu_items.login));
         context.set("menu.register", Value::bool(menu_items.register));
 
-        let content = self
-            .template_loader
-            .render("main_menu", self.profile.width, &context)?;
+        let content =
+            self.template_loader
+                .render("main_menu", session.settings().profile.width, &context)?;
         let content = convert_caret_escape(&content);
         self.send(session, &content).await
     }
@@ -928,9 +919,9 @@ Select language / Gengo sentaku:
     /// Show help screen.
     async fn show_help(&self, session: &mut TelnetSession) -> Result<()> {
         let context = self.create_context();
-        let content = self
-            .template_loader
-            .render("help", self.profile.width, &context)?;
+        let content =
+            self.template_loader
+                .render("help", session.settings().profile.width, &context)?;
         let content = convert_caret_escape(&content);
         self.send(session, &content).await?;
 
@@ -970,12 +961,12 @@ Select language / Gengo sentaku:
     }
 
     /// Create a screen context for screen handlers.
-    fn create_screen_context(&self) -> super::screens::ScreenContext {
+    fn create_screen_context(&self, settings: &TerminalSettings) -> super::screens::ScreenContext {
         super::screens::ScreenContext::new(
             Arc::clone(&self.db),
             Arc::clone(&self.config),
             Arc::clone(&self.template_loader),
-            self.profile.clone(),
+            settings.profile.clone(),
             Arc::clone(&self.i18n),
             self.line_buffer.encoding(),
             Arc::clone(&self.chat_manager),
@@ -1367,13 +1358,13 @@ title = "Title""#,
 
         // Set to Japanese and create screen context
         handler.set_language("ja");
-        let screen_ctx = handler.create_screen_context();
+        let screen_ctx = handler.create_screen_context(&TerminalSettings::default());
         assert_eq!(screen_ctx.i18n.locale(), "ja");
         assert_eq!(screen_ctx.i18n.t("screen.title"), "タイトル");
 
         // Set to English and create screen context
         handler.set_language("en");
-        let screen_ctx = handler.create_screen_context();
+        let screen_ctx = handler.create_screen_context(&TerminalSettings::default());
         assert_eq!(screen_ctx.i18n.locale(), "en");
         assert_eq!(screen_ctx.i18n.t("screen.title"), "Title");
     }

@@ -11,6 +11,7 @@ use tracing::{debug, info};
 use uuid::Uuid;
 
 use super::encoding::{CharacterEncoding, OutputMode};
+use crate::terminal::TerminalSettings;
 
 /// Session state representing the current phase of the connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,10 +64,8 @@ pub struct TelnetSession {
     user_id: Option<i64>,
     /// Username if logged in.
     username: Option<String>,
-    /// Character encoding for this session.
-    encoding: CharacterEncoding,
-    /// Output mode for this session (ANSI, Plain, PetsciiCtrl).
-    output_mode: OutputMode,
+    /// Terminal settings in effect (encoding, output mode, profile, language).
+    settings: TerminalSettings,
     /// Whether this is a guest session (not logged in but accessing menu).
     is_guest: bool,
 }
@@ -85,8 +84,7 @@ impl TelnetSession {
             last_activity: Instant::now(),
             user_id: None,
             username: None,
-            encoding: CharacterEncoding::default(),
-            output_mode: OutputMode::default(),
+            settings: TerminalSettings::default(),
             is_guest: false,
         }
     }
@@ -111,8 +109,10 @@ impl TelnetSession {
             last_activity: Instant::now(),
             user_id: None,
             username: None,
-            encoding,
-            output_mode: OutputMode::default(),
+            settings: TerminalSettings {
+                encoding,
+                ..TerminalSettings::default()
+            },
             is_guest: false,
         }
     }
@@ -138,8 +138,11 @@ impl TelnetSession {
             last_activity: Instant::now(),
             user_id: None,
             username: None,
-            encoding,
-            output_mode,
+            settings: TerminalSettings {
+                encoding,
+                output_mode,
+                ..TerminalSettings::default()
+            },
             is_guest: false,
         }
     }
@@ -244,33 +247,59 @@ impl TelnetSession {
         self.touch();
     }
 
+    /// Get the terminal settings in effect for this session.
+    pub fn settings(&self) -> &TerminalSettings {
+        &self.settings
+    }
+
+    /// Replace the terminal settings for this session.
+    ///
+    /// Use the rules in `crate::terminal::settings::resolve` to compute the
+    /// new settings.
+    pub fn set_settings(&mut self, settings: TerminalSettings) {
+        debug!(
+            "Session {} terminal settings changed: profile={} encoding={:?} output_mode={:?} language={} -> profile={} encoding={:?} output_mode={:?} language={}",
+            self.id,
+            self.settings.profile.name,
+            self.settings.encoding,
+            self.settings.output_mode,
+            self.settings.language,
+            settings.profile.name,
+            settings.encoding,
+            settings.output_mode,
+            settings.language
+        );
+        self.settings = settings;
+        self.touch();
+    }
+
     /// Get the character encoding for this session.
     pub fn encoding(&self) -> CharacterEncoding {
-        self.encoding
+        self.settings.encoding
     }
 
     /// Set the character encoding for this session.
     pub fn set_encoding(&mut self, encoding: CharacterEncoding) {
         debug!(
             "Session {} encoding changed: {:?} -> {:?}",
-            self.id, self.encoding, encoding
+            self.id, self.settings.encoding, encoding
         );
-        self.encoding = encoding;
+        self.settings.encoding = encoding;
         self.touch();
     }
 
     /// Get the output mode for this session.
     pub fn output_mode(&self) -> OutputMode {
-        self.output_mode
+        self.settings.output_mode
     }
 
     /// Set the output mode for this session.
     pub fn set_output_mode(&mut self, output_mode: OutputMode) {
         debug!(
             "Session {} output_mode changed: {:?} -> {:?}",
-            self.id, self.output_mode, output_mode
+            self.id, self.settings.output_mode, output_mode
         );
-        self.output_mode = output_mode;
+        self.settings.output_mode = output_mode;
         self.touch();
     }
 
