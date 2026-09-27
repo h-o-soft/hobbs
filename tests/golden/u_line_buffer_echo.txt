@@ -1,0 +1,744 @@
+[shiftjis][normal] ascii
+  in:   abc\r
+  echo: abc\r\n
+  res:  Buffering Buffering Buffering Line("abc")
+[shiftjis][normal] wide
+  in:   \x82\xA0\x82\xA2\r
+  echo: \x82\xA0\x82\xA2\r\n
+  res:  Buffering Buffering Buffering Buffering Line("あい")
+[shiftjis][normal] wide + BS
+  in:   \x82\xA0\x82\xA2\x08\r
+  echo: \x82\xA0\x82\xA2\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Line("あ")
+[shiftjis][normal] wide + DEL
+  in:   \x82\xA0\x82\xA2\x7F\r
+  echo: \x82\xA0\x82\xA2\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Line("あ")
+[shiftjis][normal] wide + BS BS BS
+  in:   \x82\xA0\x82\xA2\x08\x08\x08\r
+  echo: \x82\xA0\x82\xA2\x08\x08  \x08\x08\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Buffering Line("")
+[shiftjis][normal] half + BS
+  in:   \xB6\xC5\x08\r
+  echo: \xB6\xC5\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("ｶ")
+[shiftjis][normal] petscii DEL 0x14
+  in:   a\x14\r
+  echo: a\r\n
+  res:  Buffering Buffering Line("a")
+[shiftjis][normal] ESC [ A
+  in:   a\e[A\r
+  echo: a[A\r\n
+  res:  Buffering Buffering Buffering Buffering Line("a[A")
+[shiftjis][normal] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: \xFF^C\r\nx\r\n
+  res:  Buffering Buffering Cancel Buffering Line("x")
+[shiftjis][normal] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: \xFF\xFDx\r\n
+  res:  Buffering Buffering Buffering Buffering Line("��x")
+[shiftjis][normal] Ctrl+C
+  in:   a\x03
+  echo: a^C\r\n
+  res:  Buffering Cancel
+[shiftjis][normal] LF only
+  in:   z\n
+
+  echo: z\r\n
+  res:  Buffering Line("z")
+[shiftjis][normal] CR LF
+  in:   z\r\n
+
+  echo: z\r\n
+  res:  Buffering Line("z") Buffering
+[shiftjis][normal] CR NUL
+  in:   z\r\x00
+  echo: z\r\n
+  res:  Buffering Line("z") Buffering
+[shiftjis][normal] incomplete lead byte + CR
+  in:   \x82\r
+  echo: \x82\r\n
+  res:  Buffering Line("�")
+[shiftjis][password] ascii
+  in:   abc\r
+  echo: \r\n
+  res:  Buffering Buffering Buffering Line("abc")
+[shiftjis][password] wide
+  in:   \x82\xA0\x82\xA2\r
+  echo: \r\n
+  res:  Buffering Buffering Buffering Buffering Line("あい")
+[shiftjis][password] wide + BS
+  in:   \x82\xA0\x82\xA2\x08\r
+  echo: \x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Line("あ")
+[shiftjis][password] wide + DEL
+  in:   \x82\xA0\x82\xA2\x7F\r
+  echo: \x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Line("あ")
+[shiftjis][password] wide + BS BS BS
+  in:   \x82\xA0\x82\xA2\x08\x08\x08\r
+  echo: \x08\x08  \x08\x08\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Buffering Line("")
+[shiftjis][password] half + BS
+  in:   \xB6\xC5\x08\r
+  echo: \x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("ｶ")
+[shiftjis][password] petscii DEL 0x14
+  in:   a\x14\r
+  echo: \r\n
+  res:  Buffering Buffering Line("a")
+[shiftjis][password] ESC [ A
+  in:   a\e[A\r
+  echo: \r\n
+  res:  Buffering Buffering Buffering Buffering Line("a[A")
+[shiftjis][password] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: ^C\r\n\r\n
+  res:  Buffering Buffering Cancel Buffering Line("x")
+[shiftjis][password] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: \r\n
+  res:  Buffering Buffering Buffering Buffering Line("��x")
+[shiftjis][password] Ctrl+C
+  in:   a\x03
+  echo: ^C\r\n
+  res:  Buffering Cancel
+[shiftjis][password] LF only
+  in:   z\n
+
+  echo: \r\n
+  res:  Buffering Line("z")
+[shiftjis][password] CR LF
+  in:   z\r\n
+
+  echo: \r\n
+  res:  Buffering Line("z") Buffering
+[shiftjis][password] CR NUL
+  in:   z\r\x00
+  echo: \r\n
+  res:  Buffering Line("z") Buffering
+[shiftjis][password] incomplete lead byte + CR
+  in:   \x82\r
+  echo: \r\n
+  res:  Buffering Line("�")
+[shiftjis][masked(*)] ascii
+  in:   abc\r
+  echo: ***\r\n
+  res:  Buffering Buffering Buffering Line("abc")
+[shiftjis][masked(*)] wide
+  in:   \x82\xA0\x82\xA2\r
+  echo: **\r\n
+  res:  Buffering Buffering Buffering Buffering Line("あい")
+[shiftjis][masked(*)] wide + BS
+  in:   \x82\xA0\x82\xA2\x08\r
+  echo: **\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Line("あ")
+[shiftjis][masked(*)] wide + DEL
+  in:   \x82\xA0\x82\xA2\x7F\r
+  echo: **\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Line("あ")
+[shiftjis][masked(*)] wide + BS BS BS
+  in:   \x82\xA0\x82\xA2\x08\x08\x08\r
+  echo: **\x08\x08  \x08\x08\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Buffering Line("")
+[shiftjis][masked(*)] half + BS
+  in:   \xB6\xC5\x08\r
+  echo: **\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("ｶ")
+[shiftjis][masked(*)] petscii DEL 0x14
+  in:   a\x14\r
+  echo: *\r\n
+  res:  Buffering Buffering Line("a")
+[shiftjis][masked(*)] ESC [ A
+  in:   a\e[A\r
+  echo: ***\r\n
+  res:  Buffering Buffering Buffering Buffering Line("a[A")
+[shiftjis][masked(*)] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: *^C\r\n*\r\n
+  res:  Buffering Buffering Cancel Buffering Line("x")
+[shiftjis][masked(*)] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: ***\r\n
+  res:  Buffering Buffering Buffering Buffering Line("��x")
+[shiftjis][masked(*)] Ctrl+C
+  in:   a\x03
+  echo: *^C\r\n
+  res:  Buffering Cancel
+[shiftjis][masked(*)] LF only
+  in:   z\n
+
+  echo: *\r\n
+  res:  Buffering Line("z")
+[shiftjis][masked(*)] CR LF
+  in:   z\r\n
+
+  echo: *\r\n
+  res:  Buffering Line("z") Buffering
+[shiftjis][masked(*)] CR NUL
+  in:   z\r\x00
+  echo: *\r\n
+  res:  Buffering Line("z") Buffering
+[shiftjis][masked(*)] incomplete lead byte + CR
+  in:   \x82\r
+  echo: \x82\r\n
+  res:  Buffering Line("�")
+[utf8][normal] ascii
+  in:   abc\r
+  echo: abc\r\n
+  res:  Buffering Buffering Buffering Line("abc")
+[utf8][normal] wide
+  in:   \xE3\x81\x82\xE3\x81\x84\r
+  echo: \xE3\x81\x82\xE3\x81\x84\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Line("あい")
+[utf8][normal] wide + BS
+  in:   \xE3\x81\x82\xE3\x81\x84\x08\r
+  echo: \xE3\x81\x82\xE3\x81\x84\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Buffering Line("あ")
+[utf8][normal] wide + DEL
+  in:   \xE3\x81\x82\xE3\x81\x84\x7F\r
+  echo: \xE3\x81\x82\xE3\x81\x84\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Buffering Line("あ")
+[utf8][normal] wide + BS BS BS
+  in:   \xE3\x81\x82\xE3\x81\x84\x08\x08\x08\r
+  echo: \xE3\x81\x82\xE3\x81\x84\x08\x08  \x08\x08\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Buffering Buffering Buffering Line("")
+[utf8][normal] half + BS
+  in:   \xEF\xBD\xB6\xEF\xBE\x85\x08\r
+  echo: \xEF\xBD\xB6\xEF\xBE\x85\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Buffering Line("ｶ")
+[utf8][normal] petscii DEL 0x14
+  in:   a\x14\r
+  echo: a\r\n
+  res:  Buffering Buffering Line("a")
+[utf8][normal] ESC [ A
+  in:   a\e[A\r
+  echo: a[A\r\n
+  res:  Buffering Buffering Buffering Buffering Line("a[A")
+[utf8][normal] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: \xFF\xFB^C\r\nx\r\n
+  res:  Buffering Buffering Cancel Buffering Line("x")
+[utf8][normal] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: \xFF\xFDx\r\n
+  res:  Buffering Buffering Buffering Buffering Line("��x")
+[utf8][normal] Ctrl+C
+  in:   a\x03
+  echo: a^C\r\n
+  res:  Buffering Cancel
+[utf8][normal] LF only
+  in:   z\n
+
+  echo: z\r\n
+  res:  Buffering Line("z")
+[utf8][normal] CR LF
+  in:   z\r\n
+
+  echo: z\r\n
+  res:  Buffering Line("z") Buffering
+[utf8][normal] CR NUL
+  in:   z\r\x00
+  echo: z\r\n
+  res:  Buffering Line("z") Buffering
+[utf8][normal] incomplete lead byte + CR
+  in:   \xE3\r
+  echo: \xE3\r\n
+  res:  Buffering Line("�")
+[utf8][password] ascii
+  in:   abc\r
+  echo: \r\n
+  res:  Buffering Buffering Buffering Line("abc")
+[utf8][password] wide
+  in:   \xE3\x81\x82\xE3\x81\x84\r
+  echo: \r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Line("あい")
+[utf8][password] wide + BS
+  in:   \xE3\x81\x82\xE3\x81\x84\x08\r
+  echo: \x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Buffering Line("あ")
+[utf8][password] wide + DEL
+  in:   \xE3\x81\x82\xE3\x81\x84\x7F\r
+  echo: \x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Buffering Line("あ")
+[utf8][password] wide + BS BS BS
+  in:   \xE3\x81\x82\xE3\x81\x84\x08\x08\x08\r
+  echo: \x08\x08  \x08\x08\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Buffering Buffering Buffering Line("")
+[utf8][password] half + BS
+  in:   \xEF\xBD\xB6\xEF\xBE\x85\x08\r
+  echo: \x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Buffering Line("ｶ")
+[utf8][password] petscii DEL 0x14
+  in:   a\x14\r
+  echo: \r\n
+  res:  Buffering Buffering Line("a")
+[utf8][password] ESC [ A
+  in:   a\e[A\r
+  echo: \r\n
+  res:  Buffering Buffering Buffering Buffering Line("a[A")
+[utf8][password] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: ^C\r\n\r\n
+  res:  Buffering Buffering Cancel Buffering Line("x")
+[utf8][password] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: \r\n
+  res:  Buffering Buffering Buffering Buffering Line("��x")
+[utf8][password] Ctrl+C
+  in:   a\x03
+  echo: ^C\r\n
+  res:  Buffering Cancel
+[utf8][password] LF only
+  in:   z\n
+
+  echo: \r\n
+  res:  Buffering Line("z")
+[utf8][password] CR LF
+  in:   z\r\n
+
+  echo: \r\n
+  res:  Buffering Line("z") Buffering
+[utf8][password] CR NUL
+  in:   z\r\x00
+  echo: \r\n
+  res:  Buffering Line("z") Buffering
+[utf8][password] incomplete lead byte + CR
+  in:   \xE3\r
+  echo: \r\n
+  res:  Buffering Line("�")
+[utf8][masked(*)] ascii
+  in:   abc\r
+  echo: ***\r\n
+  res:  Buffering Buffering Buffering Line("abc")
+[utf8][masked(*)] wide
+  in:   \xE3\x81\x82\xE3\x81\x84\r
+  echo: **\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Line("あい")
+[utf8][masked(*)] wide + BS
+  in:   \xE3\x81\x82\xE3\x81\x84\x08\r
+  echo: **\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Buffering Line("あ")
+[utf8][masked(*)] wide + DEL
+  in:   \xE3\x81\x82\xE3\x81\x84\x7F\r
+  echo: **\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Buffering Line("あ")
+[utf8][masked(*)] wide + BS BS BS
+  in:   \xE3\x81\x82\xE3\x81\x84\x08\x08\x08\r
+  echo: **\x08\x08  \x08\x08\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Buffering Buffering Buffering Line("")
+[utf8][masked(*)] half + BS
+  in:   \xEF\xBD\xB6\xEF\xBE\x85\x08\r
+  echo: **\x08\x08  \x08\x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Buffering Buffering Line("ｶ")
+[utf8][masked(*)] petscii DEL 0x14
+  in:   a\x14\r
+  echo: *\r\n
+  res:  Buffering Buffering Line("a")
+[utf8][masked(*)] ESC [ A
+  in:   a\e[A\r
+  echo: ***\r\n
+  res:  Buffering Buffering Buffering Buffering Line("a[A")
+[utf8][masked(*)] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: **^C\r\n*\r\n
+  res:  Buffering Buffering Cancel Buffering Line("x")
+[utf8][masked(*)] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: ***\r\n
+  res:  Buffering Buffering Buffering Buffering Line("��x")
+[utf8][masked(*)] Ctrl+C
+  in:   a\x03
+  echo: *^C\r\n
+  res:  Buffering Cancel
+[utf8][masked(*)] LF only
+  in:   z\n
+
+  echo: *\r\n
+  res:  Buffering Line("z")
+[utf8][masked(*)] CR LF
+  in:   z\r\n
+
+  echo: *\r\n
+  res:  Buffering Line("z") Buffering
+[utf8][masked(*)] CR NUL
+  in:   z\r\x00
+  echo: *\r\n
+  res:  Buffering Line("z") Buffering
+[utf8][masked(*)] incomplete lead byte + CR
+  in:   \xE3\r
+  echo: \xE3\r\n
+  res:  Buffering Line("�")
+[cp437][normal] ascii
+  in:   abc\r
+  echo: abc\r\n
+  res:  Buffering Buffering Buffering Line("abc")
+[cp437][normal] wide
+  in:   \x82\x94\r
+  echo: \x82\x94\r\n
+  res:  Buffering Buffering Line("éö")
+[cp437][normal] wide + BS
+  in:   \x82\x94\x08\r
+  echo: \x82\x94\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("é")
+[cp437][normal] wide + DEL
+  in:   \x82\x94\x7F\r
+  echo: \x82\x94\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("é")
+[cp437][normal] wide + BS BS BS
+  in:   \x82\x94\x08\x08\x08\r
+  echo: \x82\x94\x08 \x08\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Line("")
+[cp437][normal] half + BS
+  in:   ab\x08\r
+  echo: ab\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("a")
+[cp437][normal] petscii DEL 0x14
+  in:   a\x14\r
+  echo: a\r\n
+  res:  Buffering Buffering Line("a")
+[cp437][normal] ESC [ A
+  in:   a\e[A\r
+  echo: a[A\r\n
+  res:  Buffering Buffering Buffering Buffering Line("a[A")
+[cp437][normal] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: \xFF\xFB^C\r\nx\r\n
+  res:  Buffering Buffering Cancel Buffering Line("x")
+[cp437][normal] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: \xFF\xFDx\r\n
+  res:  Buffering Buffering Buffering Buffering Line("\u{a0}²x")
+[cp437][normal] Ctrl+C
+  in:   a\x03
+  echo: a^C\r\n
+  res:  Buffering Cancel
+[cp437][normal] LF only
+  in:   z\n
+
+  echo: z\r\n
+  res:  Buffering Line("z")
+[cp437][normal] CR LF
+  in:   z\r\n
+
+  echo: z\r\n
+  res:  Buffering Line("z") Buffering
+[cp437][normal] CR NUL
+  in:   z\r\x00
+  echo: z\r\n
+  res:  Buffering Line("z") Buffering
+[cp437][normal] incomplete lead byte + CR
+  in:   \x82\r
+  echo: \x82\r\n
+  res:  Buffering Line("é")
+[cp437][password] ascii
+  in:   abc\r
+  echo: \r\n
+  res:  Buffering Buffering Buffering Line("abc")
+[cp437][password] wide
+  in:   \x82\x94\r
+  echo: \r\n
+  res:  Buffering Buffering Line("éö")
+[cp437][password] wide + BS
+  in:   \x82\x94\x08\r
+  echo: \x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("é")
+[cp437][password] wide + DEL
+  in:   \x82\x94\x7F\r
+  echo: \x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("é")
+[cp437][password] wide + BS BS BS
+  in:   \x82\x94\x08\x08\x08\r
+  echo: \x08 \x08\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Line("")
+[cp437][password] half + BS
+  in:   ab\x08\r
+  echo: \x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("a")
+[cp437][password] petscii DEL 0x14
+  in:   a\x14\r
+  echo: \r\n
+  res:  Buffering Buffering Line("a")
+[cp437][password] ESC [ A
+  in:   a\e[A\r
+  echo: \r\n
+  res:  Buffering Buffering Buffering Buffering Line("a[A")
+[cp437][password] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: ^C\r\n\r\n
+  res:  Buffering Buffering Cancel Buffering Line("x")
+[cp437][password] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: \r\n
+  res:  Buffering Buffering Buffering Buffering Line("\u{a0}²x")
+[cp437][password] Ctrl+C
+  in:   a\x03
+  echo: ^C\r\n
+  res:  Buffering Cancel
+[cp437][password] LF only
+  in:   z\n
+
+  echo: \r\n
+  res:  Buffering Line("z")
+[cp437][password] CR LF
+  in:   z\r\n
+
+  echo: \r\n
+  res:  Buffering Line("z") Buffering
+[cp437][password] CR NUL
+  in:   z\r\x00
+  echo: \r\n
+  res:  Buffering Line("z") Buffering
+[cp437][password] incomplete lead byte + CR
+  in:   \x82\r
+  echo: \r\n
+  res:  Buffering Line("é")
+[cp437][masked(*)] ascii
+  in:   abc\r
+  echo: ***\r\n
+  res:  Buffering Buffering Buffering Line("abc")
+[cp437][masked(*)] wide
+  in:   \x82\x94\r
+  echo: **\r\n
+  res:  Buffering Buffering Line("éö")
+[cp437][masked(*)] wide + BS
+  in:   \x82\x94\x08\r
+  echo: **\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("é")
+[cp437][masked(*)] wide + DEL
+  in:   \x82\x94\x7F\r
+  echo: **\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("é")
+[cp437][masked(*)] wide + BS BS BS
+  in:   \x82\x94\x08\x08\x08\r
+  echo: **\x08 \x08\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Line("")
+[cp437][masked(*)] half + BS
+  in:   ab\x08\r
+  echo: **\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("a")
+[cp437][masked(*)] petscii DEL 0x14
+  in:   a\x14\r
+  echo: *\r\n
+  res:  Buffering Buffering Line("a")
+[cp437][masked(*)] ESC [ A
+  in:   a\e[A\r
+  echo: ***\r\n
+  res:  Buffering Buffering Buffering Buffering Line("a[A")
+[cp437][masked(*)] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: **^C\r\n*\r\n
+  res:  Buffering Buffering Cancel Buffering Line("x")
+[cp437][masked(*)] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: ***\r\n
+  res:  Buffering Buffering Buffering Buffering Line("\u{a0}²x")
+[cp437][masked(*)] Ctrl+C
+  in:   a\x03
+  echo: *^C\r\n
+  res:  Buffering Cancel
+[cp437][masked(*)] LF only
+  in:   z\n
+
+  echo: *\r\n
+  res:  Buffering Line("z")
+[cp437][masked(*)] CR LF
+  in:   z\r\n
+
+  echo: *\r\n
+  res:  Buffering Line("z") Buffering
+[cp437][masked(*)] CR NUL
+  in:   z\r\x00
+  echo: *\r\n
+  res:  Buffering Line("z") Buffering
+[cp437][masked(*)] incomplete lead byte + CR
+  in:   \x82\r
+  echo: *\r\n
+  res:  Buffering Line("é")
+[petscii][normal] ascii
+  in:   abc\r
+  echo: abc\r\n
+  res:  Buffering Buffering Buffering Line("♠│─")
+[petscii][normal] wide
+  in:   \xC1a\r
+  echo: \xC1a\r\n
+  res:  Buffering Buffering Line("♠♠")
+[petscii][normal] wide + BS
+  in:   \xC1a\x08\r
+  echo: \xC1a\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("♠")
+[petscii][normal] wide + DEL
+  in:   \xC1a\x7F\r
+  echo: \xC1a\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("♠")
+[petscii][normal] wide + BS BS BS
+  in:   \xC1a\x08\x08\x08\r
+  echo: \xC1a\x08 \x08\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Line("")
+[petscii][normal] half + BS
+  in:   ab\x08\r
+  echo: ab\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("♠")
+[petscii][normal] petscii DEL 0x14
+  in:   a\x14\r
+  echo: a\r\n
+  res:  Buffering Buffering Line("♠")
+[petscii][normal] ESC [ A
+  in:   a\e[A\r
+  echo: a[A\r\n
+  res:  Buffering Buffering Buffering Buffering Line("♠[A")
+[petscii][normal] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: \xFF\xFB^C\r\nx\r\n
+  res:  Buffering Buffering Cancel Buffering Line("♣")
+[petscii][normal] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: \xFF\xFDx\r\n
+  res:  Buffering Buffering Buffering Buffering Line("π▃♣")
+[petscii][normal] Ctrl+C
+  in:   a\x03
+  echo: a^C\r\n
+  res:  Buffering Cancel
+[petscii][normal] LF only
+  in:   z\n
+
+  echo: z\r\n
+  res:  Buffering Line("♦")
+[petscii][normal] CR LF
+  in:   z\r\n
+
+  echo: z\r\n
+  res:  Buffering Line("♦") Buffering
+[petscii][normal] CR NUL
+  in:   z\r\x00
+  echo: z\r\n
+  res:  Buffering Line("♦") Buffering
+[petscii][normal] incomplete lead byte + CR
+  in:   \xC1\r
+  echo: \xC1\r\n
+  res:  Buffering Line("♠")
+[petscii][password] ascii
+  in:   abc\r
+  echo: \r\n
+  res:  Buffering Buffering Buffering Line("♠│─")
+[petscii][password] wide
+  in:   \xC1a\r
+  echo: \r\n
+  res:  Buffering Buffering Line("♠♠")
+[petscii][password] wide + BS
+  in:   \xC1a\x08\r
+  echo: \x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("♠")
+[petscii][password] wide + DEL
+  in:   \xC1a\x7F\r
+  echo: \x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("♠")
+[petscii][password] wide + BS BS BS
+  in:   \xC1a\x08\x08\x08\r
+  echo: \x08 \x08\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Line("")
+[petscii][password] half + BS
+  in:   ab\x08\r
+  echo: \x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("♠")
+[petscii][password] petscii DEL 0x14
+  in:   a\x14\r
+  echo: \r\n
+  res:  Buffering Buffering Line("♠")
+[petscii][password] ESC [ A
+  in:   a\e[A\r
+  echo: \r\n
+  res:  Buffering Buffering Buffering Buffering Line("♠[A")
+[petscii][password] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: ^C\r\n\r\n
+  res:  Buffering Buffering Cancel Buffering Line("♣")
+[petscii][password] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: \r\n
+  res:  Buffering Buffering Buffering Buffering Line("π▃♣")
+[petscii][password] Ctrl+C
+  in:   a\x03
+  echo: ^C\r\n
+  res:  Buffering Cancel
+[petscii][password] LF only
+  in:   z\n
+
+  echo: \r\n
+  res:  Buffering Line("♦")
+[petscii][password] CR LF
+  in:   z\r\n
+
+  echo: \r\n
+  res:  Buffering Line("♦") Buffering
+[petscii][password] CR NUL
+  in:   z\r\x00
+  echo: \r\n
+  res:  Buffering Line("♦") Buffering
+[petscii][password] incomplete lead byte + CR
+  in:   \xC1\r
+  echo: \r\n
+  res:  Buffering Line("♠")
+[petscii][masked(*)] ascii
+  in:   abc\r
+  echo: ***\r\n
+  res:  Buffering Buffering Buffering Line("♠│─")
+[petscii][masked(*)] wide
+  in:   \xC1a\r
+  echo: **\r\n
+  res:  Buffering Buffering Line("♠♠")
+[petscii][masked(*)] wide + BS
+  in:   \xC1a\x08\r
+  echo: **\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("♠")
+[petscii][masked(*)] wide + DEL
+  in:   \xC1a\x7F\r
+  echo: **\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("♠")
+[petscii][masked(*)] wide + BS BS BS
+  in:   \xC1a\x08\x08\x08\r
+  echo: **\x08 \x08\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Buffering Buffering Line("")
+[petscii][masked(*)] half + BS
+  in:   ab\x08\r
+  echo: **\x08 \x08\r\n
+  res:  Buffering Buffering Buffering Line("♠")
+[petscii][masked(*)] petscii DEL 0x14
+  in:   a\x14\r
+  echo: *\r\n
+  res:  Buffering Buffering Line("♠")
+[petscii][masked(*)] ESC [ A
+  in:   a\e[A\r
+  echo: ***\r\n
+  res:  Buffering Buffering Buffering Buffering Line("♠[A")
+[petscii][masked(*)] IAC WILL SGA
+  in:   \xFF\xFB\x03x\r
+  echo: **^C\r\n*\r\n
+  res:  Buffering Buffering Cancel Buffering Line("♣")
+[petscii][masked(*)] IAC DO ECHO
+  in:   \xFF\xFD\x01x\r
+  echo: ***\r\n
+  res:  Buffering Buffering Buffering Buffering Line("π▃♣")
+[petscii][masked(*)] Ctrl+C
+  in:   a\x03
+  echo: *^C\r\n
+  res:  Buffering Cancel
+[petscii][masked(*)] LF only
+  in:   z\n
+
+  echo: *\r\n
+  res:  Buffering Line("♦")
+[petscii][masked(*)] CR LF
+  in:   z\r\n
+
+  echo: *\r\n
+  res:  Buffering Line("♦") Buffering
+[petscii][masked(*)] CR NUL
+  in:   z\r\x00
+  echo: *\r\n
+  res:  Buffering Line("♦") Buffering
+[petscii][masked(*)] incomplete lead byte + CR
+  in:   \xC1\r
+  echo: *\r\n
+  res:  Buffering Line("♠")
