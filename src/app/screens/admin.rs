@@ -27,7 +27,14 @@ impl AdminScreen {
             let mut context = ctx.create_context();
             context.set("is_sysop", Value::bool(Self::is_sysop(ctx, session).await));
             let content = ctx.render_template("admin/menu", &context)?;
-            ctx.send(session, &content).await?;
+            // The menu is longer than one page on 24-line terminals. Auto-paging
+            // would pause in the middle and swallow the number typed at the
+            // pause (e.g. "10" for the session list), so show it in one go.
+            let auto_paging = ctx.auto_paging_enabled();
+            ctx.set_auto_paging(false);
+            let sent = ctx.send(session, &content).await;
+            ctx.set_auto_paging(auto_paging);
+            sent?;
 
             ctx.send(
                 session,
@@ -1246,6 +1253,12 @@ impl AdminScreen {
         Ok(())
     }
 
+    /// Format an elapsed time as `H:MM:SS`.
+    fn format_elapsed(elapsed: std::time::Duration) -> String {
+        let secs = elapsed.as_secs();
+        format!("{}:{:02}:{:02}", secs / 3600, (secs / 60) % 60, secs % 60)
+    }
+
     /// Show active sessions.
     async fn show_sessions(ctx: &mut ScreenContext, session: &mut TelnetSession) -> Result<()> {
         use crate::admin::{AdminError, SessionAdminService};
@@ -1308,10 +1321,11 @@ impl AdminScreen {
             ctx.send_line(
                 session,
                 &format!(
-                    "{:<4} {:<16} {:<16} {:<10}",
+                    "{:<4} {:<16} {:<16} {:<9} {:<10}",
                     ctx.i18n.t("common.number"),
                     ctx.i18n.t("common.user"),
                     "IP",
+                    ctx.i18n.t("admin.session_connected_time"),
                     ctx.i18n.t("common.current")
                 ),
             )
@@ -1325,13 +1339,15 @@ impl AdminScreen {
                 let is_self = sess.id == session.id();
                 let marker = if is_self { " *" } else { "" };
 
+                let connected = Self::format_elapsed(sess.connected_at.elapsed());
                 ctx.send_line(
                     session,
                     &format!(
-                        "{:<4} {:<16} {:<16} {}{}",
+                        "{:<4} {:<16} {:<16} {:<9} {}{}",
                         i + 1,
                         username,
                         ip,
+                        connected,
                         state,
                         marker
                     ),
@@ -3048,5 +3064,14 @@ mod tests {
     #[test]
     fn test_admin_screen_exists() {
         let _ = AdminScreen;
+    }
+
+    #[test]
+    fn test_format_elapsed() {
+        use std::time::Duration;
+        assert_eq!(AdminScreen::format_elapsed(Duration::from_secs(0)), "0:00:00");
+        assert_eq!(AdminScreen::format_elapsed(Duration::from_secs(59)), "0:00:59");
+        assert_eq!(AdminScreen::format_elapsed(Duration::from_secs(3661)), "1:01:01");
+        assert_eq!(AdminScreen::format_elapsed(Duration::from_secs(90061)), "25:01:01");
     }
 }
