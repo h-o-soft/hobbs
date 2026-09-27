@@ -324,10 +324,10 @@ impl Default for LoggingConfig {
 /// Terminal configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct TerminalConfig {
-    /// Terminal profile applied when a client connects (a built-in profile name:
-    /// standard, standard_utf8, dos, c64, 40col_sjis, jterm40, 40col_utf8;
-    /// the former c64_petscii / c64_ansi are aliases of c64).
-    /// Custom profiles are not consulted here.
+    /// Terminal profile applied when a client connects: a custom profile
+    /// name, or a built-in one (standard, standard_utf8, dos, c64,
+    /// 40col_sjis, 40col_utf8; the former c64_petscii / c64_ansi are
+    /// aliases of c64). It also decides the default connection type.
     /// See docs/terminal_model.md.
     #[serde(default = "default_terminal_profile")]
     pub default_profile: String,

@@ -26,8 +26,6 @@ pub use profile::ProfileScreen;
 pub use rss::RssScreen;
 pub use script::ScriptScreen;
 
-use crate::server::CharacterEncoding;
-
 /// Result of a screen action.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScreenResult {
@@ -39,13 +37,12 @@ pub enum ScreenResult {
     Logout,
     /// User wants to quit.
     Quit,
-    /// User changed language/encoding/terminal settings.
+    /// User changed language/terminal settings. (The encoding is decided by
+    /// the connection type and is not changed from the settings screen.)
     SettingsChanged {
         /// New language setting (e.g., "en", "ja").
         language: String,
-        /// New character encoding setting.
-        encoding: CharacterEncoding,
-        /// New terminal profile (if changed).
+        /// New terminal profile name (if changed).
         terminal_profile: Option<String>,
     },
 }

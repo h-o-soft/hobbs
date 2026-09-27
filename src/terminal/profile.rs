@@ -140,20 +140,6 @@ impl TerminalProfile {
         }
     }
 
-    /// Create a JTERM 40-column ShiftJIS profile (40x25, CJK single-width, ANSI enabled).
-    pub fn jterm40() -> Self {
-        Self {
-            name: "jterm40".to_string(),
-            width: 40,
-            height: 25,
-            cjk_width: 1,
-            ansi_enabled: true,
-            encoding: CharacterEncoding::ShiftJIS,
-            output_mode: OutputMode::Ansi,
-            template_dir: "40".to_string(),
-        }
-    }
-
     /// Create a 40-column UTF-8 terminal profile (40x25, CJK double-width, ANSI enabled).
     ///
     /// This profile is for modern 40-column terminals with UTF-8 support.
@@ -318,7 +304,10 @@ impl TerminalProfile {
             // Former c64 variants are aliases of the merged c64 profile.
             "c64" | "c64_petscii" | "c64_ansi" | "petscii" => Self::c64(),
             "40col_sjis" | "40sjis" => Self::col40_sjis(),
-            "jterm40" => Self::jterm40(),
+            // jterm40 was removed from the built-ins (plan.md D1). Define it as
+            // a custom profile to keep it (see config.toml.sample); without
+            // one, the closest built-in is used.
+            "jterm40" => Self::col40_sjis(),
             "40col_utf8" | "40utf8" => Self::col40_utf8(),
             _ => Self::standard(),
         }
@@ -414,7 +403,6 @@ impl TerminalProfile {
             "standard",
             "standard_utf8",
             "40col_sjis",
-            "jterm40",
             "40col_utf8",
             "dos",
             "c64",
@@ -692,11 +680,11 @@ mod tests {
     #[test]
     fn test_available_profiles() {
         let profiles = TerminalProfile::available_profiles();
-        assert_eq!(profiles.len(), 7);
+        assert_eq!(profiles.len(), 6);
         assert!(profiles.contains(&"standard"));
         assert!(profiles.contains(&"standard_utf8"));
         assert!(profiles.contains(&"40col_sjis"));
-        assert!(profiles.contains(&"jterm40"));
+        assert!(!profiles.contains(&"jterm40"));
         assert!(profiles.contains(&"40col_utf8"));
         assert!(profiles.contains(&"dos"));
         assert!(profiles.contains(&"c64"));
@@ -857,16 +845,28 @@ mod tests {
     }
 
     #[test]
-    fn test_jterm40_profile() {
-        let profile = TerminalProfile::jterm40();
+    fn test_jterm40_is_no_longer_built_in() {
+        // jterm40 (a special mode for a self-made C64 terminal) was removed
+        // from the built-ins. Without a custom definition it falls back to
+        // 40col_sjis; with one (see config.toml.sample), the custom wins.
+        assert_eq!(
+            TerminalProfile::from_name("jterm40"),
+            TerminalProfile::col40_sjis()
+        );
+        let custom = crate::config::ProfileConfig {
+            name: "jterm40".to_string(),
+            width: 40,
+            height: 25,
+            cjk_width: 1,
+            ansi_enabled: true,
+            encoding: "shiftjis".to_string(),
+            output_mode: "ansi".to_string(),
+            template_dir: "40".to_string(),
+        };
+        let profile = TerminalProfile::from_name_with_custom("jterm40", &[custom]);
         assert_eq!(profile.name, "jterm40");
-        assert_eq!(profile.width, 40);
-        assert_eq!(profile.height, 25);
         assert_eq!(profile.cjk_width, 1);
-        assert!(profile.ansi_enabled);
         assert_eq!(profile.encoding, CharacterEncoding::ShiftJIS);
-        assert_eq!(profile.output_mode, OutputMode::Ansi);
-        assert_eq!(profile.template_dir, "40");
     }
 
     #[test]
@@ -886,7 +886,6 @@ mod tests {
     fn test_from_name_40col() {
         assert_eq!(TerminalProfile::from_name("40col_sjis").name, "40col_sjis");
         assert_eq!(TerminalProfile::from_name("40sjis").name, "40col_sjis");
-        assert_eq!(TerminalProfile::from_name("jterm40").name, "jterm40");
         assert_eq!(TerminalProfile::from_name("40col_utf8").name, "40col_utf8");
         assert_eq!(TerminalProfile::from_name("40utf8").name, "40col_utf8");
     }
@@ -894,9 +893,9 @@ mod tests {
     #[test]
     fn test_available_profiles_includes_40col() {
         let profiles = TerminalProfile::available_profiles();
-        assert_eq!(profiles.len(), 7);
+        assert_eq!(profiles.len(), 6);
         assert!(profiles.contains(&"40col_sjis"));
-        assert!(profiles.contains(&"jterm40"));
+        assert!(!profiles.contains(&"jterm40"));
         assert!(profiles.contains(&"40col_utf8"));
     }
 }

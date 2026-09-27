@@ -74,7 +74,10 @@ impl SessionHandler {
         rate_limiters: Arc<RateLimiters>,
     ) -> Self {
         // Use default profile from config
-        let profile = TerminalProfile::from_name(&config.terminal.default_profile);
+        let profile = TerminalProfile::from_name_with_custom(
+            &config.terminal.default_profile,
+            &config.terminal.profiles,
+        );
         let lang = &config.locale.language;
         let i18n = i18n_manager
             .get(lang)
@@ -388,6 +391,20 @@ impl SessionHandler {
             .unwrap_or_else(|| Arc::new(I18n::empty(lang)));
     }
 
+    /// Look up a terminal profile by name, custom profiles from config first.
+    fn lookup_profile(&self, name: &str) -> TerminalProfile {
+        let custom = &self.config.terminal.profiles;
+        if name.eq_ignore_ascii_case("jterm40")
+            && !custom.iter().any(|p| p.name.eq_ignore_ascii_case(name))
+        {
+            warn!(
+                "Terminal profile \"jterm40\" is no longer built in; using 40col_sjis. \
+                 Define it in [[terminal.profiles]] to keep it (see config.toml.sample)."
+            );
+        }
+        TerminalProfile::from_name_with_custom(name, custom)
+    }
+
     /// Apply new terminal settings.
     ///
     /// This is the only place where a session's terminal settings change.
@@ -507,8 +524,11 @@ impl SessionHandler {
                     // Apply the user's saved language and terminal (the encoding
                     // stays the connection type's)
                     // (after user_repo borrow ends; nothing is sent before this)
-                    let settings =
-                        resolve::on_login(session.settings(), &user_language, &user_terminal);
+                    let settings = resolve::on_login(
+                        session.settings(),
+                        &user_language,
+                        self.lookup_profile(&user_terminal),
+                    );
                     self.apply_settings(session, settings);
 
                     // Show login success message
@@ -737,15 +757,14 @@ impl SessionHandler {
                         }
                         super::screens::ScreenResult::SettingsChanged {
                             language,
-                            encoding,
                             terminal_profile,
                         } => {
                             // Apply new settings to session
+                            let profile = terminal_profile.map(|name| self.lookup_profile(&name));
                             let settings = resolve::on_settings_changed(
                                 session.settings(),
                                 &language,
-                                encoding,
-                                terminal_profile.as_deref(),
+                                profile,
                             );
                             self.apply_settings(session, settings);
                         }

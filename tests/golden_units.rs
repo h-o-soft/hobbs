@@ -330,7 +330,15 @@ async fn golden_width_functions() {
     for (base, width) in [
         (TerminalProfile::standard(), 80u16),
         (TerminalProfile::col40_sjis(), 40),
-        (TerminalProfile::jterm40(), 40),
+        // The former built-in jterm40 (now a custom profile): cjk_width 1.
+        (
+            TerminalProfile {
+                name: "jterm40".to_string(),
+                cjk_width: 1,
+                ..TerminalProfile::col40_sjis()
+            },
+            40,
+        ),
         (TerminalProfile::c64(), 40),
     ] {
         let mut profile = base.clone();

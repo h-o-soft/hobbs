@@ -197,15 +197,23 @@ async fn login_raw(client: &mut TestClient, username: &str) {
     client.recv_raw_until(b"> ", WAIT).await.unwrap();
 }
 
-/// Profile → Settings, answering each prompt in order.
-async fn change_settings(client: &mut TestClient, language: &str, terminal: &str, paging: &str) {
+/// Profile → Settings, answering each prompt in order. `screen` is `None`
+/// where the settings screen has no screen question (CP437, PETSCII).
+async fn change_settings(
+    client: &mut TestClient,
+    language: &str,
+    screen: Option<&str>,
+    paging: &str,
+) {
     client.send_line("P").await.unwrap();
     client.recv_raw_until(b": ", WAIT).await.unwrap();
     client.send_line("S").await.unwrap();
     client.recv_raw_until(b"]: ", WAIT).await.unwrap();
     client.send_line(language).await.unwrap();
-    client.recv_raw_until(b"]: ", WAIT).await.unwrap();
-    client.send_line(terminal).await.unwrap();
+    if let Some(screen) = screen {
+        client.recv_raw_until(b"]: ", WAIT).await.unwrap();
+        client.send_line(screen).await.unwrap();
+    }
     client.recv_raw_until(b"]: ", WAIT).await.unwrap();
     client.send_line(paging).await.unwrap();
 }
@@ -228,18 +236,19 @@ async fn test_settings_change_keeps_language_compatible() {
     let mut client = TestClient::connect_raw(server.addr()).await.unwrap();
     client.select_connection("4").await.unwrap();
     login_raw(&mut client, "jauser").await;
-    change_settings(&mut client, "", "", "2").await;
+    change_settings(&mut client, "", None, "2").await;
 
     let menu = client.recv_raw_until(b"> ", WAIT).await.unwrap();
     let text = String::from_utf8_lossy(&menu);
     assert!(text.contains("Boards"), "menu should stay English: {text}");
 }
 
-/// Selecting a terminal that equals the saved name still applies it when
-/// login had substituted another profile (codex review R2-F2): a C64-saved
-/// user on a UTF-8 connection who picks C64 gets PETSCII output.
+/// An explicit screen selection is applied even when login had substituted
+/// the saved profile (codex review R2-F2 on #337): a C64-saved user on a
+/// UTF-8 connection gets the 80-column PC screen, and choosing
+/// "40 columns" switches to it.
 #[tokio::test]
-async fn test_settings_selecting_saved_terminal_applies_it() {
+async fn test_settings_explicit_screen_selection_is_applied() {
     let server = server().await;
     let hash = hobbs::hash_password("password123").unwrap();
     UserRepository::new(server.db().pool())
@@ -255,9 +264,8 @@ async fn test_settings_selecting_saved_terminal_applies_it() {
     let mut client = TestClient::connect_raw(server.addr()).await.unwrap();
     client.select_connection("3").await.unwrap();
     login_raw(&mut client, "c64user").await;
-    // Built-in list order: standard, standard_utf8, 40col_sjis, jterm40,
-    // 40col_utf8, dos, c64.
-    change_settings(&mut client, "", "7", "").await;
+    // Screen choices on a UTF-8 connection: 1) 80 columns 2) 40 columns.
+    change_settings(&mut client, "", Some("2"), "").await;
 
     let raw = client.recv_raw_until(b"> ", WAIT).await.unwrap();
     // Skip everything up to "Settings saved" (sent before the switch).
@@ -269,13 +277,12 @@ async fn test_settings_selecting_saved_terminal_applies_it() {
         + marker.len();
     let after = &raw[start..];
     assert!(!after.is_empty());
+    // The encoding stays UTF-8 (CRLF line ends, not PETSCII), and the
+    // 40-column layout is applied: the menu's "=" separator is 40 wide.
     assert!(
-        !after.contains(&0x1B),
-        "no ANSI escapes after switching to C64"
+        after.windows(2).any(|w| w == b"\r\n"),
+        "still UTF-8 on a UTF-8 connection"
     );
-    assert!(!after.contains(&b'\n'), "PETSCII uses CR only");
-    // The C64 layout (40 columns) is applied, not the 80-column PC one that
-    // login had substituted: the menu's "=" separator is 40 wide.
     let longest_rule = after
         .split(|&b| b != b'=')
         .map(|run| run.len())

@@ -224,17 +224,15 @@ pub mod resolve {
     ///   connecting from another terminal (Issue #269).
     /// - language: the user's saved language, or English when the encoding
     ///   cannot show Japanese (CP437, PETSCII).
-    /// - profile: the saved profile (`from_name(terminal)`) if its layout fits
-    ///   the encoding, otherwise the connection's profile.
-    ///   QUIRK(Q2): custom profiles from config are not consulted, and an
-    ///   unknown name falls back to "standard".
+    /// - profile: the user's saved profile (looked up by the caller, custom
+    ///   profiles first) if its layout fits the encoding, otherwise the
+    ///   connection's profile.
     /// - output_mode: the profile's, made compatible with the encoding.
     pub fn on_login(
         current: &TerminalSettings,
         language: &str,
-        terminal: &str,
+        saved: TerminalProfile,
     ) -> TerminalSettings {
-        let saved = TerminalProfile::from_name(terminal);
         let profile = if layout_fits(&saved, current.encoding) {
             saved
         } else {
@@ -255,36 +253,39 @@ pub mod resolve {
 
     /// Settings after the user saves the settings screen.
     ///
-    /// - encoding: the new value.
-    /// - language: the new value, or English when the encoding cannot show
-    ///   Japanese (CP437, PETSCII).
-    /// - profile: `TerminalProfile::from_name(terminal)` if a profile was
-    ///   selected, otherwise unchanged. QUIRK(Q2) as in [`on_login`].
-    /// - output_mode: the (new) profile's output mode, made compatible with
-    ///   the encoding.
+    /// - encoding: unchanged (the connection type's).
+    /// - language: the new language, or English when the encoding cannot
+    ///   show Japanese (the chosen language is still saved for other
+    ///   connections).
+    /// - profile: the selected profile if one was selected and its layout
+    ///   fits the encoding, otherwise unchanged.
+    /// - output_mode: the profile's, made compatible with the encoding.
     pub fn on_settings_changed(
         current: &TerminalSettings,
         language: &str,
-        encoding: CharacterEncoding,
-        terminal: Option<&str>,
+        profile: Option<TerminalProfile>,
     ) -> TerminalSettings {
-        let profile = match terminal {
-            Some(name) => TerminalProfile::from_name(name),
-            None => current.profile.clone(),
+        let profile = match profile {
+            Some(p) if layout_fits(&p, current.encoding) => p,
+            _ => current.profile.clone(),
         };
-        // As at login: English where the encoding cannot show Japanese
-        // (the chosen language is still saved for other connections).
-        let language = if can_show_japanese(encoding) {
+        let language = if can_show_japanese(current.encoding) {
             language
         } else {
             "en"
         };
         TerminalSettings {
-            output_mode: compatible_output_mode(profile.output_mode, encoding),
+            output_mode: compatible_output_mode(profile.output_mode, current.encoding),
             profile,
-            encoding,
+            encoding: current.encoding,
             language: language.to_string(),
         }
+    }
+
+    /// Whether a profile's layout can be used on a connection with `encoding`
+    /// (for the settings screen, which only offers fitting profiles).
+    pub fn profile_fits(profile: &TerminalProfile, encoding: CharacterEncoding) -> bool {
+        layout_fits(profile, encoding)
     }
 }
 
@@ -324,7 +325,6 @@ mod tests {
             // The C64 profile's PetsciiCtrl is not used over ShiftJIS (Q8).
             ("c64", OutputMode::Ansi),
             ("40col_sjis", OutputMode::Ansi),
-            ("jterm40", OutputMode::Ansi),
             ("40col_utf8", OutputMode::Ansi),
         ];
         for (name, mode) in table {
@@ -366,7 +366,7 @@ mod tests {
         let table = [
             ("standard", "ja", ConnectionType::JapaneseShiftJis),
             ("standard", "en", ConnectionType::JapaneseShiftJis),
-            ("jterm40", "ja", ConnectionType::JapaneseShiftJis),
+            ("40col_sjis", "ja", ConnectionType::JapaneseShiftJis),
             ("standard_utf8", "ja", ConnectionType::JapaneseUtf8),
             ("standard_utf8", "en", ConnectionType::EnglishUtf8),
             ("dos", "en", ConnectionType::EnglishCp437),
@@ -435,11 +435,11 @@ mod tests {
         // An operator's 40-column ShiftJIS default is kept for ShiftJIS.
         let s = on_connection_selected(
             ConnectionType::JapaneseShiftJis,
-            &TerminalProfile::jterm40(),
+            &TerminalProfile::col40_sjis(),
         );
-        assert_eq!(s.profile.name, "jterm40");
+        assert_eq!(s.profile.name, "40col_sjis");
         // ... but not for other connection types.
-        let s = on_connection_selected(ConnectionType::Commodore64, &TerminalProfile::jterm40());
+        let s = on_connection_selected(ConnectionType::Commodore64, &TerminalProfile::col40_sjis());
         assert_eq!(s.profile.name, "c64");
     }
 
@@ -458,9 +458,9 @@ mod tests {
             ),
             (
                 ConnectionType::JapaneseShiftJis,
-                "jterm40",
+                "40col_sjis",
                 "ja",
-                "jterm40",
+                "40col_sjis",
                 "ja",
             ),
             (
@@ -507,7 +507,7 @@ mod tests {
         ];
         for (c, terminal, lang, profile, expected_lang) in table {
             let before = selected(c);
-            let s = on_login(&before, lang, terminal);
+            let s = on_login(&before, lang, TerminalProfile::from_name(terminal));
             assert_eq!(s.profile.name, profile, "{c:?} {terminal}");
             assert_eq!(s.encoding, c.encoding(), "{c:?} {terminal}");
             assert_eq!(s.language, expected_lang, "{c:?} {terminal}");
@@ -525,74 +525,68 @@ mod tests {
     #[test]
     fn test_on_login_ignores_saved_encoding() {
         let before = selected(ConnectionType::JapaneseUtf8);
-        let s = on_login(&before, "ja", "c64");
+        let s = on_login(&before, "ja", TerminalProfile::c64());
         assert_eq!(s.encoding, CharacterEncoding::Utf8);
         assert_eq!(s.output_mode, OutputMode::Ansi);
         assert_eq!(s.profile.name, "standard_utf8");
     }
 
     #[test]
-    fn test_on_login_unknown_profile_falls_back_to_standard() {
-        // Q2
+    fn test_on_login_custom_profile() {
+        // A custom 40-column, full-width-as-1 profile (like the former jterm40).
+        let custom = TerminalProfile {
+            name: "jterm40".to_string(),
+            cjk_width: 1,
+            ..TerminalProfile::col40_sjis()
+        };
         let s = on_login(
             &selected(ConnectionType::JapaneseShiftJis),
-            "en",
-            "no_such_profile",
+            "ja",
+            custom.clone(),
         );
-        assert_eq!(s.profile, TerminalProfile::standard());
+        assert_eq!(s.profile, custom);
         assert_eq!(s.output_mode, OutputMode::Ansi);
     }
 
     /// The output mode always matches the encoding actually used.
     #[test]
     fn test_output_mode_follows_effective_encoding() {
-        let before = selected(ConnectionType::JapaneseShiftJis);
-        let s = on_settings_changed(&before, "ja", CharacterEncoding::Utf8, Some("c64"));
-        assert_eq!(s.output_mode, OutputMode::Ansi);
-        let s = on_settings_changed(&before, "en", CharacterEncoding::Petscii, Some("standard"));
+        let before = selected(ConnectionType::Commodore64);
+        let s = on_settings_changed(&before, "en", None);
         assert_eq!(s.output_mode, OutputMode::PetsciiCtrl);
         // Connecting with a C64 default profile: the wire is still ShiftJIS
-        // until a connection type is chosen (Q8), so ANSI is used.
+        // until a connection type is chosen, so ANSI is used.
         assert_eq!(connected("c64").output_mode, OutputMode::Ansi);
     }
 
-    /// Settings screen (golden c_settings__*).
-    /// Language stays compatible with the encoding after a settings change
-    /// (codex review R2-F1).
-    #[test]
-    fn test_on_settings_changed_keeps_language_compatible() {
-        let cp437 = on_login(&selected(ConnectionType::EnglishCp437), "ja", "dos");
-        assert_eq!(cp437.language, "en");
-        // Paging-only change: the saved "ja" comes back from the screen.
-        let s = on_settings_changed(&cp437, "ja", CharacterEncoding::Cp437, None);
-        assert_eq!(s.language, "en");
-        let c64 = on_login(&selected(ConnectionType::Commodore64), "ja", "c64");
-        let s = on_settings_changed(&c64, "ja", CharacterEncoding::Petscii, None);
-        assert_eq!(s.language, "en");
-        // Japanese is kept where it can be shown.
-        let sjis = selected(ConnectionType::JapaneseShiftJis);
-        let s = on_settings_changed(&sjis, "ja", CharacterEncoding::ShiftJIS, None);
-        assert_eq!(s.language, "ja");
-    }
-
+    /// Settings screen (golden c_settings__*): the encoding never changes.
     #[test]
     fn test_on_settings_changed() {
         let before = on_login(
             &selected(ConnectionType::JapaneseShiftJis),
             "ja",
-            "standard",
+            TerminalProfile::standard(),
         );
-        let s = on_settings_changed(&before, "en", CharacterEncoding::Petscii, Some("c64"));
-        assert_eq!(s.profile, TerminalProfile::c64());
-        assert_eq!(s.encoding, CharacterEncoding::Petscii);
+        // 40 columns on a ShiftJIS connection.
+        let s = on_settings_changed(&before, "en", Some(TerminalProfile::col40_sjis()));
+        assert_eq!(s.profile, TerminalProfile::col40_sjis());
+        assert_eq!(s.encoding, CharacterEncoding::ShiftJIS);
         assert_eq!(s.language, "en");
-        assert_eq!(s.output_mode, OutputMode::PetsciiCtrl);
-
-        let kept = on_settings_changed(&s, "ja", CharacterEncoding::Utf8, None);
+        assert_eq!(s.output_mode, OutputMode::Ansi);
+        // Nothing selected: profile kept.
+        let kept = on_settings_changed(&s, "ja", None);
         assert_eq!(kept.profile, s.profile);
-        // UTF-8 on the wire: ANSI, not PETSCII control codes.
-        assert_eq!(kept.output_mode, OutputMode::Ansi);
-        assert_eq!(kept.encoding, CharacterEncoding::Utf8);
         assert_eq!(kept.language, "ja");
+        // A profile that does not fit the connection is not applied.
+        let c64 = on_settings_changed(&s, "ja", Some(TerminalProfile::c64()));
+        assert_eq!(c64.profile, s.profile);
+        assert_eq!(c64.encoding, CharacterEncoding::ShiftJIS);
+    }
+
+    #[test]
+    fn test_on_settings_changed_forces_english_where_japanese_cannot_show() {
+        let before = selected(ConnectionType::EnglishCp437);
+        let s = on_settings_changed(&before, "ja", None);
+        assert_eq!(s.language, "en");
     }
 }
