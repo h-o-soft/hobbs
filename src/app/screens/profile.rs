@@ -304,7 +304,7 @@ impl ProfileScreen {
             )
         };
         let encoding = session.encoding();
-        let choices = Self::screen_choices(ctx, encoding);
+        let choices = Self::screen_choices(ctx, session);
         // "Current" is the screen in effect for this connection, which may
         // differ from the saved one (login substitutes a profile that fits
         // the connection, e.g. a saved c64 on a PC connection).
@@ -483,38 +483,71 @@ impl ProfileScreen {
         }
     }
 
-    /// Screen choices for the settings screen on a connection with
-    /// `encoding`: (profile name to save, label).
+    /// Screen choices for the settings screen on this connection.
+    fn screen_choices(ctx: &ScreenContext, session: &TelnetSession) -> Vec<(String, String)> {
+        Self::build_screen_choices(
+            session.encoding(),
+            &ctx.config.terminal.profiles,
+            &session.settings().profile,
+            |key| ctx.i18n.t(key).to_string(),
+        )
+    }
+
+    /// Build the screen choices for a connection with `encoding`:
+    /// (profile name to save, label).
     ///
-    /// ShiftJIS / UTF-8 connections choose between 80 and 40 columns; CP437
-    /// and PETSCII have a fixed screen. Custom profiles from config that fit
-    /// the encoding are added after the built-in ones.
-    fn screen_choices(
-        ctx: &ScreenContext,
+    /// - ShiftJIS / UTF-8 connections offer 80 and 40 columns; CP437 and
+    ///   PETSCII have a fixed screen. Custom profiles are added after them.
+    /// - Every candidate is resolved the same way it is applied (custom
+    ///   profiles first), so a custom profile overriding a built-in name is
+    ///   labelled from its own size, listed once, and dropped when it does not
+    ///   fit the encoding.
+    /// - If nothing fits, `current` (the profile in effect) is offered.
+    fn build_screen_choices(
         encoding: crate::server::CharacterEncoding,
+        custom: &[crate::config::ProfileConfig],
+        current: &TerminalProfile,
+        label: impl Fn(&str) -> String,
     ) -> Vec<(String, String)> {
         use crate::server::CharacterEncoding as E;
-        let t = |key: &str| ctx.i18n.t(key).to_string();
-        let mut choices: Vec<(String, String)> = match encoding {
-            E::ShiftJIS => vec![
-                ("standard".to_string(), t("settings.screen_80")),
-                ("40col_sjis".to_string(), t("settings.screen_40")),
+        let builtin: &[(&str, &str)] = match encoding {
+            E::ShiftJIS => &[
+                ("standard", "settings.screen_80"),
+                ("40col_sjis", "settings.screen_40"),
             ],
-            E::Utf8 => vec![
-                ("standard_utf8".to_string(), t("settings.screen_80")),
-                ("40col_utf8".to_string(), t("settings.screen_40")),
+            E::Utf8 => &[
+                ("standard_utf8", "settings.screen_80"),
+                ("40col_utf8", "settings.screen_40"),
             ],
-            E::Cp437 => vec![("dos".to_string(), t("terminal.profile_dos"))],
-            E::Petscii => vec![("c64".to_string(), t("terminal.profile_c64"))],
+            E::Cp437 => &[("dos", "terminal.profile_dos")],
+            E::Petscii => &[("c64", "terminal.profile_c64")],
         };
-        for custom in &ctx.config.terminal.profiles {
-            let profile = TerminalProfile::from_config(custom);
-            if resolve::profile_fits(&profile, encoding) {
-                choices.push((
-                    custom.name.clone(),
-                    format!("{} ({}x{})", custom.name, custom.width, custom.height),
-                ));
+        let candidates = builtin
+            .iter()
+            .map(|&(name, key)| (name.to_string(), Some(key)))
+            .chain(custom.iter().map(|c| (c.name.clone(), None)));
+
+        let mut choices: Vec<(String, String)> = Vec::new();
+        for (name, key) in candidates {
+            if choices.iter().any(|(n, _)| n.eq_ignore_ascii_case(&name)) {
+                continue;
             }
+            let profile = TerminalProfile::from_name_with_custom(&name, custom);
+            if !resolve::profile_fits(&profile, encoding) {
+                continue;
+            }
+            let overridden = custom.iter().any(|c| c.name.eq_ignore_ascii_case(&name));
+            let text = match key {
+                Some(key) if !overridden => label(key),
+                _ => format!("{} ({}x{})", profile.name, profile.width, profile.height),
+            };
+            choices.push((name, text));
+        }
+        if choices.is_empty() {
+            choices.push((
+                current.name.clone(),
+                format!("{} ({}x{})", current.name, current.width, current.height),
+            ));
         }
         choices
     }
@@ -561,5 +594,97 @@ mod tests {
     #[test]
     fn test_profile_screen_exists() {
         let _ = ProfileScreen;
+    }
+
+    use crate::config::ProfileConfig;
+    use crate::server::CharacterEncoding;
+
+    fn custom(name: &str, width: u16, height: u16, encoding: &str) -> ProfileConfig {
+        ProfileConfig {
+            name: name.to_string(),
+            width,
+            height,
+            cjk_width: 2,
+            ansi_enabled: true,
+            encoding: encoding.to_string(),
+            output_mode: "ansi".to_string(),
+            template_dir: "80".to_string(),
+        }
+    }
+
+    fn choices(encoding: CharacterEncoding, customs: &[ProfileConfig]) -> Vec<(String, String)> {
+        ProfileScreen::build_screen_choices(
+            encoding,
+            customs,
+            &TerminalProfile::standard(),
+            |key| format!("<{key}>"),
+        )
+    }
+
+    #[test]
+    fn test_screen_choices_builtin() {
+        assert_eq!(
+            choices(CharacterEncoding::ShiftJIS, &[]),
+            vec![
+                ("standard".to_string(), "<settings.screen_80>".to_string()),
+                ("40col_sjis".to_string(), "<settings.screen_40>".to_string()),
+            ]
+        );
+        assert_eq!(
+            choices(CharacterEncoding::Petscii, &[]),
+            vec![("c64".to_string(), "<terminal.profile_c64>".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_screen_choices_custom_added_when_it_fits() {
+        let c = choices(
+            CharacterEncoding::Utf8,
+            &[
+                custom("pc98", 80, 25, "shiftjis"),
+                custom("petty", 40, 25, "petscii"),
+            ],
+        );
+        let names: Vec<&str> = c.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, vec!["standard_utf8", "40col_utf8", "pc98"]);
+        assert_eq!(c[2].1, "pc98 (80x25)");
+    }
+
+    /// A custom profile overriding a built-in name is resolved, labelled from
+    /// its own size, listed once, and dropped if it does not fit
+    /// (codex review R1-F1 on #338).
+    #[test]
+    fn test_screen_choices_custom_overriding_builtin_name() {
+        let c = choices(
+            CharacterEncoding::ShiftJIS,
+            &[custom("standard", 40, 25, "shiftjis")],
+        );
+        assert_eq!(
+            c,
+            vec![
+                ("standard".to_string(), "standard (40x25)".to_string()),
+                ("40col_sjis".to_string(), "<settings.screen_40>".to_string()),
+            ]
+        );
+        // An override that does not fit the connection is not offered.
+        let c = choices(
+            CharacterEncoding::ShiftJIS,
+            &[custom("standard", 80, 24, "petscii")],
+        );
+        let names: Vec<&str> = c.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, vec!["40col_sjis"]);
+    }
+
+    #[test]
+    fn test_screen_choices_never_empty() {
+        // Every candidate overridden by something that does not fit: the
+        // profile in effect is offered so the screen always has a choice.
+        let c = ProfileScreen::build_screen_choices(
+            CharacterEncoding::Petscii,
+            &[custom("c64", 80, 24, "shiftjis")],
+            &TerminalProfile::c64(),
+            |key| key.to_string(),
+        );
+        assert_eq!(c, vec![("c64".to_string(), "c64 (40x25)".to_string())]);
     }
 }
