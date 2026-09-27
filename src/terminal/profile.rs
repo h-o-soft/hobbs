@@ -229,11 +229,7 @@ impl TerminalProfile {
     /// assert_eq!(c64.display_width("こんにちは"), 5); // 5 CJK chars × 1
     /// ```
     pub fn display_width(&self, s: &str) -> usize {
-        if self.cjk_width == 1 {
-            s.chars().count()
-        } else {
-            s.chars().map(|c| if c.is_ascii() { 1 } else { 2 }).sum()
-        }
+        super::width::display_width(s, self.cjk_width as usize)
     }
 
     /// Truncate a string to fit within the specified display width.
@@ -264,25 +260,7 @@ impl TerminalProfile {
     /// assert_eq!(c64.truncate_to_width("こんにちは", 3), "こんに"); // 3 chars × 1 = 3
     /// ```
     pub fn truncate_to_width(&self, s: &str, max_width: usize) -> String {
-        let mut result = String::new();
-        let mut current_width = 0;
-
-        for c in s.chars() {
-            let char_width = if self.cjk_width == 1 || c.is_ascii() {
-                1
-            } else {
-                2
-            };
-
-            if current_width + char_width > max_width {
-                break;
-            }
-
-            result.push(c);
-            current_width += char_width;
-        }
-
-        result
+        super::width::truncate_to_width(s, max_width, self.cjk_width as usize)
     }
 
     /// Pad a string to exactly the specified display width.

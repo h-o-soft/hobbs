@@ -18,7 +18,7 @@ use crate::server::{
     InputResult, LineBuffer, SessionManager, TelnetSession,
 };
 use crate::template::{create_system_context, TemplateContext, TemplateLoader, Value};
-use crate::terminal::TerminalProfile;
+use crate::terminal::{width, TerminalProfile};
 
 /// Maximum number of lines in multiline input (to prevent memory exhaustion).
 pub const MAX_MULTILINE_LINES: usize = 1000;
@@ -386,7 +386,7 @@ impl ScreenContext {
                 } else {
                     // Non-ASCII (full-width) char - individually wrappable
                     chars.next();
-                    let char_width = if cjk == 1 { 1 } else { 2 };
+                    let char_width = width::char_width(c, cjk as usize);
                     let space_w = if space_pending { 1 } else { 0 };
 
                     if !current.is_empty()
@@ -431,7 +431,7 @@ impl ScreenContext {
         let cjk = profile.cjk_width;
 
         for c in text.chars() {
-            let char_width = if cjk == 1 || c.is_ascii() { 1 } else { 2 };
+            let char_width = width::char_width(c, cjk as usize);
             if current_width + char_width > max_width && !current.is_empty() {
                 result.push(current);
                 current = String::new();

@@ -191,6 +191,11 @@ impl LineBuffer {
 
     /// Calculate the display width of deleted bytes.
     ///
+    /// NOTE(#325 Q9): this is byte-count based and does not use
+    /// `crate::terminal::width`. Kept as-is for behavior compatibility
+    /// (e.g. jterm40 erases 2 columns for a kanji). To be revisited in the
+    /// behavior-changing phase F1.
+    ///
     /// For multi-byte characters (2+ bytes), assumes 2-column width (full-width).
     /// For single-byte characters, assumes 1-column width.
     fn display_width_of_deleted(&self, bytes_deleted: usize) -> usize {
