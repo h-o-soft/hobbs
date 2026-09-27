@@ -14,8 +14,8 @@ use crate::error::{HobbsError, Result};
 use crate::i18n::I18n;
 use crate::rate_limit::RateLimiters;
 use crate::server::{
-    convert_caret_escape, encode_for_client, process_output_mode, CharacterEncoding, EchoMode,
-    InputResult, LineBuffer, SessionManager, TelnetSession,
+    convert_caret_escape, normalize_newlines, to_wire, write_screen_echo, CharacterEncoding,
+    EchoMode, InputResult, LineBuffer, NewlinePolicy, SessionManager, TelnetSession,
 };
 use crate::template::{create_system_context, TemplateContext, TemplateLoader, Value};
 use crate::terminal::{width, TerminalProfile};
@@ -157,7 +157,9 @@ impl ScreenContext {
     /// If auto-paging is enabled, sends line-by-line and pauses when threshold is reached.
     pub async fn send(&self, session: &mut TelnetSession, data: &str) -> Result<()> {
         // Convert LF to CRLF for Telnet (but avoid converting already-CRLF sequences)
-        let data = data.replace("\r\n", "\n").replace('\n', "\r\n");
+        let data = normalize_newlines(data);
+        let encoding = session.encoding();
+        let output_mode = session.output_mode();
 
         if self.auto_paging_enabled {
             // Split by CRLF to send line-by-line with paging support
@@ -170,8 +172,8 @@ impl ScreenContext {
                 if is_last {
                     // Last segment: send without trailing CRLF (might be a prompt)
                     if !segment.is_empty() {
-                        let processed = process_output_mode(segment, session.output_mode());
-                        let encoded = encode_for_client(&processed, session.encoding());
+                        let encoded =
+                            to_wire(segment, encoding, output_mode, NewlinePolicy::AsIs);
                         session.stream_mut().write_all(&encoded).await?;
                     }
                 } else {
@@ -187,9 +189,8 @@ impl ScreenContext {
 
                     // Send line with CRLF
                     let line_with_crlf = format!("{}\r\n", segment);
-                    let processed =
-                        process_output_mode(&line_with_crlf, session.output_mode());
-                    let encoded = encode_for_client(&processed, session.encoding());
+                    let encoded =
+                        to_wire(&line_with_crlf, encoding, output_mode, NewlinePolicy::AsIs);
                     session.stream_mut().write_all(&encoded).await?;
 
                     // Update counter after sending
@@ -201,8 +202,7 @@ impl ScreenContext {
             session.stream_mut().flush().await?;
         } else {
             // No paging - send everything at once
-            let data = process_output_mode(&data, session.output_mode());
-            let encoded = encode_for_client(&data, session.encoding());
+            let encoded = to_wire(&data, encoding, output_mode, NewlinePolicy::AsIs);
             session.stream_mut().write_all(&encoded).await?;
             session.stream_mut().flush().await?;
         }
@@ -256,9 +256,15 @@ impl ScreenContext {
 
     /// Send raw data to the client without paging support.
     /// Used internally by pause_for_more() to avoid recursive async calls.
+    ///
+    /// Unlike `send`, newlines are not normalized (plan.md Q10).
     async fn send_raw(&self, session: &mut TelnetSession, data: &str) -> Result<()> {
-        let data = process_output_mode(data, session.output_mode());
-        let encoded = encode_for_client(&data, session.encoding());
+        let encoded = to_wire(
+            data,
+            session.encoding(),
+            session.output_mode(),
+            NewlinePolicy::AsIs,
+        );
         session.stream_mut().write_all(&encoded).await?;
         session.stream_mut().flush().await?;
         Ok(())
@@ -473,34 +479,7 @@ impl ScreenContext {
                     let (result, echo) = self.line_buffer.process_byte(buf[0]);
 
                     // Handle echo based on mode
-                    if !echo.is_empty() {
-                        match self.line_buffer.echo_mode() {
-                            EchoMode::Normal => {
-                                let _ = session.stream_mut().write_all(&echo).await;
-                                let _ = session.stream_mut().flush().await;
-                            }
-                            EchoMode::Password => {
-                                // For password mode, echo asterisks for regular chars, but allow backspace
-                                if echo.len() == 1 && echo[0] != b'\x08' {
-                                    let _ = session.stream_mut().write_all(b"*").await;
-                                    let _ = session.stream_mut().flush().await;
-                                } else if echo.len() > 1 && echo[0] == b'\x08' {
-                                    // Backspace echo
-                                    let _ = session.stream_mut().write_all(&echo).await;
-                                    let _ = session.stream_mut().flush().await;
-                                }
-                            }
-                            EchoMode::Masked(c) => {
-                                if echo.len() == 1 && echo[0] != b'\x08' {
-                                    let _ = session.stream_mut().write_all(&[c as u8]).await;
-                                    let _ = session.stream_mut().flush().await;
-                                } else if echo.len() > 1 && echo[0] == b'\x08' {
-                                    let _ = session.stream_mut().write_all(&echo).await;
-                                    let _ = session.stream_mut().flush().await;
-                                }
-                            }
-                        }
-                    }
+                    write_screen_echo(session, &echo, self.line_buffer.echo_mode()).await;
 
                     match result {
                         InputResult::Line(ref line) => {
@@ -555,32 +534,7 @@ impl ScreenContext {
                 let (result, echo) = self.line_buffer.process_byte(buf[0]);
 
                 // Echo the character
-                if !echo.is_empty() {
-                    match self.line_buffer.echo_mode() {
-                        EchoMode::Normal => {
-                            let _ = session.stream_mut().write_all(&echo).await;
-                            let _ = session.stream_mut().flush().await;
-                        }
-                        EchoMode::Password => {
-                            if echo.len() == 1 && echo[0] != b'\x08' {
-                                let _ = session.stream_mut().write_all(b"*").await;
-                                let _ = session.stream_mut().flush().await;
-                            } else if echo.len() > 1 && echo[0] == b'\x08' {
-                                let _ = session.stream_mut().write_all(&echo).await;
-                                let _ = session.stream_mut().flush().await;
-                            }
-                        }
-                        EchoMode::Masked(c) => {
-                            if echo.len() == 1 && echo[0] != b'\x08' {
-                                let _ = session.stream_mut().write_all(&[c as u8]).await;
-                                let _ = session.stream_mut().flush().await;
-                            } else if echo.len() > 1 && echo[0] == b'\x08' {
-                                let _ = session.stream_mut().write_all(&echo).await;
-                                let _ = session.stream_mut().flush().await;
-                            }
-                        }
-                    }
-                }
+                write_screen_echo(session, &echo, self.line_buffer.echo_mode()).await;
 
                 match result {
                     InputResult::Line(line) => return Ok(Some(line)),
@@ -612,32 +566,7 @@ impl ScreenContext {
                     let (result, echo) = self.line_buffer.process_byte(buf[0]);
 
                     // Echo handling
-                    if !echo.is_empty() {
-                        match self.line_buffer.echo_mode() {
-                            EchoMode::Normal => {
-                                let _ = session.stream_mut().write_all(&echo).await;
-                                let _ = session.stream_mut().flush().await;
-                            }
-                            EchoMode::Password => {
-                                if echo.len() == 1 && echo[0] != b'\x08' {
-                                    let _ = session.stream_mut().write_all(b"*").await;
-                                    let _ = session.stream_mut().flush().await;
-                                } else if echo.len() > 1 && echo[0] == b'\x08' {
-                                    let _ = session.stream_mut().write_all(&echo).await;
-                                    let _ = session.stream_mut().flush().await;
-                                }
-                            }
-                            EchoMode::Masked(c) => {
-                                if echo.len() == 1 && echo[0] != b'\x08' {
-                                    let _ = session.stream_mut().write_all(&[c as u8]).await;
-                                    let _ = session.stream_mut().flush().await;
-                                } else if echo.len() > 1 && echo[0] == b'\x08' {
-                                    let _ = session.stream_mut().write_all(&echo).await;
-                                    let _ = session.stream_mut().flush().await;
-                                }
-                            }
-                        }
-                    }
+                    write_screen_echo(session, &echo, self.line_buffer.echo_mode()).await;
 
                     match result {
                         InputResult::Line(line) => return Ok(line),
