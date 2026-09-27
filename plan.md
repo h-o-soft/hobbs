@@ -173,6 +173,12 @@ server::wire      … 【新規】出力の唯一の経路（text → CRLF → o
 5. Q1・Q2・Q3・Q8 は resolve の中で `// QUIRK(Qn): 現状維持。修正はフェーズF1` とコメントし、表テストで固定する。
 6. ゴールデンが全部一致することを確認する。
 
+#### フェーズ3の実施メモ
+- `TerminalSettings` の置き場所は `TelnetSession` にした。CLAUDE.md で「TelnetSession: Telnet接続の状態管理（stream, terminal, state）」とされているため。`encoding()` / `output_mode()` は settings への委譲にして、互換を保った。
+- SessionHandler の `profile` フィールドは無くし、「接続時に使うプロファイル」（`connect_profile`）だけを持つ。言語（i18n）、入力の文字コード（line_buffer）、画面の描画オブジェクト（screen）は、`apply_settings` が settings から導く値として更新する。
+- ログイン時の適用は、文字コード・言語・プロファイルを1回でまとめて行う。以前は文字コードを先に設定していたが、その間に送受信が無いので、観測できる挙動は同じ。
+- 全テストを一度に流すと、ログイン後に固定時間だけ待つ Telnet E2E が、負荷によってときどき落ちる（#327 と同じ原因）。そのため2つ目の合格条件は次のように運用する: 「基準値に無い失敗があれば、それが #327 と同じ種類（時間の待ちに依存する Telnet E2E）で、かつ単独で流すと毎回通ること」を確かめる。ゴールデンは、どの実行でも完全一致を求める。
+
 ### フェーズ4: 使われていないコードの削除とドキュメントの同期
 1. E5 のうち、D4 で削除すると決めたものを削除する。
 2. CLAUDE.md、docs/05_protocol.md、docs/operation_guide.md のプロファイル表と、NAWS/TTYPE の記述を実態に合わせる。
